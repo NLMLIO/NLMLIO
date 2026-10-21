@@ -73,7 +73,7 @@ fi
 if cf="$(compose_file)"; then
   need docker "$cf"
   log "Starting docker compose services ($COMPOSE_PROJECT_NAME)"
-  docker compose -f "$cf" up -d
+  docker compose -f "$cf" up -d --wait
 fi
 
 log "Workspace ready. Press Run to start the dev server on port $PORT."

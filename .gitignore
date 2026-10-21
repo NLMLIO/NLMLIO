@@ -5,3 +5,9 @@
 
 # Generated per workspace by .superset/setup.sh
 .superset/workspace.env
+
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+server/src/generated/

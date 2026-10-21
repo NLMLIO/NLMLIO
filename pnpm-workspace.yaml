@@ -1,0 +1,11 @@
+packages:
+  - shared
+  - server
+  - client
+
+# 설치 스크립트를 실행해도 되는 의존성 (pnpm은 기본으로 막는다)
+allowBuilds:
+  '@parcel/watcher': true
+  '@prisma/engines': true
+  prisma: true
+  unrs-resolver: true

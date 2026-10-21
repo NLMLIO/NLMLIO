@@ -1,0 +1,30 @@
+{
+  "name": "@nlmlio/client",
+  "private": true,
+  "description": "낼래말래io 클라이언트 — React + TypeScript",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b",
+    "test": "echo \"client: 아직 테스트 러너 없음\""
+  },
+  "dependencies": {
+    "@nlmlio/shared": "workspace:*",
+    "howler": "^2.2.4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "socket.io-client": "^4.8.4",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@types/howler": "^2.2.13",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "typescript": "^6.0.2",
+    "vite": "^8.3.4"
+  }
+}

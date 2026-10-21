@@ -7,7 +7,7 @@ cd "$WORKSPACE_DIR"
 if cf="$(compose_file)" && command -v docker >/dev/null; then
   project="$(compose_project_name)"
   log "Stopping docker compose services ($project)"
-  docker compose -f "$cf" -p "$project" down --remove-orphans
+  docker compose -f "$cf" -p "$project" down --volumes --remove-orphans
 fi
 
 release_port

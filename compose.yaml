@@ -1,0 +1,31 @@
+# 개발용 PostgreSQL·Redis. 호스트 포트는 워크스페이스마다 다르다(.superset/workspace.env).
+# 직접 띄울 때는 `pnpm db:up`을 쓴다(워크스페이스 포트를 읽어 온다).
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nlmlio}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nlmlio}
+      POSTGRES_DB: ${POSTGRES_DB:-nlmlio}
+    ports:
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  redis:
+    image: redis:8-alpine
+    ports:
+      - '127.0.0.1:${REDIS_PORT:-6379}:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  postgres-data:

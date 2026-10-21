@@ -1,0 +1,12 @@
+// DB 스키마의 유일한 원본. 바꾸면 `pnpm db:migrate --name <설명>`으로 마이그레이션을 만든다.
+// 모델(User, Game, GameResult, PointHistory …)은 기능을 구현하면서 추가한다.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}

@@ -4,7 +4,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 이 저장소에서 작업하는 Claude Code(및 다른 코딩 에이전트)를 위한 안내서다. 작업을 시작하기 전에 끝까지 읽고 아래 규칙을 따른다.
 
-> **현재 상태**: 아직 애플리케이션 코드가 없다. `package.json`, 빌드·테스트 도구도 없고, 있는 것은 Superset 워크스페이스 설정(`.superset/`), `.gitignore`, 이 파일, `FUNCTION.md`뿐이다. 3절의 폴더 구조는 **계획**이다. 스택이 생기면 빌드·린트·테스트(단일 테스트 실행 포함) 명령을 이 파일에 추가한다.
+> **현재 상태**: 개발 환경 뼈대만 있다(서버 `GET /api/health`, 클라이언트 첫 화면, 공유 에러 코드). 기능 코드와 Prisma 모델은 아직 없다. 3절 폴더 구조에서 아직 없는 폴더는 **계획**이다.
+
+## 명령어
+
+루트에서 실행한다. pnpm이 `package.json`의 `devEngines`에 따라 **Node 24**를 내려받아 쓰므로 시스템 Node 버전과 상관없다.
+
+| 명령 | 하는 일 |
+|---|---|
+| `pnpm install` | 의존성 설치 + `shared` 빌드 + `prisma generate` |
+| `pnpm db:up` / `pnpm db:down` | PostgreSQL·Redis 컨테이너 시작(헬스체크까지 대기) / 정지 |
+| `pnpm dev` | shared(tsc watch) + server(nest watch) + client(vite) 동시 실행 |
+| `pnpm build` | shared → server, client 빌드 |
+| `pnpm typecheck` / `pnpm lint` / `pnpm format` | 타입 검사 / oxlint / prettier |
+| `pnpm test` | 서버 단위 테스트(Jest). 클라이언트 테스트 러너는 아직 없다 |
+| `pnpm test:e2e` | 서버 e2e 테스트. 실제 DB·Redis가 필요하다(`pnpm db:up` 먼저) |
+| `pnpm db:migrate --name <설명>` | `schema.prisma` 변경으로 마이그레이션 생성·적용(`prisma migrate dev`) |
+| `pnpm db:deploy` | 마이그레이션 적용만(`prisma migrate deploy`) |
+| `pnpm db:studio` | Prisma Studio |
+
+- 테스트 하나만: `pnpm --filter @nlmlio/server test src/경로/파일.spec.ts` 또는 `pnpm --filter @nlmlio/server test -t "테스트 이름"` (e2e는 `test:e2e`). `--`를 붙이면 Jest가 인자를 못 받는다
+- 패키지 하나에만 명령: `pnpm --filter @nlmlio/<shared|server|client> <script>`
+- 새 의존성: `pnpm --filter @nlmlio/<패키지> add <이름>` (2절 규칙대로 먼저 묻는다)
 
 ---
 
@@ -62,8 +83,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **협업**: 스키마가 한 파일이라 리뷰가 쉽고, `prisma migrate`로 마이그레이션 이력이 남는다.
 - 필요한 쿼리가 CRUD + 랭킹 정렬·페이지 조회 수준이라 SQL 빌더(Drizzle)까지는 필요 없다.
 
-- **패키지 매니저·워크스페이스: pnpm workspaces.** 루트 `package.json`의 `packageManager` 필드로 pnpm 버전을 고정한다. npm·yarn·bun으로 설치하지 않는다.
+- **패키지 매니저·워크스페이스: pnpm workspaces.** 루트 `package.json`의 `packageManager` 필드로 pnpm 버전을, `devEngines.runtime`으로 Node 24를 고정한다. npm·yarn·bun으로 설치하지 않는다.
+  - pnpm은 의존성 설치 스크립트를 기본으로 막는다. 허용 목록은 `pnpm-workspace.yaml`의 `allowBuilds`다.
+  - 갓 배포된 버전은 pnpm의 최소 공개 기간 정책에 걸린다. 예외(`minimumReleaseAgeExclude`)를 추가하지 말고 버전 범위를 넓혀 이전 버전을 쓴다.
 - **Redis 클라이언트: ioredis.**
+- **도구**: 클라이언트 빌드·개발 서버는 Vite, 린트는 oxlint, 포맷은 prettier(`.prettierrc`).
+
+#### 버전별 주의점
+
+- **NestJS 12는 ESM 패키지**다. 서버 코드 자체는 CommonJS(`module: nodenext`, `"type"` 없음)로 컴파일하고 Node의 `require(esm)`으로 Nest를 불러온다. Jest는 `--experimental-vm-modules`와 Node 24.9 이상이 있어야 Nest를 불러올 수 있다(그래서 Node 24).
+- **TypeScript는 6.x**다. Nest CLI와 ts-jest가 7을 아직 지원하지 않는다.
+- **Prisma 7**: 접속 URL은 `schema.prisma`가 아니라 `server/prisma.config.ts`에 있다. 클라이언트는 `prisma-client` 생성기가 `server/src/generated/prisma`에 만들고(gitignore), `@prisma/adapter-pg` 드라이버 어댑터로 연결한다. 생성 코드는 `./x.js` 확장자로 import하므로 Jest 설정에 `.js → .ts` 매핑이 있다.
+
+#### 환경변수 읽는 순서
+
+셸 환경 > `.superset/workspace.env`(워크스페이스 포트) > `.env`. 서버는 `server/src/config/env.ts`의 `loadEnvFiles()`, 클라이언트는 `vite.config.ts`, Prisma CLI는 `prisma.config.ts`가 같은 순서로 읽는다.
+- 포트: `CLIENT_PORT`(기본 5173), `SERVER_PORT`(3000), `POSTGRES_PORT`(5432), `REDIS_PORT`(6379)
+- `DATABASE_URL`·`REDIS_URL`은 비워 두면 위 포트와 `POSTGRES_*` 값으로 만든다(`databaseUrl()`, `redisUrl()`). 코드에서 URL을 직접 조립하지 말고 이 함수를 쓴다.
+- 클라이언트는 Vite 프록시로 `/api`, `/socket.io`를 서버에 넘긴다. 같은 출처로 붙으므로 CORS 설정이 필요 없다.
 
 > NestJS 기본 테스트 러너는 Jest다. 다른 테스트 러너는 `package.json`을 먼저 확인하고, 없으면 **임의로 고르지 말고 질문**한다.
 > 서버를 여러 대로 늘릴 계획이 생기면 게임 상태 위치와 Socket.io Redis adapter를 다시 설계해야 한다 — 지금은 **서버 1대** 전제다.
@@ -83,8 +120,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ├── CLAUDE.md
 ├── FUNCTION.md               # 기능 명세 (FUNC-ID)
 ├── README.md
-├── package.json              # 워크스페이스 루트 (공통 스크립트: dev / build / test / lint, packageManager: pnpm)
-├── pnpm-workspace.yaml
+├── package.json              # 워크스페이스 루트 (공통 스크립트, packageManager: pnpm, devEngines: Node 24)
+├── pnpm-workspace.yaml       # 패키지 목록, allowBuilds
+├── compose.yaml              # 개발용 PostgreSQL 18 · Redis 8
 ├── .env.example              # 환경변수 이름만 (값 금지)
 │
 ├── shared/                   # 프론트·백엔드가 함께 쓰는 타입 — 여기만 고치면 양쪽이 같이 바뀐다
@@ -96,7 +134,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 │
 ├── server/                   # NestJS + Socket.io + PostgreSQL + Redis
 │   ├── src/
-│   │   ├── main.ts           # 부트스트랩: ValidationPipe, CORS, Socket.io 어댑터
+│   │   ├── main.ts           # 부트스트랩: 환경변수 로드, /api 접두어, ValidationPipe, Socket.io 어댑터
 │   │   ├── app.module.ts     # 루트 모듈 — 아래 모듈을 조립
 │   │   ├── domain/           # ⭐ 게임 규칙 — 순수 TS 클래스. Nest·Socket.io·DB·Redis를 import하지 않는다
 │   │   │   ├── card/         #   Card, Deck(셔플·분배), Fruit
@@ -114,8 +152,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 │   │   │   ├── database/     #   PrismaModule·PrismaService(연결·종료 훅), 모듈별 Repository 구현
 │   │   │   ├── redis/        #   Redis 모듈·클라이언트 (토큰, 방 코드, 세션, rate limit)
 │   │   │   └── game-state/   #   진행 중인 방·게임 인메모리 저장소
+│   │   ├── health/           # GET /api/health — DB·Redis 연결 확인
+│   │   ├── generated/prisma/ # prisma generate 결과 (gitignore, 직접 고치지 않는다)
 │   │   ├── common/           # 공통: 예외 필터(HTTP·WS), 인터셉터, 데코레이터(@CurrentUser), 파이프
-│   │   └── config/           # @nestjs/config — 환경변수 로딩·검증 (DB, Redis, JWT)
+│   │   └── config/           # env.ts(환경변수 파일 로드, DB·Redis URL, 포트), @nestjs/config 검증
+│   ├── prisma.config.ts      # Prisma 7 설정: 스키마·마이그레이션 경로, 접속 URL
 │   ├── prisma/
 │   │   ├── schema.prisma     # ⭐ DB 스키마의 유일한 원본 (User, Game, GameResult, PointHistory …)
 │   │   ├── migrations/       # prisma migrate가 만든 SQL 이력 — 손으로 고치지 않는다
@@ -224,7 +265,7 @@ PostgreSQL (영속) · Redis (휘발·TTL) · 인메모리 게임 상태
 
 - 진행 중인 방·게임 상태는 **서버 메모리**에서 관리하고, 끝난 결과만 PostgreSQL에 저장한다(005-11).
 - 결과 저장과 포인트 지급은 **같은 PostgreSQL 트랜잭션**으로 묶는다(005-11, 006-01) — `prisma.$transaction(async (tx) => { … })` 안에서 모두 `tx`로 쓴다. 같은 게임의 중복 저장은 스키마의 유니크 제약으로 막고, 위반(`P2002`)은 «이미 저장됨»으로 처리한다.
-- 스키마 변경은 `schema.prisma` 수정 → `prisma migrate dev --name <설명>` 으로만 한다. DB에 직접 `ALTER`하지 않는다. 운영/배포 반영은 `prisma migrate deploy`.
+- 스키마 변경은 `schema.prisma` 수정 → `pnpm db:migrate --name <설명>` 으로만 한다. DB에 직접 `ALTER`하지 않는다. 운영/배포 반영은 `prisma migrate deploy`.
 - 랭킹 조회(007-01)는 정렬 컬럼에 인덱스(`@@index`)를 두고 `skip`/`take`(또는 커서)로 페이지 조회한다.
 - Redis 키는 용도별 접두어로 구분하고 반드시 TTL을 단다. 예: `refresh:{userId}`, `room-code:{code}`, `session:{userId}`, `chat-limit:{userId}`(TTL 3초), `emoji-limit:{userId}`(TTL 2초).
 - 도배 제한 카운터는 토큰·세션 키 안에 넣지 않는다. 토큰을 재발급해도 카운터가 초기화되지 않아야 하고, 탭이 여러 개여도 사용자 하나로 센다.
@@ -288,21 +329,22 @@ PostgreSQL (영속) · Redis (휘발·TTL) · 인메모리 게임 상태
 
 이 저장소는 Superset 워크스페이스(워크스페이스마다 `~/.superset/worktrees/` 아래 별도 git worktree)에서 개발한다. `.superset/config.json`이 세 스크립트를 수명주기에 연결하고, 셋 다 `.superset/lib.sh`를 불러 쓴다.
 
+- `config.json`의 setup은 `setup.sh` 다음에 `pnpm db:deploy`(마이그레이션 적용)를 실행한다.
 - `setup.sh` — 워크스페이스 생성 시 실행. 반복 실행해도 안전해야 한다. 순서대로:
   1. `$SUPERSET_ROOT_PATH`(메인 체크아웃)에서 추적되지 않는 `.env`, `.env.*`, `.envrc`를 복사한다. 이미 있는 파일은 덮어쓰지 않는다.
   2. `.env`가 없으면 `.env.example`을 복사한다.
   3. 포트를 예약한다.
-  4. 의존성을 설치하고 `docker compose`를 띄운다. 설치 도구는 있는 lockfile·manifest로 고른다(bun/pnpm/yarn/npm, uv/poetry/requirements.txt, cargo, go).
-- `run.sh` — Run 버튼. `package.json`의 `dev` 스크립트(없으면 `start`)나 Django `manage.py runserver`를 실행한다. 모노레포의 실제 개발 명령이 이 감지와 맞지 않으면 감지 로직을 늘리지 말고 `.superset/config.json`의 `"run"`을 직접 설정한다.
-- `teardown.sh` — 워크스페이스 삭제 시 실행. compose 프로젝트를 내리고 포트 예약을 푼다. setup이 새로 띄우는 것이 생기면 여기서 꼭 내린다.
+  4. 의존성을 설치하고(`pnpm install`) `docker compose up -d --wait`으로 PostgreSQL·Redis를 띄운다. 설치 도구는 있는 lockfile·manifest로 고른다.
+- `run.sh` — Run 버튼. 루트 `pnpm dev`를 실행한다.
+- `teardown.sh` — 워크스페이스 삭제 시 실행. compose 프로젝트를 **볼륨까지** 내리고(워크스페이스 DB 삭제) 포트 예약을 푼다. setup이 새로 띄우는 것이 생기면 여기서 꼭 내린다.
 
 ### 워크스페이스별 포트
 
 병렬 워크스페이스끼리 포트가 겹치면 안 된다.
 
 - `lib.sh`가 워크스페이스마다 포트 10개 블록(3100–3109, 3110–3119, …)을 머신 전체 공용 파일 `~/.superset/port-allocations.tsv`에 예약한다. 여러 프로젝트가 같이 쓰며 `mkdir` 잠금으로 보호한다.
-- 값은 gitignore된 `.superset/workspace.env`에 기록된다: `PORT`(개발 서버), `SUPERSET_PORT_BASE`(블록 시작), `COMPOSE_PROJECT_NAME`.
-- 새 서비스(NestJS 서버, React 개발 서버, PostgreSQL, Redis 등)는 포트를 `$PORT` 또는 `$SUPERSET_PORT_BASE + n`에서 가져온다. compose 파일의 호스트 포트도 마찬가지로, 고정 포트를 쓰지 않는다.
-- Vite와 Astro는 `PORT`를 무시하므로 `run.sh`가 `--port`를 따로 넘긴다.
+- 값은 gitignore된 `.superset/workspace.env`에 기록된다(setup·run 때마다 다시 쓴다): 블록 시작 `SUPERSET_PORT_BASE`, `CLIENT_PORT`(+0, `PORT`와 같음), `SERVER_PORT`(+1), `POSTGRES_PORT`(+2), `REDIS_PORT`(+3), `COMPOSE_PROJECT_NAME`.
+- 새 서비스는 남은 +4~+9에서 포트를 받는다. `lib.sh`의 `write_workspace_env`에 변수를 추가하고, 코드에는 기본값과 함께 그 변수를 읽게 한다. 고정 포트를 쓰지 않는다.
+- 워크스페이스 터미널에서 `docker compose`를 직접 부르지 말고 `pnpm db:up`/`db:down`을 쓴다(워크스페이스 포트를 읽어 온다).
 
 개인별 스크립트 변경은 공유 `config.json`이 아니라 gitignore된 `.superset/config.local.json`(`before`/`after` 배열 지원)에 둔다.

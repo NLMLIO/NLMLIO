@@ -1,0 +1,35 @@
+{
+  "name": "nlmlio",
+  "private": true,
+  "description": "낼래말래io — 할리갈리 규칙의 실시간 온라인 대전 웹 게임",
+  "packageManager": "pnpm@11.6.0",
+  "engines": {
+    "node": ">=24.9"
+  },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "^24.9.0",
+      "onFail": "download"
+    }
+  },
+  "scripts": {
+    "postinstall": "pnpm --filter @nlmlio/shared build",
+    "dev": "pnpm --parallel --stream --filter @nlmlio/shared --filter @nlmlio/server --filter @nlmlio/client run dev",
+    "build": "pnpm --filter @nlmlio/shared build && pnpm --filter @nlmlio/server --filter @nlmlio/client build",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test",
+    "test:e2e": "pnpm --filter @nlmlio/server test:e2e",
+    "lint": "oxlint shared/src server/src server/test client/src",
+    "format": "prettier --write .",
+    "db:up": "sh -c 'set -a; [ -f .superset/workspace.env ] && . ./.superset/workspace.env; docker compose up -d --wait'",
+    "db:down": "sh -c 'set -a; [ -f .superset/workspace.env ] && . ./.superset/workspace.env; docker compose down'",
+    "db:migrate": "pnpm --filter @nlmlio/server exec prisma migrate dev",
+    "db:deploy": "pnpm --filter @nlmlio/server exec prisma migrate deploy",
+    "db:studio": "pnpm --filter @nlmlio/server exec prisma studio"
+  },
+  "devDependencies": {
+    "oxlint": "^1.89.0",
+    "prettier": "^3.9.10"
+  }
+}
