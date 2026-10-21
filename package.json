@@ -26,8 +26,7 @@
     "db:down": "sh -c 'set -a; [ -f .superset/workspace.env ] && . ./.superset/workspace.env; docker compose down'",
     "db:migrate": "pnpm --filter @nlmlio/server exec prisma migrate dev",
     "db:deploy": "pnpm --filter @nlmlio/server exec prisma migrate deploy",
-    "db:studio": "pnpm --filter @nlmlio/server exec prisma studio",
-    "db:seed": "pnpm --filter @nlmlio/server exec prisma db seed"
+    "db:studio": "pnpm --filter @nlmlio/server exec prisma studio"
   },
   "devDependencies": {
     "oxlint": "^1.89.0",

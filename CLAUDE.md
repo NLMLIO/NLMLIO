@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 이 저장소에서 작업하는 Claude Code(및 다른 코딩 에이전트)를 위한 안내서다. 작업을 시작하기 전에 끝까지 읽고 아래 규칙을 따른다.
 
-> **현재 상태**: 인증(회원가입·로그인·토큰 회전·로그아웃), 개인정보 수정, 개인 대시보드, 전적·랭킹 조회를 구현했다. Prisma의 `User`, `Game`, `GameResult`와 서버 내부 정산 서비스가 있다. 게임 엔진·방·채팅은 아직 계획 단계다. 2026-10-21 요청에 따라 이번 마이페이지 화면에는 티어를 표시하지 않는다.
+> **현재 상태**: 개발 환경 뼈대만 있다(서버 `GET /api/health`, 클라이언트 첫 화면, 공유 에러 코드). 기능 코드와 Prisma 모델은 아직 없다. 3절 폴더 구조에서 아직 없는 폴더는 **계획**이다.
 
 ## 명령어
 
@@ -22,7 +22,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | `pnpm db:migrate --name <설명>` | `schema.prisma` 변경으로 마이그레이션 생성·적용(`prisma migrate dev`) |
 | `pnpm db:deploy` | 마이그레이션 적용만(`prisma migrate deploy`) |
 | `pnpm db:studio` | Prisma Studio |
-| `pnpm db:seed` | `DEMO_PASSWORD`로 개발용 계정 4개와 48경기 생성. 기존 경기 중복 지급 없음 |
 
 - 테스트 하나만: `pnpm --filter @nlmlio/server test src/경로/파일.spec.ts` 또는 `pnpm --filter @nlmlio/server test -t "테스트 이름"` (e2e는 `test:e2e`). `--`를 붙이면 Jest가 인자를 못 받는다
 - 패키지 하나에만 명령: `pnpm --filter @nlmlio/<shared|server|client> <script>`
@@ -183,21 +182,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```
 
 ### 의존 방향 (어기면 안 되는 규칙)
-
-#### 현재 구현한 위치
-
-- `shared/src/dto.ts`, `validation.ts`: HTTP 계약과 클라이언트·서버 입력값 규칙.
-- `server/src/common/security/`: scrypt, JWT, HTTP Guard, Redis Refresh 세션. Refresh는 HttpOnly 쿠키에 저장하고 Redis에는 토큰의 SHA-256 지문을 저장한다.
-- `server/src/domain/user/`: 인프라와 독립적인 계정 타입, 누적 통계 계산 객체.
-- `server/src/domain/game/game-settlement.ts`: 확정 순위 검증과 명세의 포인트 지급식.
-- `server/src/modules/auth`, `user`, `ranking`: 인증, 프로필·대시보드, 개인 전적·리더보드.
-- `server/src/modules/game/game-result.service.ts`: 게임 엔진이 최종 결과를 전달할 서버 내부 진입점. 결과 제출용 HTTP 엔드포인트는 없다.
-- `server/src/infra/database/*repository.ts`: Prisma 타입·쿼리와 트랜잭션을 캡슐화.
-- `client/src/pages/auth`, `mypage`, `ranking`: 요청 이미지에 맞춘 화면. `api/http.ts`는 단일 Refresh 요청과 한 번의 HTTP 재시도를 담당한다.
-- `client/src/components/`, `hooks/`, `styles/`: 통계·페이지네이션·오류 UI와 조회 훅, 공통 스타일.
-- `server/tsconfig.seed.json`: Prisma 7 생성 코드의 `.js` import를 ts-node에서 원본 `.ts`로 해석하는 seed 전용 설정.
-
-위 구현에서 전적·포인트의 영속 원본은 PostgreSQL이다. 개인 통계는 전체 `GameResult` 합계로 계산하며 페이지 크기에 영향을 받지 않는다. Redis의 `ranking`·`user:{id}:history`는 이번 구현에 필수 캐시로 추가하지 않는다. 동점 순위는 PostgreSQL의 점수 도달 시각·가입일·ID 순서로 일관되게 계산한다.
 
 - `server/src/domain` → 아무것도 import하지 않는다(`shared` 타입 제외). `@Injectable` 등 Nest 데코레이터도 붙이지 않는다.
 - Controller·Gateway는 **입력 검증·인증·이벤트 변환만** 하고 Service를 호출한다. 규칙은 Service → domain 클래스에 맡긴다.
