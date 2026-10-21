@@ -1,0 +1,7 @@
+.env
+.env.*
+!.env.example
+.envrc
+
+# Generated per workspace by .superset/setup.sh
+.superset/workspace.env
