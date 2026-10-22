@@ -9,6 +9,8 @@ import type { UserAccount } from '../../domain/user/account';
 interface SessionClaims {
   sub: number;
   version: number;
+  /** 기기 세션 ID. 로그인마다 새로 만들고 재발급 때는 그대로 이어 간다. */
+  sid: string;
   purpose: 'access' | 'refresh';
   exp: number;
 }
@@ -30,9 +32,10 @@ export class TokenService {
 
   async issue(
     user: UserAccount,
-  ): Promise<{ accessToken: string; refreshToken: string; refreshTtl: number }> {
+    sessionId: string = randomUUID(),
+  ): Promise<{ accessToken: string; refreshToken: string; refreshTtl: number; sessionId: string }> {
     const refreshTtl = this.ttl(this.config.get('JWT_REFRESH_TTL', '14d'));
-    const claims = { sub: user.id, version: user.authVersion, jti: randomUUID() };
+    const claims = { sub: user.id, version: user.authVersion, sid: sessionId, jti: randomUUID() };
     const [accessToken, refreshToken] = await Promise.all([
       this.jwt.signAsync(
         { ...claims, purpose: 'access' },
@@ -51,7 +54,7 @@ export class TokenService {
         },
       ),
     ]);
-    return { accessToken, refreshToken, refreshTtl };
+    return { accessToken, refreshToken, refreshTtl, sessionId };
   }
 
   async verify(token: string, kind: 'access' | 'refresh'): Promise<SessionClaims> {
@@ -63,7 +66,8 @@ export class TokenService {
       if (
         claims.purpose !== kind ||
         !Number.isSafeInteger(claims.sub) ||
-        !Number.isSafeInteger(claims.version)
+        !Number.isSafeInteger(claims.version) ||
+        typeof claims.sid !== 'string'
       ) {
         throw new Error('Invalid session claims');
       }

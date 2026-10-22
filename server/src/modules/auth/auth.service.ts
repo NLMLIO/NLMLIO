@@ -33,8 +33,10 @@ export class AuthService {
     const hash = user?.passwordHash ?? (await this.passwords.hash('invalid-account-password'));
     if (!(await this.passwords.verify(input.password, hash)) || !user)
       throw appError(ErrorCode.INVALID_CREDENTIALS);
+    if (this.passwords.needsRehash(user.passwordHash))
+      await this.users.upgradePasswordHash(user, await this.passwords.hash(input.password));
     const session = await this.tokens.issue(user);
-    await this.sessions.save(user.id, session.refreshToken, session.refreshTtl);
+    await this.sessions.save(user.id, session.sessionId, session.refreshToken, session.refreshTtl);
     return { ...session, user: toPublicUser(user) };
   }
 
@@ -42,9 +44,15 @@ export class AuthService {
     const claims = await this.tokens.verify(refreshToken, 'refresh');
     const user = await this.users.requireAccount(claims.sub);
     if (claims.version !== user.authVersion) throw appError(ErrorCode.TOKEN_INVALID);
-    const session = await this.tokens.issue(user);
+    const session = await this.tokens.issue(user, claims.sid);
     if (
-      !(await this.sessions.rotate(user.id, refreshToken, session.refreshToken, session.refreshTtl))
+      !(await this.sessions.rotate(
+        user.id,
+        claims.sid,
+        refreshToken,
+        session.refreshToken,
+        session.refreshTtl,
+      ))
     ) {
       throw appError(ErrorCode.TOKEN_INVALID);
     }
@@ -54,7 +62,7 @@ export class AuthService {
   async logout(refreshToken: string) {
     try {
       const claims = await this.tokens.verify(refreshToken, 'refresh');
-      await this.sessions.revokeIfMatches(claims.sub, refreshToken);
+      await this.sessions.revokeIfMatches(claims.sub, claims.sid, refreshToken);
     } catch {
       // Logout also succeeds when a cookie is already absent or expired.
     }

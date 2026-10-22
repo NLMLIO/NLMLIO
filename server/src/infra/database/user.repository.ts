@@ -27,6 +27,14 @@ export class UserRepository {
     return this.prisma.user.create({ data: input });
   }
 
+  /** 같은 비밀번호를 새 방식으로 다시 해시할 때만 쓴다. 세션을 끊지 않도록 authVersion은 그대로 둔다. */
+  async replacePasswordHash(account: UserAccount, passwordHash: string): Promise<void> {
+    await this.prisma.user.updateMany({
+      where: { id: account.id, passwordHash: account.passwordHash },
+      data: { passwordHash },
+    });
+  }
+
   async update(account: UserAccount, changes: ChangeAccountInput): Promise<UserAccount | null> {
     return this.prisma.$transaction(async (tx) => {
       const result = await tx.user.updateMany({

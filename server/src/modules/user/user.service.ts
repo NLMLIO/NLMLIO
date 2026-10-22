@@ -36,6 +36,10 @@ export class UserService {
     return this.users.findByUsername(username);
   }
 
+  upgradePasswordHash(account: UserAccount, passwordHash: string): Promise<void> {
+    return this.users.replacePasswordHash(account, passwordHash);
+  }
+
   async requireAccount(id: number): Promise<UserAccount> {
     const user = await this.users.findById(id);
     if (!user) throw appError(ErrorCode.USER_NOT_FOUND);
@@ -99,7 +103,7 @@ export class UserService {
     try {
       const updated = await this.users.update(account, changes);
       if (!updated) throw appError(ErrorCode.TOKEN_INVALID);
-      if (changes.passwordHash) await this.sessions.revoke(account.id);
+      if (changes.passwordHash) await this.sessions.revokeAll(account.id);
       return { user: toPublicUser(updated), requiresLogin: Boolean(changes.passwordHash) };
     } catch (error) {
       this.rethrowConflict(error);
