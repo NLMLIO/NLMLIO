@@ -99,7 +99,7 @@ export class UserService {
     try {
       const updated = await this.users.update(account, changes);
       if (!updated) throw appError(ErrorCode.TOKEN_INVALID);
-      if (changes.passwordHash) await this.sessions.revoke(account.id);
+      if (changes.passwordHash) await this.sessions.revokeAll(account.id);
       return { user: toPublicUser(updated), requiresLogin: Boolean(changes.passwordHash) };
     } catch (error) {
       this.rethrowConflict(error);

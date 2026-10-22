@@ -82,7 +82,8 @@ DEMO_PASSWORD='<직접 정한 영문·숫자 포함 비밀번호>' pnpm db:seed
 - 종 성공률: 종 성공 횟수 / (성공 + 오발 횟수).
 - 평균 반응 시간: 성공한 종의 반응 시간 합 / 성공 횟수. 성공 기록이 없으면 `null`이며 화면에 `—`를 표시합니다.
 - 순위: 승수가 많은 순서, 같은 승수에서는 패수가 적은 순서입니다. 승패까지 같으면 가입일, ID 오름차순으로 정렬합니다. 중도 이탈은 1패, 기록이 없으면 0승 0패입니다. 랭킹과 마이페이지에 같은 기준을 적용합니다.
-- Refresh: `refresh:{userId}`에 SHA-256 지문과 토큰 만료에 맞춘 TTL을 저장합니다. 원문 토큰은 HttpOnly·SameSite 쿠키로만 브라우저에 전달합니다.
+- 비밀번호: Argon2id(19 MiB, 2회, 병렬 1)로 해시합니다.
+- Refresh: 로그인할 때마다 기기 세션 ID(`sid`)를 만들고 `refresh:{userId}:{sid}`에 SHA-256 지문과 토큰 만료에 맞춘 TTL을 저장합니다. 재발급·로그아웃은 그 기기 세션만 바꾸고, 비밀번호를 바꾸면 모든 기기 세션을 지웁니다. 원문 토큰은 HttpOnly·SameSite 쿠키로만 브라우저에 전달합니다.
 - 통계는 PostgreSQL 원본에서 전체를 집계합니다. Redis 전적 50개 캐시나 단순 점수 ZSET을 통계의 원본으로 사용하지 않습니다.
 
 게임 엔진의 종료 처리에서는 `GameModule`이 내보내는 `GameResultService.settle(input)`을 호출하면 됩니다. `SettleGameInput`은 `shared/src/dto.ts`에 있습니다. 같은 `gameId`의 중복 호출은 `{ saved: false }`, 첫 저장은 `{ saved: true }`를 반환합니다. 브라우저가 순위·포인트를 위조할 수 없도록 결과 제출용 HTTP API는 제공하지 않습니다.

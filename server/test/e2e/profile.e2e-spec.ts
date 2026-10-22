@@ -47,7 +47,7 @@ describe('마이페이지·전적 실제 PostgreSQL/Redis 통합', () => {
       await prisma.gameResult.deleteMany({ where: { gameId: { startsWith: gamePrefix } } });
       await prisma.game.deleteMany({ where: { id: { startsWith: gamePrefix } } });
       for (const account of [me, other, ...extraAccounts].filter(Boolean))
-        await app.get(SessionService).revoke(account.id);
+        await app.get(SessionService).revokeAll(account.id);
       await prisma.user.deleteMany({
         where: { id: { in: [me, other, ...extraAccounts].filter(Boolean).map((user) => user.id) } },
       });
