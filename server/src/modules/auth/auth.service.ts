@@ -33,8 +33,6 @@ export class AuthService {
     const hash = user?.passwordHash ?? (await this.passwords.hash('invalid-account-password'));
     if (!(await this.passwords.verify(input.password, hash)) || !user)
       throw appError(ErrorCode.INVALID_CREDENTIALS);
-    if (this.passwords.needsRehash(user.passwordHash))
-      await this.users.upgradePasswordHash(user, await this.passwords.hash(input.password));
     const session = await this.tokens.issue(user);
     await this.sessions.save(user.id, session.sessionId, session.refreshToken, session.refreshTtl);
     return { ...session, user: toPublicUser(user) };

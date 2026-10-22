@@ -1,11 +1,11 @@
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type Redis from 'ioredis';
-import { randomBytes, scryptSync } from 'node:crypto';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 import { configureApp } from '../../src/common/configure-app';
+import { PasswordService } from '../../src/common/security/password.service';
 import { SessionService } from '../../src/common/security/session.service';
 import { loadEnvFiles } from '../../src/config/env';
 import { PrismaService } from '../../src/infra/database/prisma.service';
@@ -26,14 +26,12 @@ describe('로그인·기기별 세션 실제 PostgreSQL/Redis 통합 (FUNC-001-0
     configureApp(app);
     await app.init();
     prisma = app.get(PrismaService);
-    // argon2 도입 전에 가입한 계정처럼 scrypt 해시로 만든다.
-    const salt = randomBytes(24).toString('hex');
     const user = await prisma.user.create({
       data: {
         username,
         nickname: `세${suffix}`.slice(0, 10),
         email: `${username}@example.com`,
-        passwordHash: `scrypt:${salt}:${scryptSync(password, salt, 64).toString('hex')}`,
+        passwordHash: await app.get(PasswordService).hash(password),
       },
     });
     userId = user.id;
@@ -61,13 +59,6 @@ describe('로그인·기기별 세션 실제 PostgreSQL/Redis 통합 (FUNC-001-0
   function refresh(cookie: string) {
     return request(app.getHttpServer()).post('/api/auth/refresh').set('Cookie', cookie);
   }
-
-  it('scrypt 계정으로 로그인하면 Argon2id로 다시 해시한다', async () => {
-    await login();
-    const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
-    expect(user.passwordHash).toMatch(/^\$argon2id\$/);
-    await login();
-  });
 
   it('틀린 비밀번호는 INVALID_CREDENTIALS로 거부한다', async () => {
     await request(app.getHttpServer())

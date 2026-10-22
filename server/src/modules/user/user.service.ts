@@ -36,10 +36,6 @@ export class UserService {
     return this.users.findByUsername(username);
   }
 
-  upgradePasswordHash(account: UserAccount, passwordHash: string): Promise<void> {
-    return this.users.replacePasswordHash(account, passwordHash);
-  }
-
   async requireAccount(id: number): Promise<UserAccount> {
     const user = await this.users.findById(id);
     if (!user) throw appError(ErrorCode.USER_NOT_FOUND);
