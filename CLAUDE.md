@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 이 저장소에서 작업하는 Claude Code(및 다른 코딩 에이전트)를 위한 안내서다. 작업을 시작하기 전에 끝까지 읽고 아래 규칙을 따른다.
 
-> **현재 상태**: 개발 환경 뼈대만 있다(서버 `GET /api/health`, 클라이언트 첫 화면, 공유 에러 코드). 기능 코드와 Prisma 모델은 아직 없다. 3절 폴더 구조에서 아직 없는 폴더는 **계획**이다.
+> **현재 상태**: 인증(회원가입·로그인·토큰 회전·로그아웃), 개인정보 수정, 개인 대시보드, 전적·랭킹 조회를 구현했다. Prisma의 `User`, `Game`, `GameResult`와 서버 내부 정산 서비스가 있다. 게임 엔진·방·채팅은 아직 계획 단계다. 2026-10-21 요청에 따라 이번 마이페이지 화면에는 티어를 표시하지 않는다.
 
 ## 명령어
 
@@ -22,6 +22,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | `pnpm db:migrate --name <설명>` | `schema.prisma` 변경으로 마이그레이션 생성·적용(`prisma migrate dev`) |
 | `pnpm db:deploy` | 마이그레이션 적용만(`prisma migrate deploy`) |
 | `pnpm db:studio` | Prisma Studio |
+| `pnpm db:seed` | `DEMO_PASSWORD`로 개발용 계정 4개와 48경기 생성. 기존 경기 중복 지급 없음 |
 
 - 테스트 하나만: `pnpm --filter @nlmlio/server test src/경로/파일.spec.ts` 또는 `pnpm --filter @nlmlio/server test -t "테스트 이름"` (e2e는 `test:e2e`). `--`를 붙이면 Jest가 인자를 못 받는다
 - 패키지 하나에만 명령: `pnpm --filter @nlmlio/<shared|server|client> <script>`
@@ -32,7 +33,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 1. 프로젝트 개요
 
 **낼래말래io** — 할리갈리 규칙의 실시간 온라인 대전 웹 게임. 「(2026) 객체지향프로그래밍」 수업 프로젝트이고, 저장소·노션의 프로젝트명은 NLMLIO다.
-회원이 로그인해 방을 만들거나 참가하고, 대기실·게임 중 채팅을 하며, 여러 명이 동시에 할리갈리(테이블 위 같은 과일 합이 **정확히 5개**일 때 종을 먼저 친 사람이 카드를 가져가는 게임)를 플레이한다. 게임 결과로 포인트가 쌓이고, 포인트 기준 글로벌 랭킹과 개인 전적을 볼 수 있다.
+회원이 로그인해 방을 만들거나 참가하고, 대기실·게임 중 채팅을 하며, 여러 명이 동시에 할리갈리(테이블 위 같은 과일 합이 **정확히 5개**일 때 종을 먼저 친 사람이 카드를 가져가는 게임)를 플레이한다. 게임 결과로 보상 포인트가 쌓이고, 승패 기록 기준 글로벌 랭킹과 개인 전적을 볼 수 있다.
 
 - **기능 명세는 [`FUNCTION.md`](FUNCTION.md)에 있다.** 각 기능은 `FUNC-XXX-YY` ID를 가진다. 원본은 노션 「Project ▸ NLMLIO ▸ 자료실 ▸ 기능 명세서」이고, 명세를 바꾸면 `FUNCTION.md`와 노션을 함께 고친다.
 - 이 수업은 **객체지향 설계**를 평가한다. 동작하는 코드만큼 **책임 분리·캡슐화·도메인 모델**이 중요하다.
@@ -183,6 +184,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### 의존 방향 (어기면 안 되는 규칙)
 
+#### 현재 구현한 위치
+
+- `shared/src/dto.ts`, `validation.ts`: HTTP 계약과 클라이언트·서버 입력값 규칙.
+- `server/src/common/security/`: scrypt, JWT, HTTP Guard, Redis Refresh 세션. Refresh는 HttpOnly 쿠키에 저장하고 Redis에는 토큰의 SHA-256 지문을 저장한다.
+- `server/src/domain/user/`: 인프라와 독립적인 계정 타입, 누적 통계 계산 객체.
+- `server/src/domain/game/game-settlement.ts`: 확정 순위 검증과 명세의 포인트 지급식.
+- `server/src/modules/auth`, `user`, `ranking`: 인증, 프로필·대시보드, 개인 전적·리더보드.
+- `server/src/modules/game/game-result.service.ts`: 게임 엔진이 최종 결과를 전달할 서버 내부 진입점. 결과 제출용 HTTP 엔드포인트는 없다.
+- `server/src/infra/database/*repository.ts`: Prisma 타입·쿼리와 트랜잭션을 캡슐화. `RankingRepository`는 전체 경기의 승패를 SQL에서 집계해 목록과 내 순위를 같은 기준으로 계산한다.
+- `client/src/pages/auth`, `mypage`, `ranking`: 요청 이미지에 맞춘 화면. `api/http.ts`는 단일 Refresh 요청과 한 번의 HTTP 재시도를 담당한다.
+- `client/src/components/`, `hooks/`, `styles/`: 통계·페이지네이션·오류 UI와 조회 훅, 공통 스타일.
+- `server/tsconfig.seed.json`: Prisma 7 생성 코드의 `.js` import를 ts-node에서 원본 `.ts`로 해석하는 seed 전용 설정.
+
+위 구현에서 전적·포인트의 영속 원본은 PostgreSQL이다. 개인 통계는 전체 `GameResult` 합계로 계산하며 페이지 크기에 영향을 받지 않는다. Redis의 `ranking`·`user:{id}:history`는 이번 구현에 필수 캐시로 추가하지 않는다. 글로벌 랭킹은 승수 내림차순·패수 오름차순, 동률이면 가입일·ID 오름차순으로 계산한다. 기록이 없으면 0승 0패이며, 중도 이탈은 패배로 센다.
+
 - `server/src/domain` → 아무것도 import하지 않는다(`shared` 타입 제외). `@Injectable` 등 Nest 데코레이터도 붙이지 않는다.
 - Controller·Gateway는 **입력 검증·인증·이벤트 변환만** 하고 Service를 호출한다. 규칙은 Service → domain 클래스에 맡긴다.
 - 모듈끼리는 서로의 Service를 `exports`로 공개한 것만 쓴다. 다른 모듈의 Repository·Redis 키를 직접 건드리지 않는다.
@@ -209,7 +225,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | 탈락 / 이탈 | 카드 0장으로 빠짐(순위·포인트 정상) / 나가기·연결 끊김 5초·턴 시간 초과 3회로 빠짐(맨 아래, 0점). 둘 다 관전자가 된다 |
 | 턴 제한 시간 | 차례마다 10초. 넘기면 서버가 대신 카드를 낸다 |
 | 라운드 | 카드를 차례로 내다가 종 판정이 나거나 탈락자가 생기면 끝나는 단위 |
-| 포인트 | 게임 결과 순위·성적에 따라 지급. 랭킹 기준 |
+| 포인트 | 게임 결과 순위·성적에 따라 지급하는 보상 |
 
 ---
 
@@ -266,7 +282,7 @@ PostgreSQL (영속) · Redis (휘발·TTL) · 인메모리 게임 상태
 - 진행 중인 방·게임 상태는 **서버 메모리**에서 관리하고, 끝난 결과만 PostgreSQL에 저장한다(005-11).
 - 결과 저장과 포인트 지급은 **같은 PostgreSQL 트랜잭션**으로 묶는다(005-11, 006-01) — `prisma.$transaction(async (tx) => { … })` 안에서 모두 `tx`로 쓴다. 같은 게임의 중복 저장은 스키마의 유니크 제약으로 막고, 위반(`P2002`)은 «이미 저장됨»으로 처리한다.
 - 스키마 변경은 `schema.prisma` 수정 → `pnpm db:migrate --name <설명>` 으로만 한다. DB에 직접 `ALTER`하지 않는다. 운영/배포 반영은 `prisma migrate deploy`.
-- 랭킹 조회(007-01)는 정렬 컬럼에 인덱스(`@@index`)를 두고 `skip`/`take`(또는 커서)로 페이지 조회한다.
+- 랭킹 조회(007-01)는 PostgreSQL에서 전체 승패를 집계하고 윈도 함수로 순위를 부여한 뒤 `LIMIT`/`OFFSET`으로 페이지 조회한다. 목록·내 순위·총 인원은 같은 RepeatableRead 트랜잭션으로 조회한다.
 - Redis 키는 용도별 접두어로 구분하고 반드시 TTL을 단다. 예: `refresh:{userId}`, `room-code:{code}`, `session:{userId}`, `chat-limit:{userId}`(TTL 3초), `emoji-limit:{userId}`(TTL 2초).
 - 도배 제한 카운터는 토큰·세션 키 안에 넣지 않는다. 토큰을 재발급해도 카운터가 초기화되지 않아야 하고, 탭이 여러 개여도 사용자 하나로 센다.
 - 에러는 `FUNCTION.md` 「에러 코드」의 앱 에러 코드(`shared/`에 정의)로 보낸다. HTTP는 상태 코드와 앱 에러 코드를 함께, 소켓은 앱 에러 코드만 보낸다.

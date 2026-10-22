@@ -3,6 +3,10 @@ import { ConfigModule } from '@nestjs/config';
 import { HealthController } from './health/health.controller';
 import { PrismaModule } from './infra/database/prisma.module';
 import { RedisModule } from './infra/redis/redis.module';
+import { UserModule } from './modules/user/user.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { RankingModule } from './modules/ranking/ranking.module';
+import { GameModule } from './modules/game/game.module';
 
 @Module({
   imports: [
@@ -10,6 +14,10 @@ import { RedisModule } from './infra/redis/redis.module';
     ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
     PrismaModule,
     RedisModule,
+    UserModule,
+    AuthModule,
+    RankingModule,
+    GameModule,
   ],
   controllers: [HealthController],
 })
