@@ -16,6 +16,7 @@ describe('마이페이지·전적 실제 PostgreSQL/Redis 통합', () => {
   let settlement: GameResultService;
   let me: PublicUser;
   let other: PublicUser;
+  const extraAccounts: PublicUser[] = [];
   let auth: AuthResponse;
   let cookie: string;
   const suffix = Date.now().toString(36);
@@ -45,9 +46,11 @@ describe('마이페이지·전적 실제 PostgreSQL/Redis 통합', () => {
     if (prisma) {
       await prisma.gameResult.deleteMany({ where: { gameId: { startsWith: gamePrefix } } });
       await prisma.game.deleteMany({ where: { id: { startsWith: gamePrefix } } });
-      for (const account of [me, other].filter(Boolean))
+      for (const account of [me, other, ...extraAccounts].filter(Boolean))
         await app.get(SessionService).revoke(account.id);
-      await prisma.user.deleteMany({ where: { username: { in: [username, `v${suffix}`] } } });
+      await prisma.user.deleteMany({
+        where: { id: { in: [me, other, ...extraAccounts].filter(Boolean).map((user) => user.id) } },
+      });
     }
     if (app) await app.close();
   });
@@ -119,6 +122,14 @@ describe('마이페이지·전적 실제 PostgreSQL/Redis 통합', () => {
     expect(response.body.user.passwordHash).toBeUndefined();
     const rows = await get('/users/me/history').expect(200);
     expect(rows.body.items).toEqual([]);
+    const ranking = await get('/ranking').expect(200);
+    expect(ranking.body.items).toHaveLength(2);
+    expect(ranking.body.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ userId: me.id, wins: 0, losses: 0 }),
+        expect.objectContaining({ userId: other.id, wins: 0, losses: 0 }),
+      ]),
+    );
   });
 
   it('중복 확인을 하지 않거나 다른 닉네임 확인 토큰으로 저장할 수 없다', async () => {
@@ -201,19 +212,75 @@ describe('마이페이지·전적 실제 PostgreSQL/Redis 통합', () => {
     );
   });
 
-  it('동점은 점수 도달 시각, 가입일, ID 순서로 정렬한다', async () => {
+  it('포인트와 무관하게 승수가 많은 사용자가 위에 오르고 대시보드 순위와 일치한다', async () => {
     await prisma.user.update({
       where: { id: me.id },
-      data: { point: 10, pointReachedAt: new Date('2026-10-01') },
+      data: { point: 0, pointReachedAt: new Date('2026-10-02') },
     });
     await prisma.user.update({
       where: { id: other.id },
-      data: { point: 10, pointReachedAt: new Date('2026-10-02') },
+      data: { point: 1000000, pointReachedAt: new Date('2026-10-01') },
     });
     const response = await get('/ranking').expect(200);
-    expect(response.body.me.rank).toBe(1);
-    expect(response.body.items[0].userId).toBe(me.id);
+    expect(response.body.me).toMatchObject({ userId: me.id, rank: 1, wins: 2, losses: 1 });
+    expect(response.body.items[0]).toEqual(response.body.me);
+    expect(response.body.items[1]).toMatchObject({ userId: other.id, rank: 2, wins: 1, losses: 2 });
+    expect((await get('/users/me/dashboard')).body.rank).toBe(response.body.me.rank);
     expect(response.body.items[0].email).toBeUndefined();
+    expect(response.body.items[0].point).toBeUndefined();
+  });
+
+  it('승수가 같으면 패수가 적은 사용자가 위에 온다', async () => {
+    const rival = await signup(`r${suffix}`, `셋${suffix}`);
+    extraAccounts.push(rival);
+    const input = game('same-wins');
+    input.players[0].userId = other.id;
+    input.players[1].userId = rival.id;
+    await settlement.settle(input);
+    const response = await get('/ranking').expect(200);
+    expect(response.body.items.slice(0, 2)).toMatchObject([
+      { userId: me.id, rank: 1, wins: 2, losses: 1 },
+      { userId: other.id, rank: 2, wins: 2, losses: 2 },
+    ]);
+  });
+
+  it('승패가 모두 같으면 가입일, ID 순으로 일관되게 정렬한다', async () => {
+    const input = game('same-record', 2);
+    input.players[1].userId = extraAccounts[0].id;
+    await settlement.settle(input);
+    const joined = new Date('2026-10-01');
+    await prisma.user.update({ where: { id: other.id }, data: { createdAt: joined } });
+    let response = await get('/ranking').expect(200);
+    expect(response.body.items[0]).toMatchObject({ userId: other.id, wins: 2, losses: 2 });
+    expect(response.body.me.rank).toBe(2);
+    expect((await get('/users/me/dashboard')).body.rank).toBe(2);
+    await prisma.user.update({ where: { id: me.id }, data: { createdAt: joined } });
+    response = await get('/ranking').expect(200);
+    expect(response.body.items[0]).toMatchObject({ userId: me.id, wins: 2, losses: 2 });
+    expect(response.body.me.rank).toBe(1);
+  });
+
+  it('페이지를 바꿔도 전체 순위·내 승패를 유지하고 범위 밖 페이지는 빈 목록을 준다', async () => {
+    const first = await get('/ranking?page=1&pageSize=1').expect(200);
+    const second = await get('/ranking?page=2&pageSize=1').expect(200);
+    const third = await get('/ranking?page=3&pageSize=1').expect(200);
+    expect(first.body.items[0]).toMatchObject({ userId: me.id, rank: 1 });
+    expect(second.body.items[0]).toMatchObject({ userId: other.id, rank: 2 });
+    expect(third.body.items[0]).toMatchObject({ userId: extraAccounts[0].id, rank: 3 });
+    expect(second.body.me).toEqual(first.body.me);
+    const empty = await get('/ranking?page=99&pageSize=1').expect(200);
+    expect(empty.body).toMatchObject({ items: [], total: 3, totalPages: 3, me: first.body.me });
+  });
+
+  it('중도 이탈도 패배 횟수에 반영한다', async () => {
+    const input = game('departed', 2);
+    input.players[0].departed = true;
+    await settlement.settle(input);
+    const response = await get('/ranking').expect(200);
+    expect(response.body.me).toMatchObject({ wins: 2, losses: 3, rank: 2 });
+    const dashboard = await get('/users/me/dashboard').expect(200);
+    expect(dashboard.body.stats).toMatchObject({ wins: 2, losses: 3, departures: 1 });
+    expect(dashboard.body.rank).toBe(response.body.me.rank);
   });
 
   it('Refresh를 회전하고 이전 토큰의 재사용을 거부한다', async () => {

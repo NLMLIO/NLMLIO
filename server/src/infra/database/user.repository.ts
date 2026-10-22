@@ -39,51 +39,6 @@ export class UserRepository {
       return result.count ? tx.user.findUnique({ where: { id: account.id } }) : null;
     });
   }
-
-  async rankOf(user: UserAccount): Promise<number> {
-    return (
-      1 +
-      (await this.prisma.user.count({
-        where: {
-          OR: [
-            { point: { gt: user.point } },
-            { point: user.point, pointReachedAt: { lt: user.pointReachedAt } },
-            {
-              point: user.point,
-              pointReachedAt: user.pointReachedAt,
-              createdAt: { lt: user.createdAt },
-            },
-            {
-              point: user.point,
-              pointReachedAt: user.pointReachedAt,
-              createdAt: user.createdAt,
-              id: { lt: user.id },
-            },
-          ],
-        },
-      }))
-    );
-  }
-
-  async ranking(page: number, pageSize: number): Promise<{ items: PublicUser[]; total: number }> {
-    const [users, total] = await this.prisma.$transaction(
-      [
-        this.prisma.user.findMany({
-          orderBy: [
-            { point: 'desc' },
-            { pointReachedAt: 'asc' },
-            { createdAt: 'asc' },
-            { id: 'asc' },
-          ],
-          skip: (page - 1) * pageSize,
-          take: pageSize,
-        }),
-        this.prisma.user.count(),
-      ],
-      { isolationLevel: 'RepeatableRead' },
-    );
-    return { items: users.map(toPublicUser), total };
-  }
 }
 
 export function toPublicUser(user: UserAccount): PublicUser {

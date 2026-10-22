@@ -458,6 +458,7 @@ td {
 }
 .my-ranking {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 22px;
   margin-bottom: 30px;
@@ -472,6 +473,15 @@ td {
 }
 .my-ranking > span:last-child {
   margin-left: auto;
+}
+.ranking-record {
+  display: inline-flex;
+  gap: 14px;
+  white-space: nowrap;
+}
+.ranking-table th:nth-last-child(-n + 2),
+.ranking-table td:nth-last-child(-n + 2) {
+  text-align: right;
 }
 .my-row td {
   background: #1a2114;

@@ -58,7 +58,8 @@ export interface HistoryResponse extends PageResponse<GameHistoryItem> {
 export interface RankingEntry {
   userId: number;
   nickname: string;
-  point: number;
+  wins: number;
+  losses: number;
   rank: number;
 }
 

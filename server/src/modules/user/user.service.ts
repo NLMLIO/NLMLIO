@@ -15,6 +15,7 @@ import type {
 import { PlayerStatistics } from '../../domain/user/player-statistics';
 import { UserRepository, toPublicUser, uniqueConflict } from '../../infra/database/user.repository';
 import { HistoryRepository } from '../../infra/database/history.repository';
+import { RankingRepository } from '../../infra/database/ranking.repository';
 import { PasswordService } from '../../common/security/password.service';
 import { TokenService } from '../../common/security/token.service';
 import { SessionService } from '../../common/security/session.service';
@@ -25,6 +26,7 @@ export class UserService {
   constructor(
     private readonly users: UserRepository,
     private readonly history: HistoryRepository,
+    private readonly standings: RankingRepository,
     private readonly passwords: PasswordService,
     private readonly tokens: TokenService,
     private readonly sessions: SessionService,
@@ -58,11 +60,16 @@ export class UserService {
   }
 
   async dashboard(user: UserAccount): Promise<DashboardResponse> {
-    const [rank, totals] = await Promise.all([
-      this.users.rankOf(user),
+    const [standing, totals] = await Promise.all([
+      this.standings.standingOf(user.id),
       this.history.totals(user.id),
     ]);
-    return { user: toPublicUser(user), rank, stats: new PlayerStatistics(totals).toSnapshot() };
+    if (!standing) throw appError(ErrorCode.USER_NOT_FOUND);
+    return {
+      user: toPublicUser(user),
+      rank: standing.rank,
+      stats: new PlayerStatistics(totals).toSnapshot(),
+    };
   }
 
   async updateProfile(

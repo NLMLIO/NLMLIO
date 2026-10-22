@@ -39,7 +39,7 @@ export function MyPage({
             <dd className="lime">{user.point.toLocaleString()}</dd>
           </div>
           <div>
-            <dt>랭킹 순위</dt>
+            <dt>승패 기준 순위</dt>
             <dd>{rank.toLocaleString()}위</dd>
           </div>
         </dl>

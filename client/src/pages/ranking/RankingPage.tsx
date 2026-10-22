@@ -12,7 +12,7 @@ export function RankingPage() {
     <main className="records-page">
       <h1>랭킹</h1>
       <p className="page-description">
-        포인트가 같으면 먼저 해당 점수에 도달한 플레이어가 앞섭니다.
+        승수가 많은 순으로 정렬합니다. 승수가 같으면 패수가 적은 플레이어가 앞섭니다.
       </p>
       <PageState loading={loading} error={error} retry={reload} />
       {!loading && !error && data && (
@@ -21,7 +21,10 @@ export function RankingPage() {
             <span>내 순위</span>
             <strong>{data.me.rank}위</strong>
             <span>{data.me.nickname}</span>
-            <span className="lime">{data.me.point.toLocaleString()} P</span>
+            <span className="ranking-record">
+              <span className="lime">{data.me.wins.toLocaleString()}승</span>
+              <span>{data.me.losses.toLocaleString()}패</span>
+            </span>
           </div>
           <div className="table-scroll">
             <table className="ranking-table">
@@ -29,7 +32,8 @@ export function RankingPage() {
                 <tr>
                   <th scope="col">RANK</th>
                   <th scope="col">PLAYER</th>
-                  <th scope="col">POINT</th>
+                  <th scope="col">승</th>
+                  <th scope="col">패</th>
                 </tr>
               </thead>
               <tbody>
@@ -40,7 +44,8 @@ export function RankingPage() {
                       {user.nickname}
                       {user.userId === data.me.userId && <span className="me-label">나</span>}
                     </td>
-                    <td>{user.point.toLocaleString()} P</td>
+                    <td className="lime">{user.wins.toLocaleString()}</td>
+                    <td>{user.losses.toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>

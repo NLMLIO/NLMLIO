@@ -1,14 +1,16 @@
 import { Injectable } from '@nestjs/common';
+import { ErrorCode } from '@nlmlio/shared';
 import type { HistoryResponse, RankingResponse } from '@nlmlio/shared';
 import type { UserAccount } from '../../domain/user/account';
 import { PlayerStatistics } from '../../domain/user/player-statistics';
 import { HistoryRepository } from '../../infra/database/history.repository';
-import { UserRepository } from '../../infra/database/user.repository';
+import { RankingRepository } from '../../infra/database/ranking.repository';
+import { appError } from '../../common/app-error';
 
 @Injectable()
 export class RankingService {
   constructor(
-    private readonly users: UserRepository,
+    private readonly standings: RankingRepository,
     private readonly results: HistoryRepository,
   ) {}
 
@@ -27,22 +29,15 @@ export class RankingService {
   }
 
   async ranking(account: UserAccount, page: number, pageSize: number): Promise<RankingResponse> {
-    const [result, rank] = await Promise.all([
-      this.users.ranking(page, pageSize),
-      this.users.rankOf(account),
-    ]);
+    const result = await this.standings.ranking(account.id, page, pageSize);
+    if (!result.me) throw appError(ErrorCode.USER_NOT_FOUND);
     return {
-      items: result.items.map((user, index) => ({
-        userId: user.id,
-        nickname: user.nickname,
-        point: user.point,
-        rank: (page - 1) * pageSize + index + 1,
-      })),
+      items: result.items,
       total: result.total,
       page,
       pageSize,
       totalPages: Math.ceil(result.total / pageSize),
-      me: { userId: account.id, nickname: account.nickname, point: account.point, rank },
+      me: result.me,
     };
   }
 }
