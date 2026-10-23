@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { NICKNAME_PATTERN, PASSWORD_PATTERN, USERNAME_PATTERN, validEmail } from '@nlmlio/shared';
+import { NICKNAME_PATTERN, PASSWORD_PATTERN, USERNAME_PATTERN } from '@nlmlio/shared';
 import type { AuthResponse, NicknameCheckResponse, PublicUser } from '@nlmlio/shared';
 import { api, errorMessage } from '../../api/http';
 
@@ -15,7 +15,6 @@ export function AuthPage({
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [nickname, setNickname] = useState('');
-  const [email, setEmail] = useState('');
   const [proof, setProof] = useState<NicknameCheckResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -28,7 +27,6 @@ export function AuthPage({
     (register
       ? PASSWORD_PATTERN.test(password) &&
         NICKNAME_PATTERN.test(nickname) &&
-        validEmail(email) &&
         proof?.nickname === nickname &&
         proof.available
       : password.length > 0);
@@ -62,7 +60,6 @@ export function AuthPage({
             username,
             password,
             nickname,
-            email,
             nicknameCheckToken: proof?.checkToken,
           }),
         });
@@ -146,17 +143,6 @@ export function AuthPage({
                 {proof.available ? '사용 가능한 닉네임입니다.' : '이미 사용 중인 닉네임입니다.'}
               </p>
             )}
-            <label>
-              이메일
-              <input
-                type="email"
-                autoComplete="email"
-                maxLength={254}
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@example.com"
-              />
-            </label>
           </>
         )}
         {message && (

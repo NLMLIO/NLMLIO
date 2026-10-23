@@ -1,4 +1,4 @@
-import { IsEmail, IsString, Matches, MaxLength } from 'class-validator';
+import { IsString, Matches, MaxLength } from 'class-validator';
 import { NICKNAME_PATTERN, PASSWORD_PATTERN, USERNAME_PATTERN } from '@nlmlio/shared';
 import type { LoginRequest, RegisterRequest } from '@nlmlio/shared';
 
@@ -24,10 +24,6 @@ export class RegisterDto implements RegisterRequest {
   @IsString()
   @Matches(NICKNAME_PATTERN)
   nickname!: string;
-
-  @IsEmail()
-  @MaxLength(254)
-  email!: string;
 
   @IsString()
   @MaxLength(2048)

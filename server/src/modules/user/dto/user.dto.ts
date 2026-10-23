@@ -1,6 +1,5 @@
 import { Type } from 'class-transformer';
 import {
-  IsEmail,
   IsInt,
   IsOptional,
   IsString,
@@ -45,11 +44,6 @@ export class UpdateProfileDto implements UpdateProfileRequest {
   @IsString()
   @MaxLength(2048)
   nicknameCheckToken?: string;
-
-  @ValidateIf((_object, value) => value !== undefined)
-  @IsEmail()
-  @MaxLength(254)
-  email?: string;
 
   @ValidateIf((_object, value) => value !== undefined)
   @IsString()

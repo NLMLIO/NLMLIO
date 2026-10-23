@@ -66,7 +66,6 @@ describe('마이페이지·전적 실제 PostgreSQL/Redis 통합', () => {
         username: login,
         password,
         nickname,
-        email: `${login}@example.com`,
         nicknameCheckToken: check.body.checkToken,
       })
       .expect(201);
@@ -141,16 +140,14 @@ describe('마이페이지·전적 실제 PostgreSQL/Redis 통합', () => {
     await patch({ nickname: `또${suffix}`, nicknameCheckToken: check.body.checkToken }).expect(400);
   });
 
-  it('중복 닉네임·이메일과 null 입력을 거부한다', async () => {
+  it('중복 닉네임과 null 입력, 없는 필드를 거부한다', async () => {
     const check = await request(app.getHttpServer())
       .get('/api/auth/nickname')
       .query({ nickname: other.nickname })
       .expect(200);
     expect(check.body.available).toBe(false);
-    await patch({ email: other.email })
-      .expect(409)
-      .expect((res) => expect(res.body.code).toBe('EMAIL_TAKEN'));
-    await patch({ email: null }).expect(400);
+    await patch({ nickname: null }).expect(400);
+    await patch({ email: `new${username}@example.com` }).expect(400);
     await patch({ userId: other.id, point: 100000 }).expect(400);
   });
 
@@ -163,7 +160,6 @@ describe('마이페이지·전적 실제 PostgreSQL/Redis 통합', () => {
     const response = await patch({
       nickname,
       nicknameCheckToken: check.body.checkToken,
-      email: `new${username}@example.com`,
     }).expect(200);
     expect(response.body.user.nickname).toBe(nickname);
     expect(response.body.requiresLogin).toBe(false);
@@ -226,7 +222,6 @@ describe('마이페이지·전적 실제 PostgreSQL/Redis 통합', () => {
     expect(response.body.items[0]).toEqual(response.body.me);
     expect(response.body.items[1]).toMatchObject({ userId: other.id, rank: 2, wins: 1, losses: 2 });
     expect((await get('/users/me/dashboard')).body.rank).toBe(response.body.me.rank);
-    expect(response.body.items[0].email).toBeUndefined();
     expect(response.body.items[0].point).toBeUndefined();
   });
 
@@ -296,14 +291,21 @@ describe('마이페이지·전적 실제 PostgreSQL/Redis 통합', () => {
   });
 
   it('현재 비밀번호 오입력 시 전체 변경을 거부한다', async () => {
+    const before = (await get('/users/me')).body.nickname;
+    const nickname = `또${suffix}`;
+    const check = await request(app.getHttpServer())
+      .get('/api/auth/nickname')
+      .query({ nickname })
+      .expect(200);
     await patch({
       currentPassword: 'WrongPassword1',
       newPassword: 'ChangedPassword2',
-      email: 'invalidchange@example.com',
+      nickname,
+      nicknameCheckToken: check.body.checkToken,
     })
       .expect(401)
       .expect((res) => expect(res.body.code).toBe('INVALID_CREDENTIALS'));
-    expect((await get('/users/me')).body.email).toBe(`new${username}@example.com`);
+    expect((await get('/users/me')).body.nickname).toBe(before);
   });
 
   it('비밀번호를 바꾸면 기존 Access·Refresh가 무효화되고 새 비밀번호로 로그인할 수 있다', async () => {

@@ -30,7 +30,6 @@ describe('로그인·기기별 세션 실제 PostgreSQL/Redis 통합 (FUNC-001-0
       data: {
         username,
         nickname: `세${suffix}`.slice(0, 10),
-        email: `${username}@example.com`,
         passwordHash: await app.get(PasswordService).hash(password),
       },
     });
