@@ -10,7 +10,6 @@ export interface PublicUser {
   id: number;
   username: string;
   nickname: string;
-  email: string;
   createdAt: string;
   point: number;
 }
@@ -80,7 +79,6 @@ export interface LoginRequest {
 
 export interface RegisterRequest extends LoginRequest {
   nickname: string;
-  email: string;
   nicknameCheckToken: string;
 }
 
@@ -92,7 +90,6 @@ export interface AuthResponse {
 export interface UpdateProfileRequest {
   nickname?: string;
   nicknameCheckToken?: string;
-  email?: string;
   currentPassword?: string;
   newPassword?: string;
 }

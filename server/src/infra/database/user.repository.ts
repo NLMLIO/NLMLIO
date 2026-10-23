@@ -46,7 +46,6 @@ export function toPublicUser(user: UserAccount): PublicUser {
     id: user.id,
     username: user.username,
     nickname: user.nickname,
-    email: user.email,
     createdAt: user.createdAt.toISOString(),
     point: user.point,
   };
@@ -68,8 +67,7 @@ export function uniqueConflict(error: unknown): string[] | null {
     if (Array.isArray(reference)) return reference;
     if (reference && typeof reference === 'object' && reference.fields) return reference.fields;
     const index = typeof reference === 'string' ? reference : reference?.index;
-    if (index)
-      return ['username', 'nickname', 'email'].filter((field) => index === `User_${field}_key`);
+    if (index) return ['username', 'nickname'].filter((field) => index === `User_${field}_key`);
   }
   return [];
 }

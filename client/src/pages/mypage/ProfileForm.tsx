@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { NICKNAME_PATTERN, PASSWORD_PATTERN, validEmail } from '@nlmlio/shared';
+import { NICKNAME_PATTERN, PASSWORD_PATTERN } from '@nlmlio/shared';
 import type {
   NicknameCheckResponse,
   PublicUser,
@@ -19,7 +19,6 @@ export function ProfileForm({
   onPasswordChanged: () => void;
 }) {
   const [nickname, setNickname] = useState(user.nickname);
-  const [email, setEmail] = useState(user.email);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [checked, setChecked] = useState<NicknameCheckResponse | null>(null);
@@ -31,20 +30,18 @@ export function ProfileForm({
   nicknameRef.current = nickname;
   const nicknameChanged = nickname !== user.nickname;
   const passwordStarted = Boolean(currentPassword || newPassword);
-  const dirty = nicknameChanged || email !== user.email || passwordStarted;
+  const dirty = nicknameChanged || passwordStarted;
   const nicknameValid = NICKNAME_PATTERN.test(nickname);
   const passwordValid =
     !passwordStarted || Boolean(currentPassword && PASSWORD_PATTERN.test(newPassword));
   const canSave =
     dirty &&
     nicknameValid &&
-    validEmail(email) &&
     passwordValid &&
     (!nicknameChanged || (checked?.nickname === nickname && checked.available));
 
   function cancel() {
     setNickname(user.nickname);
-    setEmail(user.email);
     setCurrentPassword('');
     setNewPassword('');
     setChecked(null);
@@ -76,7 +73,6 @@ export function ProfileForm({
     setMessage('');
     const body: UpdateProfileRequest = {
       ...(nicknameChanged ? { nickname, nicknameCheckToken: checked?.checkToken } : {}),
-      ...(email !== user.email ? { email } : {}),
       ...(passwordStarted ? { currentPassword, newPassword } : {}),
     };
     try {
@@ -143,21 +139,6 @@ export function ProfileForm({
                   : '닉네임이 바뀌었어요. 중복 확인을 다시 해주세요.'
                 : '닉네임을 변경하려면 중복 확인이 필요합니다.'}
           </p>
-          <label htmlFor="email">EMAIL</label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            autoComplete="email"
-            maxLength={254}
-            onChange={(e) => {
-              setEmail(e.target.value);
-              setMessage('');
-            }}
-          />
-          {email && !validEmail(email) && (
-            <p className="field-hint error">올바른 이메일 형식으로 입력해주세요.</p>
-          )}
           <hr />
           <label htmlFor="current-password">CURRENT PASSWORD</label>
           <input
