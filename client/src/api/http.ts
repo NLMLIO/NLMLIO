@@ -82,6 +82,8 @@ export function errorMessage(error: unknown): string {
     USERNAME_TAKEN: '이미 가입된 아이디입니다.',
     TOKEN_EXPIRED: '로그인이 만료되었습니다. 다시 로그인해주세요.',
     TOKEN_INVALID: '다시 로그인해주세요.',
+    ALREADY_IN_ROOM: '이미 다른 방에 참가 중입니다.',
+    NOT_IN_ROOM: '참가 중인 방이 없습니다.',
     INTERNAL_ERROR: '요청을 처리하지 못했습니다. 잠시 후 다시 시도해주세요.',
   };
   return messages[error.detail.code] ?? '요청을 처리하지 못했습니다.';

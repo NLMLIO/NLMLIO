@@ -664,6 +664,172 @@ td {
     padding-top: 36px;
   }
 }
+.create-room-page {
+  display: grid;
+  place-items: center;
+  min-height: calc(100vh - 89px);
+  padding: 48px 16px;
+  background: #08080b;
+}
+.mono-label {
+  color: #a3a3b0;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.create-room {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  width: min(480px, 100%);
+  padding: 37px;
+  font-family: 'Noto Sans KR', sans-serif;
+  background: #1c1c24;
+  border: 0.8px solid #33333d;
+  border-radius: 4px;
+}
+.create-room-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.create-room-header h1 {
+  color: #f2f2f5;
+  font-family: 'Do Hyeon', sans-serif;
+  font-size: 28px;
+  font-weight: 400;
+  line-height: 1.2;
+}
+.esc-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 13px;
+}
+.esc-button:hover {
+  color: #f2f2f5;
+}
+.create-room-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.create-room .room-name-input {
+  min-height: 53px;
+  padding: 0 17px;
+  color: #f2f2f5;
+  background: #101015;
+  border: 0.8px solid #33333d;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.create-room .room-name-input:focus {
+  border-color: var(--lime);
+  outline: 0;
+}
+.room-code-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  color: #c9c9d3;
+  background: #16161c;
+  border-left: 3px solid var(--lime);
+  border-radius: 2px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.player-chips {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 7px;
+}
+.player-chip {
+  min-height: 45px;
+  padding: 0;
+  color: #f2f2f5;
+  background: transparent;
+  border: 0.8px solid #33333d;
+  border-radius: 2px;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  transition: border-color 0.15s;
+}
+.player-chip:hover {
+  border-color: #9393a2;
+}
+.player-chip[aria-checked='true'] {
+  color: var(--lime);
+  border-color: var(--lime);
+}
+.room-code-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.room-code {
+  color: #f2f2f5;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 28px;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+}
+.room-code-row .button {
+  min-height: 38px;
+  padding: 0 14px;
+  color: #f2f2f5;
+  border-color: #33333d;
+}
+.room-members {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.room-members li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 45px;
+  padding: 0 17px;
+  color: #f2f2f5;
+  border: 0.8px solid #33333d;
+  border-radius: 2px;
+  font-size: 14px;
+}
+.create-room .feedback {
+  margin: -10px 0 0;
+}
+.create-room-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.create-room-actions .button {
+  min-height: 47px;
+  padding: 0 16px;
+  line-height: 1.5;
+}
+.create-room-actions .button.outline {
+  padding: 0 23px;
+  color: #f2f2f5;
+  border-color: #33333d;
+}
+.create-room-actions .button.primary {
+  padding: 0 20px;
+  font-size: 15px;
+  font-weight: 700;
+}
+@media (max-width: 480px) {
+  .create-room {
+    padding: 28px 20px;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .loader {
     animation: none;

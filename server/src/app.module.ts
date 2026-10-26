@@ -7,6 +7,7 @@ import { UserModule } from './modules/user/user.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { RankingModule } from './modules/ranking/ranking.module';
 import { GameModule } from './modules/game/game.module';
+import { RoomModule } from './modules/room/room.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { GameModule } from './modules/game/game.module';
     AuthModule,
     RankingModule,
     GameModule,
+    RoomModule,
   ],
   controllers: [HealthController],
 })

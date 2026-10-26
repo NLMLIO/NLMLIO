@@ -6,3 +6,15 @@ export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export function validEmail(value: string): boolean {
   return value.length <= 254 && EMAIL_PATTERN.test(value);
 }
+
+export const ROOM_CODE_PATTERN = /^\d{6}$/;
+export const ROOM_NAME_MAX_LENGTH = 20;
+export const MIN_PLAYERS = 2;
+export const MAX_PLAYERS = 6;
+export const DEFAULT_MAX_PLAYERS = 4;
+
+/** 앞뒤 공백을 뺀 방 이름이 1~20자인지 */
+export function validRoomName(value: string): boolean {
+  const name = value.trim();
+  return name.length >= 1 && name.length <= ROOM_NAME_MAX_LENGTH;
+}
