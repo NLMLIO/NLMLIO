@@ -20,7 +20,8 @@ export default defineConfig({
   },
   server: {
     port: clientPort,
-    strictPort: true,
+    // CLIENT_PORT를 지정했으면(워크스페이스 예약 포트) 그 포트만 쓰고, 아니면 5173이 사용 중일 때 다음 빈 포트로 넘어간다.
+    strictPort: process.env.CLIENT_PORT !== undefined,
     // 같은 출처로 보이게 해서 CORS 없이 서버에 붙는다.
     proxy: {
       '/api': serverUrl,

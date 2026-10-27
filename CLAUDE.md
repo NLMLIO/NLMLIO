@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 이 저장소에서 작업하는 Claude Code(및 다른 코딩 에이전트)를 위한 안내서다. 작업을 시작하기 전에 끝까지 읽고 아래 규칙을 따른다.
 
-> **현재 상태**: 인증(회원가입·로그인·토큰 회전·로그아웃), 개인정보 수정, 개인 대시보드, 전적·랭킹 조회를 구현했다. Prisma의 `User`, `Game`, `GameResult`와 서버 내부 정산 서비스가 있다. 게임 엔진·방·채팅은 아직 계획 단계다. 2026-10-21 요청에 따라 이번 마이페이지 화면에는 티어를 표시하지 않는다.
+> **현재 상태**: 인증(회원가입·로그인·토큰 회전·로그아웃), 개인정보 수정, 개인 대시보드, 전적·랭킹 조회를 구현했다. Prisma의 `User`, `Game`, `GameResult`와 서버 내부 정산 서비스가 있다. 방 생성·방 코드 발급(HTTP)과 임시 대기실이 있다. 방 참가·실시간 대기실·게임 엔진·채팅은 아직 계획 단계다. 2026-10-21 요청에 따라 이번 마이페이지 화면에는 티어를 표시하지 않는다.
 
 ## 명령어
 
@@ -100,6 +100,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 셸 환경 > `.superset/workspace.env`(워크스페이스 포트) > `.env`. 서버는 `server/src/config/env.ts`의 `loadEnvFiles()`, 클라이언트는 `vite.config.ts`, Prisma CLI는 `prisma.config.ts`가 같은 순서로 읽는다.
 - 포트: `CLIENT_PORT`(기본 5173), `SERVER_PORT`(3000), `POSTGRES_PORT`(5432), `REDIS_PORT`(6379)
+  - `CLIENT_PORT`를 지정하지 않으면 5173이 사용 중일 때 Vite가 다음 빈 포트를 쓴다. 지정하면 그 포트만 쓴다(`strictPort`).
 - `DATABASE_URL`·`REDIS_URL`은 비워 두면 위 포트와 `POSTGRES_*` 값으로 만든다(`databaseUrl()`, `redisUrl()`). 코드에서 URL을 직접 조립하지 말고 이 함수를 쓴다.
 - 클라이언트는 Vite 프록시로 `/api`, `/socket.io`를 서버에 넘긴다. 같은 출처로 붙으므로 CORS 설정이 필요 없다.
 
@@ -192,6 +193,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `server/src/domain/game/game-settlement.ts`: 확정 순위 검증과 명세의 포인트 지급식.
 - `server/src/modules/auth`, `user`, `ranking`: 인증, 프로필·대시보드, 개인 전적·리더보드.
 - `server/src/modules/game/game-result.service.ts`: 게임 엔진이 최종 결과를 전달할 서버 내부 진입점. 결과 제출용 HTTP 엔드포인트는 없다.
+- `server/src/domain/room/room.ts`, `modules/room`, `infra/game-state/room.store.ts`, `infra/redis/room-code.registry.ts`: 방 생성(FUNC-003-01)·방 코드 발급(003-02). HTTP `POST /api/rooms`, `GET /api/rooms/me`, `POST /api/rooms/me/leave`. 방은 서버 메모리, 코드 예약은 Redis `room-code:{code}`(SET NX, TTL 24시간). 모든 방은 비공개다(2026-10-22 결정).
+- `client/src/pages/lobby/CreateRoomPage.tsx`, `pages/room/WaitingRoomPage.tsx`: 방 만들기 페이지(`#create-room`)와 임시 대기실(`#room`, 코드·복사·나가기만).
 - `server/src/infra/database/*repository.ts`: Prisma 타입·쿼리와 트랜잭션을 캡슐화. `RankingRepository`는 전체 경기의 승패를 SQL에서 집계해 목록과 내 순위를 같은 기준으로 계산한다.
 - `client/src/pages/auth`, `mypage`, `ranking`: 요청 이미지에 맞춘 화면. `api/http.ts`는 단일 Refresh 요청과 한 번의 HTTP 재시도를 담당한다.
 - `client/src/components/`, `hooks/`, `styles/`: 통계·페이지네이션·오류 UI와 조회 훅, 공통 스타일.
