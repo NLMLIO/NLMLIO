@@ -55,7 +55,7 @@ describe('방 생성·방 코드 발급 (FUNC-003-01, 003-02)', () => {
       await request(app.getHttpServer())
         .post('/api/rooms/me/leave')
         .auth(auth.accessToken, { type: 'bearer' });
-      await app.get(SessionService).revoke(auth.user.id);
+      await app.get(SessionService).revokeAll(auth.user.id);
       await app.get(PrismaService).user.delete({ where: { id: auth.user.id } });
     }
     if (app) await app.close();

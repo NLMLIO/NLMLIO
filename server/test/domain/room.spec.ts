@@ -43,6 +43,19 @@ describe('Room', () => {
     expect(room.has(1)).toBe(false);
   });
 
+  it('참가자의 관전 상태를 보존하고 인원 초과·중복 참가를 막는다', () => {
+    const room = Room.create(input({ maxPlayers: 2 }));
+    room.join({ userId: 2, nickname: '참가자' });
+    room.markSpectator(2);
+    expect(room.snapshot().members[1]).toEqual({
+      userId: 2,
+      nickname: '참가자',
+      isSpectator: true,
+    });
+    expect(() => room.join({ userId: 3, nickname: '초과' })).toThrow();
+    expect(() => room.markSpectator(3)).toThrow();
+  });
+
   it('참가자가 아닌 회원은 나갈 수 없다', () => {
     expect(() => Room.create(input()).leave(2)).toThrow();
   });

@@ -129,6 +129,8 @@ export interface CreateRoomRequest {
 export interface RoomMember {
   userId: number;
   nickname: string;
+  /** 탈락 후 방에 남아 관전 중일 때 true. */
+  isSpectator?: boolean;
 }
 
 export interface RoomResponse {

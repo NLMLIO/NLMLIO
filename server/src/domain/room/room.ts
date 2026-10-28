@@ -47,6 +47,20 @@ export class Room {
     return this.members.has(userId);
   }
 
+  /** 방 참가 API가 붙으면 이 메서드와 RoomStore.addMember를 함께 호출한다. */
+  join(member: RoomMember): void {
+    if (this.status !== RoomStatus.WAITING || this.members.size >= this.maxPlayers)
+      throw new Error('Room cannot accept another member');
+    if (this.members.has(member.userId)) throw new Error('Already a room member');
+    this.members.set(member.userId, { ...member });
+  }
+
+  markSpectator(userId: number): void {
+    const member = this.members.get(userId);
+    if (!member) throw new Error('Not a room member');
+    this.members.set(userId, { ...member, isSpectator: true });
+  }
+
   get isEmpty(): boolean {
     return this.members.size === 0;
   }

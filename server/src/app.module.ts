@@ -8,6 +8,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { RankingModule } from './modules/ranking/ranking.module';
 import { GameModule } from './modules/game/game.module';
 import { RoomModule } from './modules/room/room.module';
+import { ChatModule } from './modules/chat/chat.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { RoomModule } from './modules/room/room.module';
     RankingModule,
     GameModule,
     RoomModule,
+    ChatModule,
   ],
   controllers: [HealthController],
 })
