@@ -83,7 +83,6 @@ export class UserService {
       if (other && other.id !== account.id) throw appError(ErrorCode.NICKNAME_TAKEN);
       changes.nickname = input.nickname;
     }
-    if (input.email !== undefined) changes.email = input.email.toLowerCase();
     if (input.newPassword !== undefined) {
       if (
         !input.currentPassword ||
@@ -110,7 +109,6 @@ export class UserService {
     const fields = uniqueConflict(error);
     if (fields) {
       if (fields.includes('nickname')) throw appError(ErrorCode.NICKNAME_TAKEN);
-      if (fields.includes('email')) throw appError(ErrorCode.EMAIL_TAKEN);
       if (fields.includes('username')) throw appError(ErrorCode.USERNAME_TAKEN);
     }
     throw error;

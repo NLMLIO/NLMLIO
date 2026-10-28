@@ -77,7 +77,7 @@ export function App() {
     <div className="app-shell">
       <header className="site-header">
         <a className="brand" href="#mypage" onClick={() => navigate('mypage')}>
-          할리갈리
+          낼래말래
         </a>
         <nav aria-label="주 메뉴" className="main-nav">
           <button disabled title="로비는 아직 구현되지 않았습니다.">

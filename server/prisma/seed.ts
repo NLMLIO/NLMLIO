@@ -28,7 +28,6 @@ async function seed() {
         (await users.createAccount({
           username,
           nickname,
-          email: `${username}@example.com`,
           passwordHash: await app.get(PasswordService).hash(password),
         }));
       accounts.push(user);

@@ -22,7 +22,6 @@ export class AuthService {
     return this.users.createAccount({
       username: input.username,
       nickname: input.nickname,
-      email: input.email.toLowerCase(),
       passwordHash: await this.passwords.hash(input.password),
     });
   }

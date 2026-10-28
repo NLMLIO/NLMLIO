@@ -78,7 +78,6 @@ export function errorMessage(error: unknown): string {
     VALIDATION_FAILED: '입력값의 형식과 길이를 확인해주세요.',
     INVALID_CREDENTIALS: '아이디 또는 비밀번호가 맞지 않습니다.',
     NICKNAME_TAKEN: '이미 사용 중인 닉네임입니다.',
-    EMAIL_TAKEN: '이미 가입된 이메일입니다.',
     USERNAME_TAKEN: '이미 가입된 아이디입니다.',
     TOKEN_EXPIRED: '로그인이 만료되었습니다. 다시 로그인해주세요.',
     TOKEN_INVALID: '다시 로그인해주세요.',
