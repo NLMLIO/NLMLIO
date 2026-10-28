@@ -1,5 +1,7 @@
 // HTTP 요청·응답 타입
 
+import type { RoomStatus } from './domain';
+
 export interface HealthResponse {
   status: 'ok' | 'degraded';
   database: boolean;
@@ -114,4 +116,27 @@ export interface SettleGameInput {
     bellFail: number;
     reactionSumMs: number;
   }[];
+}
+
+export interface CreateRoomRequest {
+  roomName: string;
+  maxPlayers: number;
+}
+
+export interface RoomMember {
+  userId: number;
+  nickname: string;
+}
+
+export interface RoomResponse {
+  code: string;
+  name: string;
+  maxPlayers: number;
+  status: RoomStatus;
+  hostId: number;
+  members: RoomMember[];
+}
+
+export interface CurrentRoomResponse {
+  room: RoomResponse | null;
 }

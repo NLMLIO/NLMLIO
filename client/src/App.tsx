@@ -1,16 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { AuthResponse, PublicUser } from '@nlmlio/shared';
 import { api, refreshSession, setAccessToken } from './api/http';
 import { AuthPage } from './pages/auth/AuthPage';
+import { CreateRoomPage } from './pages/lobby/CreateRoomPage';
 import { MyPage } from './pages/mypage/MyPage';
 import { HistoryPage } from './pages/ranking/HistoryPage';
 import { RankingPage } from './pages/ranking/RankingPage';
+import { WaitingRoomPage } from './pages/room/WaitingRoomPage';
 import './styles/app.css';
 
-type Page = 'mypage' | 'history' | 'ranking';
+const PAGES = ['mypage', 'history', 'ranking', 'create-room', 'room'] as const;
+type Page = (typeof PAGES)[number];
 function pageFromHash(): Page {
   const page = location.hash.slice(1);
-  return page === 'history' || page === 'ranking' ? page : 'mypage';
+  return PAGES.find((name) => name === page) ?? 'mypage';
 }
 
 export function App() {
@@ -18,6 +21,7 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState('');
   const [page, setPage] = useState<Page>(pageFromHash);
+  const leaveCreateRoom = useCallback(() => navigate('mypage'), []);
   useEffect(() => {
     let active = true;
     refreshSession()
@@ -79,6 +83,9 @@ export function App() {
           <button disabled title="로비는 아직 구현되지 않았습니다.">
             로비
           </button>
+          <a href="#create-room" aria-current={page === 'create-room' ? 'page' : undefined}>
+            방 만들기
+          </a>
           <a href="#ranking" aria-current={page === 'ranking' ? 'page' : undefined}>
             랭킹
           </a>
@@ -118,6 +125,10 @@ export function App() {
       )}
       {page === 'history' && <HistoryPage />}
       {page === 'ranking' && <RankingPage />}
+      {page === 'create-room' && (
+        <CreateRoomPage onCancel={leaveCreateRoom} onCreated={() => navigate('room')} />
+      )}
+      {page === 'room' && <WaitingRoomPage onLeft={() => navigate('mypage')} />}
     </div>
   );
 }
