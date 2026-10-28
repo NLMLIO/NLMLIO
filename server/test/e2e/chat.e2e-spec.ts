@@ -42,7 +42,6 @@ describe('채팅 Socket.io / Redis 통합 (FUNC-004-01, FUNC-004-02)', () => {
         username,
         nickname,
         password: 'TestPassword123',
-        email: `${username}@example.com`,
         nicknameCheckToken: checked.body.checkToken,
       })
       .expect(201);
@@ -93,14 +92,14 @@ describe('채팅 Socket.io / Redis 통합 (FUNC-004-01, FUNC-004-02)', () => {
     const created = await request(app.getHttpServer())
       .post('/api/rooms')
       .auth(host.accessToken, { type: 'bearer' })
-      .send({ roomName: '채팅 통합 테스트', maxPlayers: 4 })
+      .send({ roomName: '채팅 통합 테스트' })
       .expect(201);
     code = created.body.code;
     outsiderCode = (
       await request(app.getHttpServer())
         .post('/api/rooms')
         .auth(outsider.accessToken, { type: 'bearer' })
-        .send({ roomName: '다른 방', maxPlayers: 4 })
+        .send({ roomName: '다른 방' })
         .expect(201)
     ).body.code;
     const roomStore = app.get(RoomStore);
