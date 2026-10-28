@@ -93,6 +93,8 @@ Socket.io 연결 시 `auth.token`에 Access JWT를 넣습니다. 토큰이 없�
 
 보내기 이벤트의 Ack는 `{ ok: true }` 또는 `{ ok: false, code }`입니다. 연결이 끊겨 Ack가 오지 않으면 클라이언트에서 시간 초과를 전송 실패로 표시해야 합니다. 텍스트는 공백만 있거나 200자를 넘으면 거부하며, 회원별 3초에 5개까지 보낼 수 있습니다. 이모티콘은 회원별 2초에 1개입니다. 두 제한은 여러 소켓과 토큰 재발급 사이에도 Redis 키로 공유합니다. 서버는 메시지를 `chat:{code}` Pub/Sub 채널로 전달하고 저장하지 않습니다. 프론트엔드의 채팅창은 후속 작업입니다.
 
+게임 엔진에서 플레이어가 탈락해 관전자가 되면 `RoomService.markSpectator(userId)`를 호출합니다. 해당 회원은 방 멤버로 남기 때문에 채팅·이모티콘을 계속 보내고 받을 수 있으며, 발신 이벤트에는 `isSpectator: true`가 붙습니다. 방에서 직접 나간 회원은 기존 방 소속이 없어 전송·수신할 수 없습니다.
+
 ## 구조와 데이터 기준
 
 `client/pages → api/http → Controller → Service → Repository → Prisma` 방향으로 연결합니다. HTTP DTO·유효성 규칙은 `shared`에서 공유합니다. 순수 `PlayerStatistics`와 `GameSettlement`는 NestJS·Prisma·Redis를 import하지 않습니다.

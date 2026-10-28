@@ -44,6 +44,13 @@ export class RoomService {
     return this.rooms.findByMember(userId)?.snapshot() ?? null;
   }
 
+  /** 게임에서 탈락한 회원을 방에 남겨 관전·채팅 권한을 유지한다. */
+  markSpectator(userId: number): void {
+    const room = this.rooms.findByMember(userId);
+    if (!room) throw appError(ErrorCode.NOT_IN_ROOM);
+    room.markSpectator(userId);
+  }
+
   async leave(account: UserAccount): Promise<void> {
     const room = this.rooms.findByMember(account.id);
     if (!room) throw appError(ErrorCode.NOT_IN_ROOM);

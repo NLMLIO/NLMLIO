@@ -14,6 +14,7 @@ import { SessionService } from '../../src/common/security/session.service';
 import { PrismaService } from '../../src/infra/database/prisma.service';
 import { RoomStore } from '../../src/infra/game-state/room.store';
 import { REDIS } from '../../src/infra/redis/redis.module';
+import { RoomService } from '../../src/modules/room/room.service';
 
 describe('채팅 Socket.io / Redis 통합 (FUNC-004-01, FUNC-004-02)', () => {
   let app: INestApplication<App>;
@@ -247,13 +248,27 @@ describe('채팅 Socket.io / Redis 통합 (FUNC-004-01, FUNC-004-02)', () => {
     expect(await emit(a, ChatEvent.EMOJI_SEND, { emoji: 'JOY' })).toEqual({ ok: true });
   }, 10000);
 
-  it('관전자도 채팅하고 메시지에 관전자 표시를 붙인다', async () => {
+  it('관전자가 채팅·이모티콘을 보내고 같은 방 채팅을 받는다', async () => {
     const a = sockets.find((socket) => socket.connected)!;
     const b = sockets.filter((socket) => socket.connected)[1];
-    app.get(RoomStore).findByMember(guest.user.id)!.markSpectator(guest.user.id);
+    app.get(RoomService).markSpectator(guest.user.id);
     const received = next<ChatMessageEvent>(a, ChatEvent.MESSAGE);
     expect(await emit(b, ChatEvent.SEND, { message: '관전 중' })).toEqual({ ok: true });
     expect(await received).toMatchObject({ userId: guest.user.id, isSpectator: true });
+    const emojiReceived = next<EmojiMessageEvent>(a, ChatEvent.EMOJI);
+    expect(await emit(b, ChatEvent.EMOJI_SEND, { emoji: 'LIKE' })).toEqual({ ok: true });
+    expect(await emojiReceived).toMatchObject({
+      userId: guest.user.id,
+      isSpectator: true,
+      emoji: 'LIKE',
+    });
+    const spectatorReceived = next<ChatMessageEvent>(b, ChatEvent.MESSAGE);
+    await redis.del(`chat-limit:${host.user.id}`);
+    expect(await emit(a, ChatEvent.SEND, { message: '관전자에게도 전달' })).toEqual({ ok: true });
+    expect(await spectatorReceived).toMatchObject({
+      userId: host.user.id,
+      message: '관전자에게도 전달',
+    });
   });
 
   it('같은 계정의 여러 소켓에도 하나의 전송 제한을 적용한다', async () => {
