@@ -12,8 +12,16 @@ export class RoomStore {
     return code === undefined ? undefined : this.rooms.get(code);
   }
 
+  findByCode(code: string): Room | undefined {
+    return this.rooms.get(code);
+  }
+
   add(room: Room, userId: number): void {
     this.rooms.set(room.code, room);
+    this.roomOfUser.set(userId, room.code);
+  }
+
+  addMember(room: Room, userId: number): void {
     this.roomOfUser.set(userId, room.code);
   }
 

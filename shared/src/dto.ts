@@ -1,6 +1,6 @@
 // HTTP 요청·응답 타입
 
-import type { RoomStatus } from './domain';
+import type { RoomRole, RoomStatus } from './domain';
 
 export interface HealthResponse {
   status: 'ok' | 'degraded';
@@ -120,18 +120,22 @@ export interface SettleGameInput {
 
 export interface CreateRoomRequest {
   roomName: string;
-  maxPlayers: number;
 }
 
+export interface JoinRoomRequest {
+  code: string;
+}
+
+/** 방 회원. members 배열은 들어온 순서이고, 참가자 자리 번호도 이 순서를 따른다. */
 export interface RoomMember {
   userId: number;
   nickname: string;
+  role: RoomRole;
 }
 
 export interface RoomResponse {
   code: string;
   name: string;
-  maxPlayers: number;
   status: RoomStatus;
   hostId: number;
   members: RoomMember[];

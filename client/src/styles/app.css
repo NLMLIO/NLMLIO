@@ -980,44 +980,6 @@ td {
   color: var(--lime);
   border-color: var(--lime);
 }
-.room-code-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.room-code {
-  color: #f2f2f5;
-  font-family: 'IBM Plex Mono', ui-monospace, monospace;
-  font-size: 28px;
-  font-weight: 400;
-  letter-spacing: 0.12em;
-}
-.room-code-row .button {
-  min-height: 38px;
-  padding: 0 14px;
-  color: #f2f2f5;
-  border-color: #33333d;
-}
-.room-members {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.room-members li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 45px;
-  padding: 0 17px;
-  color: #f2f2f5;
-  border: 0.8px solid #33333d;
-  border-radius: 2px;
-  font-size: 14px;
-}
 .create-room .feedback {
   margin: -10px 0 0;
 }
@@ -1049,5 +1011,796 @@ td {
 @media (prefers-reduced-motion: reduce) {
   .loader {
     animation: none;
+  }
+}
+
+/* ───── 공통: 화면에 안 보이는 라벨 ───── */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+/* ───── 로비 (Figma 03 · 로비) ───── */
+.lobby {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  min-height: calc(100vh - 89px);
+  font-family: 'Noto Sans KR', sans-serif;
+}
+.lobby-main {
+  padding: 48px;
+}
+.lobby-main h1 {
+  color: #f2f2f5;
+  font-family: 'Do Hyeon', sans-serif;
+  font-size: 32px;
+  font-weight: 400;
+  line-height: 1.2;
+}
+.lobby-main > .mono-label {
+  margin-top: 8px;
+}
+.lobby-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 24px;
+  padding: 12px 16px;
+  color: #c9c9d3;
+  background: #16161c;
+  border-left: 3px solid var(--lime);
+  font-size: 14px;
+}
+.lobby-notice .button {
+  min-height: 36px;
+}
+.lobby-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  margin-top: 28px;
+}
+.lobby-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 338px;
+  padding: 32px;
+  overflow: hidden;
+  background: #1c1c24;
+  border: 0.8px solid #33333d;
+  border-radius: 2px;
+}
+.lobby-card.create {
+  border: 1.6px solid var(--lime);
+}
+.lobby-card h2 {
+  margin-top: 10px;
+  color: #f2f2f5;
+  font-family: 'Do Hyeon', sans-serif;
+  font-size: 28px;
+  font-weight: 400;
+  line-height: 1.2;
+}
+.lobby-card-desc {
+  position: relative;
+  max-width: 360px;
+  word-break: keep-all;
+  margin-top: 16px;
+  color: #a3a3b0;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.lobby-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: auto;
+  padding-top: 24px;
+}
+.lobby-card-actions .button {
+  min-height: 47px;
+}
+.lobby-card .feedback {
+  margin-top: 12px;
+}
+/* 방 만들기 카드 오른쪽 위의 카드 더미 장식 */
+.lobby-card.create .lobby-card-desc {
+  max-width: 240px;
+}
+.lobby-cards-art {
+  position: absolute;
+  top: 22px;
+  right: 22px;
+  width: 168px;
+  height: 140px;
+}
+.lobby-cards-art span {
+  position: absolute;
+  width: 64px;
+  height: 90px;
+  background:
+    radial-gradient(circle at 50% 30%, #ff4f8b 0 9px, transparent 10px),
+    radial-gradient(circle at 35% 68%, #c6f432 0 7px, transparent 8px),
+    radial-gradient(circle at 65% 68%, #ffd23f 0 7px, transparent 8px), #14141a;
+  border: 1.6px solid #f2f2f5;
+  border-radius: 8px;
+}
+.lobby-cards-art span:nth-child(1) {
+  top: 18px;
+  left: 0;
+  transform: rotate(-12deg);
+}
+.lobby-cards-art span:nth-child(2) {
+  top: 4px;
+  left: 46px;
+  transform: rotate(4deg);
+}
+.lobby-cards-art span:nth-child(3) {
+  top: 28px;
+  left: 92px;
+  transform: rotate(18deg);
+}
+.code-boxes {
+  position: relative;
+  display: flex;
+  gap: 8px;
+}
+.code-boxes input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  cursor: text;
+}
+.code-box {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 52px;
+  color: #f2f2f5;
+  background: #101015;
+  border: 0.8px solid #33333d;
+  border-radius: 2px;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 20px;
+  font-weight: 600;
+}
+.code-boxes:focus-within .code-box[data-active] {
+  border: 1.6px solid var(--lime);
+}
+.lobby-main > .lobby-steps-label {
+  margin-top: 40px;
+}
+.lobby-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.lobby-steps li {
+  padding: 20px;
+  background: #1c1c24;
+  border-radius: 2px;
+}
+.lobby-steps p {
+  color: #f2f2f5;
+  font-size: 15px;
+  font-weight: 700;
+}
+.lobby-steps .lime {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+}
+.lobby-steps li > span {
+  display: block;
+  margin-top: 8px;
+  color: #a3a3b0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.lobby-profile {
+  padding: 48px 32px;
+  border-left: 0.8px solid #26262f;
+}
+.lobby-profile-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 20px;
+}
+.lobby-profile-row .avatar.small {
+  width: 56px;
+  height: 56px;
+  font-family: 'Do Hyeon', sans-serif;
+  font-size: 24px;
+}
+.lobby-profile-row p {
+  color: #f2f2f5;
+  font-family: 'Do Hyeon', sans-serif;
+  font-size: 22px;
+}
+.lobby-profile-row span:not(.avatar) {
+  color: #a3a3b0;
+  font-size: 12px;
+}
+
+@media (max-width: 1180px) {
+  .lobby {
+    grid-template-columns: 1fr;
+  }
+  .lobby-profile {
+    border-top: 0.8px solid #26262f;
+    border-left: 0;
+  }
+}
+@media (max-width: 900px) {
+  .lobby-cards,
+  .lobby-steps {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 600px) {
+  .lobby-main {
+    padding: 24px 16px;
+  }
+  .lobby-cards-art {
+    display: none;
+  }
+  .code-box {
+    width: 38px;
+  }
+}
+
+/* ───── 공통 버튼 ───── */
+.small-button {
+  padding: 7px 14px;
+  color: #f2f2f5;
+  background: transparent;
+  border: 0.8px solid #33333d;
+  border-radius: 2px;
+  font-family: 'Noto Sans KR', sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.small-button:hover:not(:disabled) {
+  border-color: #9393a2;
+}
+.small-button.lime {
+  color: var(--lime);
+  border-color: var(--lime);
+}
+.button.danger {
+  color: #101015;
+  border: 1px solid #ff5d5d;
+  background: #ff5d5d;
+  font-weight: 700;
+}
+
+/* ───── 대기실 (Figma 05 · 14 · 14-1) ───── */
+.waiting-room {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 400px;
+  height: 100vh;
+  font-family: 'Noto Sans KR', sans-serif;
+  background: #101015;
+}
+.waiting-main {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 40px 48px;
+  overflow-y: auto;
+}
+.waiting-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+.waiting-header h1 {
+  margin-top: 10px;
+  color: #f2f2f5;
+  font-family: 'Do Hyeon', sans-serif;
+  font-size: 44px;
+  font-weight: 400;
+  line-height: 1;
+  word-break: keep-all;
+}
+.room-code-box {
+  display: flex;
+  flex-shrink: 0;
+  border: 0.8px solid #33333d;
+  border-radius: 2px;
+}
+.room-code-box > div {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  min-width: 154px;
+  padding: 11px 18px;
+}
+.room-code-box .mono-label {
+  font-size: 11px;
+}
+.room-code-box strong {
+  color: #f2f2f5;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.room-code-box button {
+  width: 63px;
+  color: #f2f2f5;
+  background: transparent;
+  border: 0;
+  border-left: 0.8px solid #33333d;
+  font-size: 14px;
+}
+.room-code-box button:hover {
+  background: #1c1c24;
+}
+.room-banner {
+  margin-top: 24px;
+  padding: 12px 16px;
+  color: #c9c9d3;
+  background: #16161c;
+  border-left: 3px solid var(--lime);
+  font-size: 14px;
+}
+.room-section {
+  margin-top: 32px;
+}
+.room-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 32px;
+}
+.room-section-header h2 {
+  color: #f2f2f5;
+  font-family: 'Do Hyeon', sans-serif;
+  font-size: 24px;
+  font-weight: 400;
+}
+.room-section-header .count {
+  margin-left: 4px;
+  color: #a3a3b0;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 18px;
+  font-weight: 600;
+}
+.room-section-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.room-hint {
+  color: #6a6a78;
+  font-size: 13px;
+}
+.room-hint.faint {
+  align-self: center;
+  color: #4a4a55;
+}
+.player-slots {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.player-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 260px;
+  padding: 44px 16px 24px;
+  background: #1c1c24;
+  border: 0.8px solid #26262f;
+  border-radius: 2px;
+}
+.player-card[data-me] {
+  border: 1.6px solid var(--lime);
+}
+.player-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  align-self: stretch;
+  gap: 6px;
+  height: 15px;
+}
+.player-card-top .mono-label {
+  font-size: 11px;
+}
+.player-card .member-avatar {
+  margin-top: 28px;
+}
+.player-name {
+  max-width: 100%;
+  margin-top: 14px;
+  overflow: hidden;
+  color: #f2f2f5;
+  font-family: 'Do Hyeon', sans-serif;
+  font-size: 24px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.player-card.empty {
+  padding-top: 23px;
+  background: #101015;
+  border: 0.8px dashed #33333d;
+}
+.player-card.empty[data-joinable] {
+  border-color: rgba(197, 245, 42, 0.6);
+}
+.player-card.empty[data-joinable] .empty-avatar {
+  margin-top: 30px;
+}
+.empty-avatar {
+  width: 84px;
+  height: 84px;
+  margin-top: 40px;
+  border: 0.8px dashed #33333d;
+  border-radius: 50%;
+}
+.player-card.empty p {
+  margin-top: 12px;
+  color: #4a4a55;
+  font-size: 15px;
+}
+.player-card.empty .small-button {
+  margin-top: 12px;
+}
+.member-avatar {
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+.host-menu-anchor {
+  position: relative;
+  margin-left: auto;
+}
+.more-button {
+  padding: 1px 6px;
+  color: #a3a3b0;
+  background: transparent;
+  border: 0.8px solid #33333d;
+  border-radius: 2px;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.more-button:hover,
+.more-button[data-active] {
+  color: var(--lime);
+  background: #1c1c24;
+  border-color: var(--lime);
+}
+.host-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 200px;
+  padding: 6px;
+  background: #1c1c24;
+  border: 0.8px solid #33333d;
+  border-radius: 2px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+.spectator-chip .host-menu {
+  right: auto;
+  left: 0;
+}
+.host-menu button {
+  padding: 10px 12px;
+  color: #f2f2f5;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 2px;
+  font-size: 14px;
+}
+.host-menu button:hover:not(:disabled),
+.host-menu button:focus-visible {
+  background: #26262f;
+}
+.host-menu button.danger {
+  color: #ff5d5d;
+}
+.host-menu hr {
+  width: 100%;
+  height: 1px;
+  margin: 0;
+  border: 0;
+  background: #26262f;
+}
+.spectator-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 76px;
+  margin: 14px 0 0;
+  padding: 14px;
+  list-style: none;
+  border: 0.8px dashed #26262f;
+  border-radius: 2px;
+}
+.spectator-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 10px 10px;
+  background: #1c1c24;
+  border: 0.8px solid #26262f;
+  border-radius: 2px;
+}
+.spectator-chip[data-me] {
+  border: 1.6px solid var(--lime);
+}
+.spectator-chip .mono-label {
+  font-size: 11px;
+}
+.spectator-chip .host-menu-anchor {
+  margin-left: 0;
+}
+.spectator-name {
+  color: #f2f2f5;
+  font-family: 'Do Hyeon', sans-serif;
+  font-size: 18px;
+}
+.room-error {
+  margin-top: 20px;
+}
+.waiting-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: auto;
+  padding-top: 32px;
+}
+.waiting-footer .button {
+  min-height: 47px;
+}
+.waiting-footer-start {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  color: #a3a3b0;
+  font-size: 14px;
+}
+.waiting-footer-start strong {
+  color: #f2f2f5;
+}
+.start-button {
+  width: 147px;
+  font-size: 15px;
+  font-weight: 700;
+}
+.waiting-dots {
+  display: inline-flex;
+  gap: 5px;
+  margin-right: 12px;
+  vertical-align: middle;
+}
+.waiting-dots i {
+  width: 8px;
+  height: 8px;
+  background: var(--lime);
+  border-radius: 50%;
+  animation: waiting-dot 1.2s infinite;
+}
+.waiting-dots i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.waiting-dots i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+@keyframes waiting-dot {
+  50% {
+    opacity: 0.3;
+  }
+}
+.modal-dim {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.6);
+}
+.confirm-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: min(480px, 100%);
+  padding: 36px;
+  background: #1c1c24;
+  border: 0.8px solid #33333d;
+  border-radius: 2px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+.confirm-modal h2 {
+  color: #f2f2f5;
+  font-family: 'Do Hyeon', sans-serif;
+  font-size: 28px;
+  font-weight: 400;
+}
+.confirm-modal p {
+  color: #a3a3b0;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 12px;
+}
+.confirm-actions .button {
+  min-height: 47px;
+  font-size: 15px;
+}
+
+/* ───── 채팅 패널 ───── */
+.room-chat {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 0.8px solid #26262f;
+}
+.room-chat-title {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 60px;
+  padding-left: 24px;
+  border-bottom: 0.8px solid #26262f;
+}
+.room-chat-log {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 15px;
+  min-height: 0;
+  margin: 0;
+  padding: 24px 24px 19px;
+  overflow-y: auto;
+  list-style: none;
+}
+.room-chat-log > li:first-child {
+  margin-top: auto;
+}
+.room-chat-log li {
+  color: #f2f2f5;
+  font-size: 14px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+.room-chat-log strong {
+  margin-right: 6px;
+}
+.room-chat-log .mono-label {
+  margin-right: 6px;
+  font-size: 11px;
+}
+.chat-notice {
+  color: #6a6a78 !important;
+}
+.room-chat-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 17px 24px 16px;
+  border-top: 0.8px solid #26262f;
+}
+.emoji-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.emoji-chip {
+  min-width: 31px;
+  padding: 5px 9px;
+  color: #ffd23f;
+  background: #1c1c24;
+  border: 0;
+  border-radius: 2px;
+  font-size: 15px;
+}
+.emoji-chip[data-mono] {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 13px;
+}
+.emoji-chip:hover {
+  background: #26262f;
+}
+.chat-input-row {
+  display: flex;
+  gap: 8px;
+}
+.chat-input-row input {
+  flex: 1;
+  min-width: 0;
+  height: 46px;
+  padding: 0 15px;
+  color: #f2f2f5;
+  background: #1c1c24;
+  border: 0.8px solid #33333d;
+  border-radius: 2px;
+  font-size: 14px;
+}
+.chat-input-row input::placeholder {
+  color: #6a6a78;
+}
+.chat-input-row input:focus {
+  border-color: var(--lime);
+  outline: none;
+}
+.chat-input-row button {
+  width: 58px;
+  color: #101015;
+  background: #f2f2f5;
+  border: 0;
+  border-radius: 2px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+@media (max-width: 1180px) {
+  .player-slots {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 900px) {
+  .waiting-room {
+    grid-template-columns: 1fr;
+    height: auto;
+    min-height: 100vh;
+  }
+  .waiting-main {
+    overflow: visible;
+  }
+  .room-chat {
+    height: 480px;
+    border-top: 0.8px solid #26262f;
+    border-left: 0;
+  }
+}
+@media (max-width: 600px) {
+  .waiting-main {
+    padding: 24px 16px;
+  }
+  .waiting-header,
+  .room-section-header,
+  .waiting-footer,
+  .waiting-footer-start {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .room-section-actions {
+    flex-wrap: wrap;
+  }
+  .player-slots {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
