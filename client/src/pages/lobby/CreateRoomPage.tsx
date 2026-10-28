@@ -92,6 +92,7 @@ export function CreateRoomPage({
               </button>
             ))}
           </div>
+          <p>플레이 인원은 2~6명, 관전자를 포함한 방 전체 정원은 16명이에요.</p>
         </div>
         {error && (
           <p className="feedback error" role="alert">

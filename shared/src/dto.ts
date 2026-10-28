@@ -136,7 +136,10 @@ export interface RoomMember {
 export interface RoomResponse {
   code: string;
   name: string;
+  /** 플레이어 슬롯(2~6명). */
   maxPlayers: number;
+  /** 플레이어와 관전자를 합한 방 전체 정원. */
+  maxSize: number;
   status: RoomStatus;
   hostId: number;
   members: RoomMember[];

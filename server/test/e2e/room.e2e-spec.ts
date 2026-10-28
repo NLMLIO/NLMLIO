@@ -94,6 +94,7 @@ describe('방 생성·방 코드 발급 (FUNC-003-01, 003-02)', () => {
     expect(room).toMatchObject({
       name: '점심 내기 한판',
       maxPlayers: 5,
+      maxSize: 16,
       status: 'WAITING',
       hostId: auth.user.id,
       members: [{ userId: auth.user.id, nickname: auth.user.nickname }],

@@ -12,6 +12,7 @@ describe('Room', () => {
       code: '012345',
       name: '점심 내기',
       maxPlayers: 4,
+      maxSize: 16,
       status: 'WAITING',
       hostId: 1,
       members: [host],
@@ -43,17 +44,25 @@ describe('Room', () => {
     expect(room.has(1)).toBe(false);
   });
 
-  it('참가자의 관전 상태를 보존하고 인원 초과·중복 참가를 막는다', () => {
+  it('플레이 슬롯은 2명, 관전자 포함 방 전체 정원은 16명이다', () => {
     const room = Room.create(input({ maxPlayers: 2 }));
     room.join({ userId: 2, nickname: '참가자' });
+    expect(() => room.join({ userId: 3, nickname: '세 번째 플레이어' })).toThrow();
     room.markSpectator(2);
     expect(room.snapshot().members[1]).toEqual({
       userId: 2,
       nickname: '참가자',
       isSpectator: true,
     });
-    expect(() => room.join({ userId: 3, nickname: '초과' })).toThrow();
-    expect(() => room.markSpectator(3)).toThrow();
+    expect(room.activePlayerCount).toBe(1);
+    room.join({ userId: 3, nickname: '새 플레이어' });
+    expect(() => room.join({ userId: 3, nickname: '중복' })).toThrow();
+    for (let userId = 4; userId <= 16; userId++)
+      room.join({ userId, nickname: `관전자${userId}`, isSpectator: true });
+    expect(room.snapshot().members).toHaveLength(16);
+    expect(room.snapshot().maxSize).toBe(16);
+    expect(() => room.join({ userId: 17, nickname: '17번째', isSpectator: true })).toThrow();
+    expect(() => room.markSpectator(17)).toThrow();
   });
 
   it('참가자가 아닌 회원은 나갈 수 없다', () => {

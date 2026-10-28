@@ -95,6 +95,8 @@ Socket.io 연결 시 `auth.token`에 Access JWT를 넣습니다. 토큰이 없�
 
 게임 엔진에서 플레이어가 탈락해 관전자가 되면 `RoomService.markSpectator(userId)`를 호출합니다. 해당 회원은 방 멤버로 남기 때문에 채팅·이모티콘을 계속 보내고 받을 수 있으며, 발신 이벤트에는 `isSpectator: true`가 붙습니다. 방에서 직접 나간 회원은 기존 방 소속이 없어 전송·수신할 수 없습니다.
 
+방의 `maxPlayers`는 게임 플레이 슬롯(2~6명)이고, `maxSize`는 관전자를 포함한 전체 정원 **16명**입니다. 관전 전환은 플레이 슬롯을 비우지만 전체 인원수는 줄이지 않습니다. 대기실에는 전체 인원/16을 표시합니다.
+
 ## 구조와 데이터 기준
 
 `client/pages → api/http → Controller → Service → Repository → Prisma` 방향으로 연결합니다. HTTP DTO·유효성 규칙은 `shared`에서 공유합니다. 순수 `PlayerStatistics`와 `GameSettlement`는 NestJS·Prisma·Redis를 import하지 않습니다.
