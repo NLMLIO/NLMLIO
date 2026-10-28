@@ -2,17 +2,20 @@ import { useCallback, useEffect, useState } from 'react';
 import type { AuthResponse, PublicUser } from '@nlmlio/shared';
 import { api, refreshSession, setAccessToken } from './api/http';
 import { AuthPage } from './pages/auth/AuthPage';
+import { GamePreviewPage } from './pages/game/GamePreviewPage';
 import { CreateRoomPage } from './pages/lobby/CreateRoomPage';
 import { MyPage } from './pages/mypage/MyPage';
 import { HistoryPage } from './pages/ranking/HistoryPage';
 import { RankingPage } from './pages/ranking/RankingPage';
 import { WaitingRoomPage } from './pages/room/WaitingRoomPage';
 import './styles/app.css';
+import './styles/game.css';
 
-const PAGES = ['mypage', 'history', 'ranking', 'create-room', 'room'] as const;
+const PAGES = ['mypage', 'history', 'ranking', 'create-room', 'room', 'game'] as const;
 type Page = (typeof PAGES)[number];
 function pageFromHash(): Page {
-  const page = location.hash.slice(1);
+  // #game/my-turn 처럼 '/' 뒤는 페이지 안에서 쓰는 값이다.
+  const page = location.hash.slice(1).split('/')[0];
   return PAGES.find((name) => name === page) ?? 'mypage';
 }
 
@@ -73,6 +76,11 @@ export function App() {
       </main>
     );
   if (!user) return <AuthPage onLogin={login} notice={notice} />;
+  // 게임 화면은 상단 메뉴 없이 창 전체를 쓴다.
+  if (page === 'game')
+    return (
+      <GamePreviewPage onExit={() => navigate('mypage')} onWaitingRoom={() => navigate('room')} />
+    );
   return (
     <div className="app-shell">
       <header className="site-header">

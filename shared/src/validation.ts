@@ -15,3 +15,6 @@ export function validRoomName(value: string): boolean {
   const name = value.trim();
   return name.length >= 1 && name.length <= ROOM_NAME_MAX_LENGTH;
 }
+
+/** 채팅 메시지 최대 길이(FUNC-004-01) */
+export const CHAT_MAX_LENGTH = 200;
