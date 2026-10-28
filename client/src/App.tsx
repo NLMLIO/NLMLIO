@@ -4,6 +4,7 @@ import { api, refreshSession, setAccessToken } from './api/http';
 import { connectSocket, disconnectSocket } from './socket/socket';
 import { roomActions, useRoomStore } from './stores/room-store';
 import { AuthPage } from './pages/auth/AuthPage';
+import { GamePreviewPage } from './pages/game/GamePreviewPage';
 import { CreateRoomPage } from './pages/lobby/CreateRoomPage';
 import { LobbyPage } from './pages/lobby/LobbyPage';
 import { MyPage } from './pages/mypage/MyPage';
@@ -11,11 +12,13 @@ import { HistoryPage } from './pages/ranking/HistoryPage';
 import { RankingPage } from './pages/ranking/RankingPage';
 import { WaitingRoomPage } from './pages/room/WaitingRoomPage';
 import './styles/app.css';
+import './styles/game.css';
 
-const PAGES = ['lobby', 'mypage', 'history', 'ranking', 'create-room', 'room'] as const;
+const PAGES = ['lobby', 'mypage', 'history', 'ranking', 'create-room', 'room', 'game'] as const;
 type Page = (typeof PAGES)[number];
 function pageFromHash(): Page {
-  const page = location.hash.slice(1);
+  // #game/my-turn 처럼 '/' 뒤는 페이지 안에서 쓰는 값이다.
+  const page = location.hash.slice(1).split('/')[0];
   return PAGES.find((name) => name === page) ?? 'lobby';
 }
 
@@ -93,6 +96,11 @@ export function App() {
   if (!user) return <AuthPage onLogin={login} notice={notice} />;
   // 대기실은 디자인대로 상단 메뉴 없이 화면 전체를 쓴다.
   if (page === 'room') return <WaitingRoomPage userId={user.id} onLeft={() => navigate('lobby')} />;
+  // 게임 화면은 상단 메뉴 없이 창 전체를 쓴다.
+  if (page === 'game')
+    return (
+      <GamePreviewPage onExit={() => navigate('lobby')} onWaitingRoom={() => navigate('room')} />
+    );
   return (
     <div className="app-shell">
       <header className="site-header">

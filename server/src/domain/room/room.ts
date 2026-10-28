@@ -120,6 +120,12 @@ export class Room {
     this.hostId = targetId;
   }
 
+  /** 게임에서 탈락·이탈한 회원을 방에 남긴 채 관전자로 돌린다(FUNC-005-16). 게임 중에도 쓴다. */
+  markSpectator(userId: number): void {
+    const member = this.member(userId);
+    this.members.set(userId, { ...member, role: RoomRole.SPECTATOR });
+  }
+
   /** 참가자가 2명 이상이면 방장이 게임을 시작한다. 관전자는 그대로 관전한다. */
   start(actorId: number): void {
     this.requireWaiting();

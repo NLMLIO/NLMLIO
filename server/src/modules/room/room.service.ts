@@ -56,15 +56,23 @@ export class RoomService {
   }
 
   current(account: UserAccount): CurrentRoomResponse {
-    return { room: this.snapshotOf(account.id) };
+    return { room: this.memberRoom(account.id) };
   }
 
-  snapshotOf(userId: number): RoomResponse | null {
+  /** 다른 모듈이 방 소속을 확인할 때 사용하는 서버의 단일 진실이다. */
+  memberRoom(userId: number): RoomResponse | null {
     return this.rooms.findByMember(userId)?.snapshot() ?? null;
   }
 
+  /** 게임에서 탈락한 회원을 방에 남겨 관전·채팅 권한을 유지한다. */
+  markSpectator(userId: number): void {
+    const room = this.requireRoom(userId);
+    room.markSpectator(userId);
+    this.events.state(room);
+  }
+
   async leave(account: UserAccount): Promise<void> {
-    const room = this.memberRoom(account.id);
+    const room = this.requireRoom(account.id);
     const nickname = room.nicknameOf(account.id);
     const host = room.host;
     room.leave(account.id);
@@ -76,14 +84,14 @@ export class RoomService {
   }
 
   move(actorId: number, targetId: number, role: RoomRole): void {
-    const room = this.memberRoom(actorId);
+    const room = this.requireRoom(actorId);
     if (!this.rule(() => room.move(actorId, targetId, role))) return;
     this.events.notice(room.code, { type: 'moved', nickname: room.nicknameOf(targetId), role });
     this.events.state(room);
   }
 
   async kick(actorId: number, targetId: number): Promise<void> {
-    const room = this.memberRoom(actorId);
+    const room = this.requireRoom(actorId);
     const nickname = this.rule(() => room.nicknameOf(targetId));
     this.rule(() => room.kick(actorId, targetId));
     await this.removed(room, targetId);
@@ -93,20 +101,20 @@ export class RoomService {
   }
 
   delegate(actorId: number, targetId: number): void {
-    const room = this.memberRoom(actorId);
+    const room = this.requireRoom(actorId);
     this.rule(() => room.delegate(actorId, targetId));
     this.announceHost(room, actorId);
     this.events.state(room);
   }
 
   start(actorId: number): void {
-    const room = this.memberRoom(actorId);
+    const room = this.requireRoom(actorId);
     this.rule(() => room.start(actorId));
     this.events.notice(room.code, { type: 'started' });
     this.events.state(room);
   }
 
-  private memberRoom(userId: number): Room {
+  private requireRoom(userId: number): Room {
     const room = this.rooms.findByMember(userId);
     if (!room) throw appError(ErrorCode.NOT_IN_ROOM);
     return room;

@@ -49,7 +49,8 @@ export class RoomGateway implements OnGatewayInit, OnGatewayConnection {
               ? (error.getResponse() as { code: string }).code
               : ErrorCode.TOKEN_INVALID;
           if (!(error instanceof HttpException)) this.logger.error(error);
-          next(new Error(code));
+          // 채팅 게이트웨이와 같은 형식: message와 data.code 모두 앱 에러 코드
+          next(Object.assign(new Error(code), { data: { code } }));
         });
     });
   }
@@ -57,7 +58,7 @@ export class RoomGateway implements OnGatewayInit, OnGatewayConnection {
   handleConnection(socket: Socket): void {
     const { userId } = socketUser(socket);
     void socket.join(userChannel(userId));
-    const room = this.rooms.snapshotOf(userId);
+    const room = this.rooms.memberRoom(userId);
     if (room) void socket.join(roomChannel(room.code));
     socket.emit(RoomServerEvent.STATE, room);
   }

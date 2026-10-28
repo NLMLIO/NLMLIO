@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  ChatEmoji,
   RoomClientEvent,
   MAX_PLAYERS,
   MAX_SPECTATORS,
@@ -311,7 +312,7 @@ export function WaitingRoomPage({ userId, onLeft }: { userId: number; onLeft: ()
         </footer>
       </main>
 
-      <RoomChat />
+      <RoomChat room={current} />
 
       {confirm && (
         <ConfirmModal
@@ -336,12 +337,19 @@ export function WaitingRoomPage({ userId, onLeft }: { userId: number; onLeft: ()
 }
 
 function Avatar({ room, member, size }: { room: RoomResponse; member: RoomMember; size: number }) {
+  const emoji = useRoomStore((state) => state.emojis[member.userId]);
   return (
     <span
       className="member-avatar"
       style={{ width: size, height: size, background: colorOf(room, member.userId) }}
       aria-hidden="true"
-    />
+    >
+      {emoji && (
+        <span key={emoji.id} className="emoji-bubble">
+          {ChatEmoji[emoji.emoji]}
+        </span>
+      )}
+    </span>
   );
 }
 

@@ -142,6 +142,14 @@ describe('Room', () => {
     });
   });
 
+  it('게임에서 탈락한 참가자는 방에 남은 채 관전자가 된다', () => {
+    const room = roomWith(2);
+    room.start(1);
+    room.markSpectator(2);
+    expect(room.roleOf(2)).toBe('SPECTATOR');
+    expect(ruleError(() => room.markSpectator(9))).toBe('USER_NOT_FOUND');
+  });
+
   it('마지막 인원이 나가면 빈 방이 된다', () => {
     const room = Room.create(input());
     room.leave(1);

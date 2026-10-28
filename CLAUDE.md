@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 이 저장소에서 작업하는 Claude Code(및 다른 코딩 에이전트)를 위한 안내서다. 작업을 시작하기 전에 끝까지 읽고 아래 규칙을 따른다.
 
-> **현재 상태**: 인증(회원가입·로그인·토큰 회전·로그아웃), 개인정보 수정, 개인 대시보드, 전적·랭킹 조회를 구현했다. Prisma의 `User`, `Game`, `GameResult`와 서버 내부 정산 서비스가 있다. 로비(방 만들기·코드로 참가), 실시간 대기실(참가자·관전자 칸, 추방, 방장 위임, 게임 시작)이 있다. 대기실 채팅 패널은 화면과 방 안내만 있고, 메시지 송수신은 채팅 기능(FUNC-004) 머지 후 연결한다. 게임 시작은 아직 방 상태만 게임 중으로 바꾸며, 게임 엔진(FUNC-005)과 재접속 유예(003-07)는 계획 단계다. 2026-10-21 요청에 따라 이번 마이페이지 화면에는 티어를 표시하지 않는다.
+> **현재 상태**: 인증(회원가입·로그인·토큰 회전·로그아웃), 개인정보 수정, 개인 대시보드, 전적·랭킹 조회를 구현했다. Prisma의 `User`, `Game`, `GameResult`와 서버 내부 정산 서비스가 있다. 로비(방 만들기·코드로 참가), 실시간 대기실(참가자·관전자 칸, 추방, 방장 위임, 게임 시작), 대기실 채팅·이모티콘(Socket.io)이 있다. 게임 화면은 퍼블리싱과 미리보기(`#game/<장면>`)만 있다. 게임 시작은 아직 방 상태만 게임 중으로 바꾸며, 게임 엔진(FUNC-005)과 재접속 유예(003-07)는 계획 단계다. 2026-10-21 요청에 따라 이번 마이페이지 화면에는 티어를 표시하지 않는다.
 
 ## 명령어
 
@@ -74,7 +74,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Refresh 토큰 | **Redis** (TTL = 만료 시간) | 만료 자동 삭제, 로그아웃·재발급 시 즉시 무효화 |
 | 사용 중인 6자리 방 코드 | **Redis** (`SET NX`) | 코드 중복 없이 원자적으로 예약(003-02) |
 | 접속·재접속 대기 정보 | **Redis** (TTL = 재접속 대기 시간) | 끊긴 플레이어를 원래 방으로 복귀(003-07) |
-| 채팅·이모티콘 연속 전송 횟수 | **Redis** (`INCR` + TTL, 토큰과 무관한 사용자별 키) | 도배 방지(004-01, 004-02) |
+| 채팅·이모티콘 연속 전송 횟수 | **Redis** (채팅 `INCR` + TTL 3초, 이모티콘 `SET NX EX 2`, 토큰과 무관한 사용자별 키) | 도배 방지(004-01, 004-02) |
 | 진행 중인 게임 상태(덱·테이블·차례) | **서버 메모리** (방별 객체) | 종 판정은 밀리초 단위 — 매 이벤트마다 Redis를 왕복하지 않는다. 재접속용 스냅샷만 필요 시 Redis에 |
 
 #### 왜 Prisma인가
@@ -198,7 +198,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `server/src/modules/room`: HTTP `POST /api/rooms`, `POST /api/rooms/join`, `GET /api/rooms/me`, `POST /api/rooms/me/leave`와 `RoomGateway`(소켓 인증 미들웨어, 방 의도 이벤트). `RoomEvents`가 소켓 채널 `user:{id}`·`room:{code}`로 상태를 내보낸다. 방은 서버 메모리(`infra/game-state/room.store.ts`), 코드 예약은 Redis `room-code:{code}`(SET NX, TTL 24시간). 모든 방은 비공개다(2026-10-22 결정).
 - `server/src/common/ws-ack.filter.ts`, `ws-validation.pipe.ts`, `socket-user.ts`: 소켓 이벤트 예외를 ack `{ ok: false, code }`로 돌려주고, 페이로드를 HTTP와 같은 규칙으로 검증한다.
 - `client/src/socket/socket.ts`, `stores/room-store.ts`: 로그인한 동안 소켓 하나를 유지하고(토큰 만료 시 재발급 후 재연결), 서버 이벤트로만 방 스토어를 갱신한다. 의도는 `sendIntent`로 보내고 ack를 기다린다.
-- `client/src/pages/lobby/LobbyPage.tsx`, `CreateRoomPage.tsx`, `pages/room/WaitingRoomPage.tsx`, `RoomChat.tsx`(방 안내 패널): 로비(`#lobby`, 기본 화면), 방 만들기(`#create-room`), 대기실(`#room`, 상단 메뉴 없이 전체 화면).
+- `client/src/pages/lobby/LobbyPage.tsx`, `CreateRoomPage.tsx`, `pages/room/WaitingRoomPage.tsx`, `RoomChat.tsx`(채팅·이모티콘·방 안내): 로비(`#lobby`, 기본 화면), 방 만들기(`#create-room`), 대기실(`#room`, 상단 메뉴 없이 전체 화면).
+- `server/src/modules/chat/`: Socket.io 인증·방 소속 검증, 텍스트/이모티콘 DTO, Redis Pub/Sub 전달과 사용자별 전송 제한. 방 소속 정보는 `RoomService`만 조회한다.
+- `shared/src/events.ts`: 채팅 Socket.io 이벤트 이름, 페이로드, 허용 이모티콘과 Ack 타입.
+- `client/src/pages/game/`, `styles/game.css`, `assets/game/`: Figma NLML_design 「03 · 게임」 화면 9개 퍼블리싱(FUNC-005). `GameView`(서버 상태를 그대로 담는 화면 모델)를 받아 그리는 컴포넌트와, 엔진이 없는 동안 쓰는 미리보기(`#game/<장면>`, `preview-scenes.ts`). 1440×900 좌표계로 그리고 `hooks/use-fit-scale.ts`로 창에 맞춘다. 단축키는 `hooks/use-game-shortcuts.ts`(J 카드 내기, Space 종).
 - `server/src/infra/database/*repository.ts`: Prisma 타입·쿼리와 트랜잭션을 캡슐화. `RankingRepository`는 전체 경기의 승패를 SQL에서 집계해 목록과 내 순위를 같은 기준으로 계산한다.
 - `client/src/pages/auth`, `mypage`, `ranking`: 요청 이미지에 맞춘 화면. `api/http.ts`는 단일 Refresh 요청과 한 번의 HTTP 재시도를 담당한다.
 - `client/src/components/`, `hooks/`, `styles/`: 통계·페이지네이션·오류 UI와 조회 훅, 공통 스타일.
@@ -220,7 +223,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 | 용어 | 뜻 |
 |---|---|
-| 방(Room) | 게임 단위. **6자리 방 코드**, 방장, 최대 6명(고정). 현재는 모든 방이 비공개 |
+| 방(Room) | 게임 단위. **6자리 방 코드**, 방장, 참가자 최대 6명(고정)과 관전자 최대 10명, 전체 정원 16명(`MAX_ROOM_SIZE`). 현재는 모든 방이 비공개 |
 | 대기실 | 게임 시작 전 방 화면. 채팅·참가자 목록·방장 설정 |
 | 플레이어(참가자) / 관전자 | 게임 중 카드를 내고 종을 치는 사람 / 대기실 관전석에 앉았거나 탈락·이탈해 보기·채팅만 하는 사람 |
 | 덱 / 보유 카드 | 플레이어마다 뒤집힌 채 쌓인 카드 더미. 0장이 되면 **탈락** |
@@ -290,7 +293,7 @@ PostgreSQL (영속) · Redis (휘발·TTL) · 인메모리 게임 상태
 - 결과 저장과 포인트 지급은 **같은 PostgreSQL 트랜잭션**으로 묶는다(005-11, 006-01) — `prisma.$transaction(async (tx) => { … })` 안에서 모두 `tx`로 쓴다. 같은 게임의 중복 저장은 스키마의 유니크 제약으로 막고, 위반(`P2002`)은 «이미 저장됨»으로 처리한다.
 - 스키마 변경은 `schema.prisma` 수정 → `pnpm db:migrate --name <설명>` 으로만 한다. DB에 직접 `ALTER`하지 않는다. 운영/배포 반영은 `prisma migrate deploy`.
 - 랭킹 조회(007-01)는 PostgreSQL에서 전체 승패를 집계하고 윈도 함수로 순위를 부여한 뒤 `LIMIT`/`OFFSET`으로 페이지 조회한다. 목록·내 순위·총 인원은 같은 RepeatableRead 트랜잭션으로 조회한다.
-- Redis 키는 용도별 접두어로 구분하고 반드시 TTL을 단다. 예: `refresh:{userId}:{sessionId}`, `room-code:{code}`, `session:{userId}`, `chat-limit:{userId}`(TTL 3초), `emoji-limit:{userId}`(TTL 2초).
+- Redis 키는 용도별 접두어로 구분하고 저장 키에는 반드시 TTL을 단다. 예: `refresh:{userId}:{sessionId}`, `room-code:{code}`, `session:{userId}`, `chat-limit:{userId}`(TTL 3초), `emoji:cd:{userId}`(TTL 2초). `chat:{code}`는 저장 키가 아닌 Pub/Sub 채널이다.
 - 도배 제한 카운터는 토큰·세션 키 안에 넣지 않는다. 토큰을 재발급해도 카운터가 초기화되지 않아야 하고, 탭이 여러 개여도 사용자 하나로 센다.
 - 에러는 `FUNCTION.md` 「에러 코드」의 앱 에러 코드(`shared/`에 정의)로 보낸다. HTTP는 상태 코드와 앱 에러 코드를 함께, 소켓은 앱 에러 코드만 보낸다.
 - 소켓 이벤트의 DTO도 HTTP와 같이 `class-validator`로 검증한다(Gateway에 `ValidationPipe` 적용).
@@ -333,6 +336,13 @@ C→S 이벤트는 ack로 `{ ok: true }` 또는 `{ ok: false, code }`를 받는�
 | S→C | `room:state` | `RoomResponse \| null` 연결 직후와 방이 바뀔 때마다 전체 상태 | 003 |
 | S→C | `room:notice` | 입장·퇴장·이동·추방·방장 변경·게임 시작 안내 | 003 |
 | S→C | `room:kicked` | 없음. 추방당한 회원에게만 | 003-10 |
+| C→S | `chat:join` | `{ code: string }` → `ChatAck` | FUNC-004-01 |
+| C→S | `chat:leave` | 빈 값 → `ChatAck` | FUNC-004-01 |
+| C→S | `chat:send` | `{ message: string }` → `ChatAck` | FUNC-004-01 |
+| C→S | `emoji:send` | `{ emoji: ChatEmojiCode }` → `ChatAck` | FUNC-004-02 |
+| S→C | `chat:message` | `ChatMessageEvent` | FUNC-004-01 |
+| S→C | `emoji:message` | `EmojiMessageEvent` | FUNC-004-02 |
+| S→C | `chat:error` | `{ code: ErrorCode }` | FUNC-004-01/02 |
 
 ### 테스트
 

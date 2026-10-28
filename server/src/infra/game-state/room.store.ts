@@ -22,6 +22,7 @@ export class RoomStore {
   }
 
   addMember(room: Room, userId: number): void {
+    if (!room.has(userId)) throw new Error('Room must contain member before indexing');
     this.roomOfUser.set(userId, room.code);
   }
 

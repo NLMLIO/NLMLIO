@@ -1,10 +1,11 @@
-import { useEffect, useRef } from 'react';
-import { RoomRole } from '@nlmlio/shared';
-import type { RoomNotice } from '@nlmlio/shared';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { CHAT_MAX_LENGTH, ChatEmoji, RoomRole } from '@nlmlio/shared';
+import type { ChatEmojiCode, RoomNotice, RoomResponse } from '@nlmlio/shared';
+import { sendChat } from '../../socket/socket';
 import { useRoomStore } from '../../stores/room-store';
+import { colorOf } from './member-color';
 
-// 디자인의 이모티콘 버튼. 실제 전송은 채팅(FUNC-004) 이벤트가 머지되면 연결한다.
-const EMOJI_LABELS = ['ㅋㅋ', 'GG', '!!', '?!', 'ㅠㅠ', '굿'];
+const EMOJI_CODES = Object.keys(ChatEmoji) as ChatEmojiCode[];
 
 function noticeText(notice: RoomNotice): string {
   switch (notice.type) {
@@ -23,44 +24,78 @@ function noticeText(notice: RoomNotice): string {
   }
 }
 
-/** 대기실 오른쪽 패널. 지금은 방 안내만 보여 주고, 메시지 입력은 채팅 기능이 붙으면 연다. */
-export function RoomChat() {
-  const notices = useRoomStore((state) => state.notices);
+/** 대기실 채팅(FUNC-004-01)과 감정표현 이모티콘(004-02). 방 안내도 같은 기록에 남긴다. */
+export function RoomChat({ room }: { room: RoomResponse }) {
+  const log = useRoomStore((state) => state.log);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [sending, setSending] = useState(false);
   const listRef = useRef<HTMLOListElement>(null);
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
-  }, [notices]);
+  }, [log]);
+  async function send(event: FormEvent) {
+    event.preventDefault();
+    const text = message.trim();
+    if (!text || sending) return;
+    setSending(true);
+    const failure = await sendChat('message', text);
+    setSending(false);
+    setError(failure ?? '');
+    if (!failure) setMessage('');
+  }
   return (
     <aside className="room-chat" aria-label="채팅">
       <p className="mono-label room-chat-title">CHAT</p>
       <ol className="room-chat-log" ref={listRef} aria-live="polite">
-        {notices.map((entry) => (
-          <li key={entry.id} className="chat-notice">
-            {noticeText(entry.notice)}
-          </li>
-        ))}
+        {log.map((entry) =>
+          entry.kind === 'notice' ? (
+            <li key={entry.id} className="chat-notice">
+              {noticeText(entry.notice)}
+            </li>
+          ) : (
+            <li key={entry.id}>
+              <strong style={{ color: colorOf(room, entry.userId) }}>{entry.nickname}</strong>
+              {entry.isSpectator && <span className="mono-label">관전</span>}
+              <span>{entry.message}</span>
+            </li>
+          ),
+        )}
       </ol>
-      <div className="room-chat-form">
+      <form className="room-chat-form" onSubmit={send}>
         <div className="emoji-row">
-          {EMOJI_LABELS.map((emoji) => (
+          {EMOJI_CODES.map((code) => (
             <button
-              key={emoji}
+              key={code}
               type="button"
               className="emoji-chip"
-              data-mono={/^[A-Z!?]+$/.test(emoji) || undefined}
-              disabled
+              aria-label={`이모티콘 ${ChatEmoji[code]}`}
+              onClick={() =>
+                void sendChat('emoji', code).then((failure) => setError(failure ?? ''))
+              }
             >
-              {emoji}
+              {ChatEmoji[code]}
             </button>
           ))}
         </div>
+        {error && (
+          <p className="chat-error" role="alert">
+            {error}
+          </p>
+        )}
         <div className="chat-input-row">
-          <input placeholder="채팅은 곧 연결돼요" aria-label="메시지 입력" disabled />
-          <button type="button" disabled>
+          <input
+            value={message}
+            onChange={(event) => setMessage(event.target.value)}
+            maxLength={CHAT_MAX_LENGTH}
+            placeholder="메시지 입력"
+            aria-label="메시지 입력"
+          />
+          <button type="submit" disabled={!message.trim() || sending}>
             전송
           </button>
         </div>
-      </div>
+      </form>
     </aside>
   );
 }

@@ -8,8 +8,9 @@ React + TypeScript 클라이언트, NestJS 서버, 공유 HTTP 타입으로 구�
 - `FUNC-002-01`, `FUNC-008-01~02`: 프로필, 닉네임·비밀번호 수정, 누적 전적·포인트·내 순위 대시보드. 이번 요청 범위에서는 티어를 제외했습니다.
 - `FUNC-007-01~02`: 승수 내림차순·패수 오름차순의 글로벌 랭킹과 개인 전적, 승패·승률·종 성공률·평균 반응 시간.
 - `FUNC-005-11`, `FUNC-006-01`: 확정된 게임 결과와 순위별 포인트를 한 PostgreSQL 트랜잭션으로 저장하는 서버 내부 서비스.
+- `FUNC-004-01~02`: 서버 Socket.io 채팅·이모티콘, 방 소속 검증, Redis Pub/Sub 실시간 전달과 사용자별 도배 제한.
 
-첨부 디자인의 검정 배경, 라임색 포인트, 대시보드와 오른쪽 수정 패널, 전적 테이블을 재현했습니다. 화면의 수치는 샘플 상수가 아니라 서버가 조회한 DB 값입니다. 게임 엔진·실시간 방·채팅은 아직 구현하지 않았으며, 로비 메뉴는 비활성 상태입니다.
+첨부 디자인의 검정 배경, 라임색 포인트, 대시보드와 오른쪽 수정 패널, 전적 테이블을 재현했습니다. 화면의 수치는 샘플 상수가 아니라 서버가 조회한 DB 값입니다. 방 생성 API와 채팅 서버가 있으며, 방 참가·게임 엔진·채팅 화면은 후속 작업입니다.
 
 ## 실행
 
@@ -58,6 +59,9 @@ DEMO_PASSWORD='<직접 정한 영문·숫자 포함 비밀번호>' pnpm db:seed
 | PATCH | `/users/me` | 개인정보 수정 |
 | GET | `/users/me/history?page=1&pageSize=10` | 개인 경기 기록과 전체 누적 통계 |
 | GET | `/ranking?page=1&pageSize=10` | 글로벌 순위와 내 순위 |
+| POST | `/rooms` | 비공개 방 생성, Redis에 6자리 코드 예약 |
+| GET | `/rooms/me` | 내가 속한 방 조회 |
+| POST | `/rooms/me/leave` | 방 나가기 |
 
 페이지 크기는 최대 50입니다. 프로필 수정에는 바뀐 필드만 전달합니다.
 
@@ -71,6 +75,26 @@ DEMO_PASSWORD='<직접 정한 영문·숫자 포함 비밀번호>' pnpm db:seed
 ```
 
 비밀번호 필드는 변경할 때만 필요합니다. 비밀번호 변경 후 서버는 기존 Access·Refresh를 무효화하며, 프론트는 재로그인 화면으로 이동합니다. 닉네임 확인 이후 입력값을 바꾸면 확인을 다시 해야 하고, 확인 후 다른 사람이 선점했더라도 DB 유니크 제약으로 최종 중복을 막습니다.
+
+## 실시간 채팅 서버
+
+Socket.io 연결 시 `auth.token`에 Access JWT를 넣습니다. 토큰이 없거나 만료·폐기되면 `connect_error.data.code`로 `TOKEN_INVALID` 또는 `TOKEN_EXPIRED`를 받고 연결이 거부됩니다. 연결 후 `chat:join`에 `{ code: '123456' }`을 보내야 그 방의 메시지를 받을 수 있습니다. 서버의 실제 방 소속과 코드가 다르면 `NOT_IN_ROOM`입니다.
+
+| 방향 | 이벤트 | 데이터 |
+|---|---|---|
+| 보내기 | `chat:join` | `{ code }` |
+| 보내기 | `chat:leave` | 데이터 없음 |
+| 보내기 | `chat:send` | `{ message }` |
+| 보내기 | `emoji:send` | `{ emoji: 'JOY' \| 'SAD' \| 'WOW' \| 'CLAP' \| 'LIKE' }` |
+| 받기 | `chat:message` | `{ roomCode, userId, nickname, isSpectator, message, sentAt }` |
+| 받기 | `emoji:message` | `{ roomCode, userId, nickname, isSpectator, emoji, sentAt }` |
+| 받기 | `chat:error` | `{ code }` |
+
+보내기 이벤트의 Ack는 `{ ok: true }` 또는 `{ ok: false, code }`입니다. 연결이 끊겨 Ack가 오지 않으면 클라이언트에서 시간 초과를 전송 실패로 표시해야 합니다. 텍스트는 공백만 있거나 200자를 넘으면 거부하며, 회원별 3초에 5개까지 보낼 수 있습니다. 이모티콘은 회원별 2초에 1개입니다. 두 제한은 여러 소켓과 토큰 재발급 사이에도 Redis 키로 공유합니다. 서버는 메시지를 `chat:{code}` Pub/Sub 채널로 전달하고 저장하지 않습니다. 대기실 채팅창(`client/src/pages/room/RoomChat.tsx`)은 방에 들어가면 `chat:join`을 보내고 메시지·이모티콘을 표시합니다.
+
+게임 엔진에서 플레이어가 탈락해 관전자가 되면 `RoomService.markSpectator(userId)`를 호출합니다. 해당 회원은 방 멤버로 남기 때문에 채팅·이모티콘을 계속 보내고 받을 수 있으며, 발신 이벤트에는 `isSpectator: true`가 붙습니다. 방 회원의 자리는 `RoomMember.role`(`PLAYER`·`SPECTATOR`)로 구분합니다. 방에서 직접 나간 회원은 기존 방 소속이 없어 전송·수신할 수 없습니다.
+
+방의 참가자 칸은 6명으로 고정이고 관전자 칸은 10명이라, 전체 정원은 **16명**(`MAX_ROOM_SIZE`)입니다. 관전 전환은 참가자 칸을 비우지만 전체 인원수는 줄이지 않습니다. 대기실 이벤트(`room:*`)는 `shared/src/room-events.ts`에 있습니다.
 
 ## 구조와 데이터 기준
 
