@@ -36,7 +36,19 @@ export class RoomService {
   }
 
   current(account: UserAccount): CurrentRoomResponse {
-    return { room: this.rooms.findByMember(account.id)?.snapshot() ?? null };
+    return { room: this.memberRoom(account.id) };
+  }
+
+  /** 다른 모듈이 방 소속을 확인할 때 사용하는 서버의 단일 진실이다. */
+  memberRoom(userId: number): RoomResponse | null {
+    return this.rooms.findByMember(userId)?.snapshot() ?? null;
+  }
+
+  /** 게임에서 탈락한 회원을 방에 남겨 관전·채팅 권한을 유지한다. */
+  markSpectator(userId: number): void {
+    const room = this.rooms.findByMember(userId);
+    if (!room) throw appError(ErrorCode.NOT_IN_ROOM);
+    room.markSpectator(userId);
   }
 
   async leave(account: UserAccount): Promise<void> {

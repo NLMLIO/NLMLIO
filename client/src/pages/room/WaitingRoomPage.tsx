@@ -42,7 +42,7 @@ export function WaitingRoomPage({ onLeft }: { onLeft: () => void }) {
         <header className="create-room-header">
           <h1 id="waiting-room-title">{room.name}</h1>
           <span className="mono-label">
-            {room.members.length} / {room.maxPlayers}
+            {room.members.length} / {room.maxSize}
           </span>
         </header>
         <div className="room-code-info">
@@ -55,12 +55,13 @@ export function WaitingRoomPage({ onLeft }: { onLeft: () => void }) {
           </div>
         </div>
         <div className="create-room-field">
-          <span className="mono-label">PLAYERS</span>
+          <span className="mono-label">ROOM MEMBERS · 관전자 포함</span>
           <ul className="room-members">
             {room.members.map((member) => (
               <li key={member.userId}>
                 {member.nickname}
                 {member.userId === room.hostId && <span className="mono-label lime">HOST</span>}
+                {member.isSpectator && <span className="mono-label">관전</span>}
               </li>
             ))}
           </ul>

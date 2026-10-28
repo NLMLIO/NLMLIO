@@ -1,5 +1,6 @@
 import {
   MAX_PLAYERS,
+  MAX_ROOM_SIZE,
   MIN_PLAYERS,
   ROOM_CODE_PATTERN,
   RoomStatus,
@@ -47,8 +48,30 @@ export class Room {
     return this.members.has(userId);
   }
 
+  /** 방 참가 API가 붙으면 이 메서드와 RoomStore.addMember를 함께 호출한다. */
+  join(member: RoomMember): void {
+    if (
+      this.status !== RoomStatus.WAITING ||
+      this.members.size >= MAX_ROOM_SIZE ||
+      (!member.isSpectator && this.activePlayerCount >= this.maxPlayers)
+    )
+      throw new Error('Room cannot accept another member');
+    if (this.members.has(member.userId)) throw new Error('Already a room member');
+    this.members.set(member.userId, { ...member });
+  }
+
+  markSpectator(userId: number): void {
+    const member = this.members.get(userId);
+    if (!member) throw new Error('Not a room member');
+    this.members.set(userId, { ...member, isSpectator: true });
+  }
+
   get isEmpty(): boolean {
     return this.members.size === 0;
+  }
+
+  get activePlayerCount(): number {
+    return [...this.members.values()].filter((member) => !member.isSpectator).length;
   }
 
   /** 대기실에서 나간다. 방장이 나가면 가장 먼저 들어온 남은 회원이 방장이 된다. */
@@ -62,6 +85,7 @@ export class Room {
       code: this.code,
       name: this.name,
       maxPlayers: this.maxPlayers,
+      maxSize: MAX_ROOM_SIZE,
       status: this.status,
       hostId: this.hostId,
       members: [...this.members.values()].map((member) => ({ ...member })),
