@@ -195,6 +195,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `server/src/modules/game/game-result.service.ts`: 게임 엔진이 최종 결과를 전달할 서버 내부 진입점. 결과 제출용 HTTP 엔드포인트는 없다.
 - `server/src/domain/room/room.ts`, `modules/room`, `infra/game-state/room.store.ts`, `infra/redis/room-code.registry.ts`: 방 생성(FUNC-003-01)·방 코드 발급(003-02). HTTP `POST /api/rooms`, `GET /api/rooms/me`, `POST /api/rooms/me/leave`. 방은 서버 메모리, 코드 예약은 Redis `room-code:{code}`(SET NX, TTL 24시간). 모든 방은 비공개다(2026-10-22 결정).
 - `client/src/pages/lobby/CreateRoomPage.tsx`, `pages/room/WaitingRoomPage.tsx`: 방 만들기 페이지(`#create-room`)와 임시 대기실(`#room`, 코드·복사·나가기만).
+- `client/src/pages/game/`, `styles/game.css`, `assets/game/`: Figma NLML_design 「03 · 게임」 화면 9개 퍼블리싱(FUNC-005). `GameView`(서버 상태를 그대로 담는 화면 모델)를 받아 그리는 컴포넌트와, 엔진이 없는 동안 쓰는 미리보기(`#game/<장면>`, `preview-scenes.ts`). 1440×900 좌표계로 그리고 `hooks/use-fit-scale.ts`로 창에 맞춘다. 단축키는 `hooks/use-game-shortcuts.ts`(J 카드 내기, Space 종).
 - `server/src/infra/database/*repository.ts`: Prisma 타입·쿼리와 트랜잭션을 캡슐화. `RankingRepository`는 전체 경기의 승패를 SQL에서 집계해 목록과 내 순위를 같은 기준으로 계산한다.
 - `client/src/pages/auth`, `mypage`, `ranking`: 요청 이미지에 맞춘 화면. `api/http.ts`는 단일 Refresh 요청과 한 번의 HTTP 재시도를 담당한다.
 - `client/src/components/`, `hooks/`, `styles/`: 통계·페이지네이션·오류 UI와 조회 훅, 공통 스타일.
