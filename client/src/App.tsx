@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AuthResponse, PublicUser } from '@nlmlio/shared';
 import { api, refreshSession, setAccessToken } from './api/http';
+import { connectSocket, disconnectSocket } from './socket/socket';
+import { roomActions, useRoomStore } from './stores/room-store';
 import { AuthPage } from './pages/auth/AuthPage';
 import { GamePreviewPage } from './pages/game/GamePreviewPage';
 import { CreateRoomPage } from './pages/lobby/CreateRoomPage';
+import { LobbyPage } from './pages/lobby/LobbyPage';
 import { MyPage } from './pages/mypage/MyPage';
 import { HistoryPage } from './pages/ranking/HistoryPage';
 import { RankingPage } from './pages/ranking/RankingPage';
@@ -11,12 +14,12 @@ import { WaitingRoomPage } from './pages/room/WaitingRoomPage';
 import './styles/app.css';
 import './styles/game.css';
 
-const PAGES = ['mypage', 'history', 'ranking', 'create-room', 'room', 'game'] as const;
+const PAGES = ['lobby', 'mypage', 'history', 'ranking', 'create-room', 'room', 'game'] as const;
 type Page = (typeof PAGES)[number];
 function pageFromHash(): Page {
   // #game/my-turn 처럼 '/' 뒤는 페이지 안에서 쓰는 값이다.
   const page = location.hash.slice(1).split('/')[0];
-  return PAGES.find((name) => name === page) ?? 'mypage';
+  return PAGES.find((name) => name === page) ?? 'lobby';
 }
 
 export function App() {
@@ -24,7 +27,21 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState('');
   const [page, setPage] = useState<Page>(pageFromHash);
-  const leaveCreateRoom = useCallback(() => navigate('mypage'), []);
+  const [lobbyNotice, setLobbyNotice] = useState('');
+  const kicked = useRoomStore((state) => state.kicked);
+  const leaveCreateRoom = useCallback(() => navigate('lobby'), []);
+  const loggedIn = user !== null;
+  useEffect(() => {
+    if (!loggedIn) return;
+    connectSocket();
+    return disconnectSocket;
+  }, [loggedIn]);
+  useEffect(() => {
+    if (!kicked) return;
+    roomActions.clearKicked();
+    setLobbyNotice('방장이 방에서 내보냈어요. 방 코드로 다시 들어갈 수 있어요.');
+    navigate('lobby');
+  }, [kicked]);
   useEffect(() => {
     let active = true;
     refreshSession()
@@ -51,6 +68,7 @@ export function App() {
     };
   }, []);
   function navigate(next: Page) {
+    if (next !== 'lobby') setLobbyNotice('');
     location.hash = next;
     setPage(next);
   }
@@ -76,23 +94,25 @@ export function App() {
       </main>
     );
   if (!user) return <AuthPage onLogin={login} notice={notice} />;
+  // 대기실은 디자인대로 상단 메뉴 없이 화면 전체를 쓴다.
+  if (page === 'room') return <WaitingRoomPage userId={user.id} onLeft={() => navigate('lobby')} />;
   // 게임 화면은 상단 메뉴 없이 창 전체를 쓴다.
   if (page === 'game')
     return (
-      <GamePreviewPage onExit={() => navigate('mypage')} onWaitingRoom={() => navigate('room')} />
+      <GamePreviewPage onExit={() => navigate('lobby')} onWaitingRoom={() => navigate('room')} />
     );
   return (
     <div className="app-shell">
       <header className="site-header">
-        <a className="brand" href="#mypage" onClick={() => navigate('mypage')}>
+        <a className="brand" href="#lobby" onClick={() => navigate('lobby')}>
           낼래말래
         </a>
         <nav aria-label="주 메뉴" className="main-nav">
-          <button disabled title="로비는 아직 구현되지 않았습니다.">
+          <a
+            href="#lobby"
+            aria-current={page === 'lobby' || page === 'create-room' ? 'page' : undefined}
+          >
             로비
-          </button>
-          <a href="#create-room" aria-current={page === 'create-room' ? 'page' : undefined}>
-            방 만들기
           </a>
           <a href="#ranking" aria-current={page === 'ranking' ? 'page' : undefined}>
             랭킹
@@ -136,7 +156,14 @@ export function App() {
       {page === 'create-room' && (
         <CreateRoomPage onCancel={leaveCreateRoom} onCreated={() => navigate('room')} />
       )}
-      {page === 'room' && <WaitingRoomPage onLeft={() => navigate('mypage')} />}
+      {page === 'lobby' && (
+        <LobbyPage
+          user={user}
+          notice={lobbyNotice}
+          onCreate={() => navigate('create-room')}
+          onEnterRoom={() => navigate('room')}
+        />
+      )}
     </div>
   );
 }

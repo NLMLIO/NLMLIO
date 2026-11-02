@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ChatEmoji, ErrorCode } from '@nlmlio/shared';
+import { ChatEmoji, ErrorCode, RoomRole } from '@nlmlio/shared';
 import type { ChatEmojiCode } from '@nlmlio/shared';
 import { appError } from '../../common/app-error';
 import type { UserAccount } from '../../domain/user/account';
@@ -36,7 +36,7 @@ export class ChatService {
         userId: account.id,
         nickname: account.nickname,
         isSpectator: room.members.some(
-          (member) => member.userId === account.id && member.isSpectator,
+          (member) => member.userId === account.id && member.role === RoomRole.SPECTATOR,
         ),
         message: message.trim(),
         sentAt: new Date().toISOString(),
@@ -56,7 +56,7 @@ export class ChatService {
         userId: account.id,
         nickname: account.nickname,
         isSpectator: room.members.some(
-          (member) => member.userId === account.id && member.isSpectator,
+          (member) => member.userId === account.id && member.role === RoomRole.SPECTATOR,
         ),
         emoji,
         sentAt: new Date().toISOString(),
