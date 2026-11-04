@@ -33,20 +33,16 @@ export class GameSettlement {
     ) {
       throw new Error('Invalid game settlement');
     }
-    const survivors = players.filter((player) => !player.departed).length;
-    if (
-      players.some((player) =>
-        player.departed ? player.rank <= survivors : player.rank > survivors,
-      )
-    ) {
-      throw new Error('Departed players must rank after all other players');
-    }
   }
 
   snapshot() {
     const result = this.result;
     const count = result.players.length;
     const finishers = result.players.filter((player) => !player.departed).length;
+    const rewardOrder = result.players
+      .filter((player) => !player.departed)
+      .sort((first, second) => first.rank - second.rank)
+      .map((player) => player.userId);
     return {
       gameId: result.gameId,
       roomCode: result.roomCode,
@@ -59,7 +55,8 @@ export class GameSettlement {
         pointDelta: player.departed
           ? 0
           : Math.round(
-              (((100 * count) / 6) * 2 ** (finishers - player.rank)) / (2 ** finishers - 1),
+              (((100 * count) / 6) * 2 ** (finishers - rewardOrder.indexOf(player.userId) - 1)) /
+                (2 ** finishers - 1),
             ),
       })),
     };

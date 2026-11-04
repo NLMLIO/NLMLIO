@@ -6,11 +6,12 @@ import { RoomController } from './room.controller';
 import { RoomEvents } from './room.events';
 import { RoomGateway } from './room.gateway';
 import { RoomService } from './room.service';
+import { RoomGameLifecycle } from './room-game.lifecycle';
 
 @Module({
   imports: [SecurityModule],
   controllers: [RoomController],
-  providers: [RoomStore, RoomCodeRegistry, RoomEvents, RoomService, RoomGateway],
-  exports: [RoomService, RoomEvents],
+  providers: [RoomStore, RoomCodeRegistry, RoomEvents, RoomService, RoomGateway, RoomGameLifecycle],
+  exports: [RoomService, RoomEvents, RoomGameLifecycle],
 })
 export class RoomModule {}

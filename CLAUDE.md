@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 이 저장소에서 작업하는 Claude Code(및 다른 코딩 에이전트)를 위한 안내서다. 작업을 시작하기 전에 끝까지 읽고 아래 규칙을 따른다.
 
-> **현재 상태**: 인증(회원가입·로그인·토큰 회전·로그아웃), 개인정보 수정, 개인 대시보드, 전적·랭킹 조회를 구현했다. Prisma의 `User`, `Game`, `GameResult`와 서버 내부 정산 서비스가 있다. 로비(방 만들기·코드로 참가), 실시간 대기실(참가자·관전자 칸, 추방, 방장 위임, 게임 시작), 대기실 채팅·이모티콘(Socket.io)이 있다. 게임 화면은 퍼블리싱과 미리보기(`#game/<장면>`)만 있다. 게임 시작은 아직 방 상태만 게임 중으로 바꾸며, 게임 엔진(FUNC-005)과 재접속 유예(003-07)는 계획 단계다. 2026-10-21 요청에 따라 이번 마이페이지 화면에는 티어를 표시하지 않는다.
+> **현재 상태**: 인증, 프로필·전적·랭킹, 로비·실시간 대기실·채팅, 게임 서버 엔진(FUNC-005-01~13,15,16)을 구현했다. 게임 화면은 미리보기이고 서버 이벤트 연결·효과음은 후속 프론트엔드 작업이다. 게임 서버 계약과 Redis 키는 `server/GAME.md`를 본다.
 
 ## 명령어
 
@@ -75,7 +75,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | 사용 중인 6자리 방 코드 | **Redis** (`SET NX`) | 코드 중복 없이 원자적으로 예약(003-02) |
 | 접속·재접속 대기 정보 | **Redis** (TTL = 재접속 대기 시간) | 끊긴 플레이어를 원래 방으로 복귀(003-07) |
 | 채팅·이모티콘 연속 전송 횟수 | **Redis** (채팅 `INCR` + TTL 3초, 이모티콘 `SET NX EX 2`, 토큰과 무관한 사용자별 키) | 도배 방지(004-01, 004-02) |
-| 진행 중인 게임 상태(덱·테이블·차례) | **서버 메모리** (방별 객체) | 종 판정은 밀리초 단위 — 매 이벤트마다 Redis를 왕복하지 않는다. 재접속용 스냅샷만 필요 시 Redis에 |
+| 진행 중인 게임 상태(덱·테이블·차례) | **서버 메모리** (방별 객체) + **Redis 미러** | 규칙은 동기 도메인에서 계산하고 방 큐가 `game:{id}:*` 키에 미러링한다. 종 최초 요청은 Redis SET NX EX 10으로 예약한다 |
 
 #### 왜 Prisma인가
 
@@ -192,6 +192,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `server/src/common/security/`: Argon2id, JWT, HTTP Guard, Redis Refresh 세션. Refresh는 HttpOnly 쿠키에 저장하고 Redis에는 기기 세션마다(`refresh:{userId}:{sid}`) 토큰의 SHA-256 지문을 저장한다.
 - `server/src/domain/user/`: 인프라와 독립적인 계정 타입, 누적 통계 계산 객체.
 - `server/src/domain/game/game-settlement.ts`: 확정 순위 검증과 명세의 포인트 지급식.
+- `server/src/domain/card/deck.ts`, `domain/player/game-player.ts`, `domain/game/game.ts`, `table.ts`: 카드·셔플·분배, 보유 카드, 테이블, 턴·종·벌칙·탈락·순위를 캡슐화한 순수 TS 객체.
+- `server/src/modules/game/`: 게임 Gateway, 서비스, 서버 셔플 팩토리, 타이머, 브로드캐스트, 결과 저장. `infra/game-state/room-queue.ts`가 인증·타이머·이탈·정산을 방별 접수 순서로 직렬화한다.
+- `server/src/infra/redis/game-state.repository.ts`: 첨부 Redis 명세의 미러, 종 예약과 정산 후 삭제. `shared/src/game-events.ts`는 공개 스냅샷과 소켓 계약이다.
+- `server/src/modules/room/room-game.lifecycle.ts`: Room→Game 모듈 순환 참조 없이 시작·이탈·방 종료를 게임 큐에 연결한다.
 - `server/src/modules/auth`, `user`, `ranking`: 인증, 프로필·대시보드, 개인 전적·리더보드.
 - `server/src/modules/game/game-result.service.ts`: 게임 엔진이 최종 결과를 전달할 서버 내부 진입점. 결과 제출용 HTTP 엔드포인트는 없다.
 - `server/src/domain/room/room.ts`: 방 규칙(입장 순서, 참가자 6·관전자 10 칸, 자리 이동, 추방, 방장 위임·승계, 게임 시작). 규칙 위반은 `RoomRuleError(앱 에러 코드)`로 던지고 서비스가 HTTP·소켓 응답으로 바꾼다.
@@ -231,7 +235,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | 보관 스택 | 종 아래에 모아 두는 카드(분배 후 남은 카드, 탈락·이탈자의 카드). 다음에 정당하게 종을 친 승자가 가져간다 |
 | 종 누르기 | 테이블 위 같은 과일 합이 **정확히 5개**일 때 누르는 행동 |
 | 선착순 판정 | 여러 명이 거의 동시에 종을 쳤을 때 **서버 도착 시각 기준 1명**만 인정 |
-| 오발 벌칙 | 합이 5가 아닐 때 종을 친 플레이어가 다른 플레이어 각자에게 카드를 1장씩 주는 벌칙 |
+| 오발 벌칙 | 오발자 카드 1장과 테이블 전체 카드를 종 아래 보관 스택으로 옮김(2026-11-04 첨부 명세) |
 | 탈락 / 이탈 | 카드 0장으로 빠짐(순위·포인트 정상) / 나가기·연결 끊김 5초·턴 시간 초과 3회로 빠짐(맨 아래, 0점). 둘 다 관전자가 된다 |
 | 턴 제한 시간 | 차례마다 10초. 넘기면 서버가 대신 카드를 낸다 |
 | 라운드 | 카드를 차례로 내다가 종 판정이 나거나 탈락자가 생기면 끝나는 단위 |
@@ -289,7 +293,7 @@ Service (모듈별)                          ← 방 관리, 게임 진행, 결�
 PostgreSQL (영속) · Redis (휘발·TTL) · 인메모리 게임 상태
 ```
 
-- 진행 중인 방·게임 상태는 **서버 메모리**에서 관리하고, 끝난 결과만 PostgreSQL에 저장한다(005-11).
+- 진행 중인 방·게임 상태는 **서버 메모리**에서 관리하고 게임 내부 상태는 Redis에 미러링한다. 끝난 결과만 PostgreSQL에 저장한다(005-11). Redis 게임 키는 최신 첨부 명세에 따라 TTL 없이 정산 성공 후 지운다. 프로세스 재시작 자동 복구는 지원하지 않는다.
 - 결과 저장과 포인트 지급은 **같은 PostgreSQL 트랜잭션**으로 묶는다(005-11, 006-01) — `prisma.$transaction(async (tx) => { … })` 안에서 모두 `tx`로 쓴다. 같은 게임의 중복 저장은 스키마의 유니크 제약으로 막고, 위반(`P2002`)은 «이미 저장됨»으로 처리한다.
 - 스키마 변경은 `schema.prisma` 수정 → `pnpm db:migrate --name <설명>` 으로만 한다. DB에 직접 `ALTER`하지 않는다. 운영/배포 반영은 `prisma migrate deploy`.
 - 랭킹 조회(007-01)는 PostgreSQL에서 전체 승패를 집계하고 윈도 함수로 순위를 부여한 뒤 `LIMIT`/`OFFSET`으로 페이지 조회한다. 목록·내 순위·총 인원은 같은 RepeatableRead 트랜잭션으로 조회한다.
@@ -333,6 +337,11 @@ C→S 이벤트는 ack로 `{ ok: true }` 또는 `{ ok: false, code }`를 받는�
 | C→S | `room:kick` | `{ userId }` | 003-10 |
 | C→S | `room:delegate` | `{ userId }` | 003-11 |
 | C→S | `room:start` | `{}` | 005-01 |
+| C→S | `card:play` | `{ gameId, turnId }` → `GameAck` | 005-12,13 |
+| C→S | `bell:ring` | `{ gameId, turnSeq }` → `GameAck` | 005-06,07,08 |
+| C→S | `game:sync`, `game:return` | `{}` → `GameAck` | 003-07,005-10 |
+| S→C | `game:state` | `GameSnapshot \| null` (숨긴 덱은 개수만) | 005 |
+| S→C | `game:action` | `GameAction` (카드·종·이탈·연결 상태) | 005 |
 | S→C | `room:state` | `RoomResponse \| null` 연결 직후와 방이 바뀔 때마다 전체 상태 | 003 |
 | S→C | `room:notice` | 입장·퇴장·이동·추방·방장 변경·게임 시작 안내 | 003 |
 | S→C | `room:kicked` | 없음. 추방당한 회원에게만 | 003-10 |

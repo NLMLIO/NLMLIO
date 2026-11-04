@@ -37,6 +37,7 @@ export class Room {
   private readonly members = new Map<number, { nickname: string; role: RoomRole }>();
   private hostId: number;
   private status: RoomStatus = RoomStatus.WAITING;
+  private gamePlayers = new Set<number>();
 
   private constructor(
     readonly code: string,
@@ -87,7 +88,8 @@ export class Room {
   /** 대기실에서 나간다. 방장이 나가면 가장 먼저 들어온 남은 회원이 방장이 된다. */
   leave(userId: number): void {
     if (!this.members.delete(userId)) throw new RoomRuleError(ErrorCode.NOT_IN_ROOM);
-    if (userId === this.hostId && !this.isEmpty) this.hostId = this.members.keys().next().value!;
+    if (userId === this.hostId && !this.isEmpty && this.status === RoomStatus.WAITING)
+      this.hostId = this.members.keys().next().value!;
   }
 
   /** 자기 자리는 본인이, 다른 회원의 자리는 방장만 옮길 수 있다. 옮긴 회원은 그 칸의 맨 뒤로 간다. */
@@ -133,6 +135,22 @@ export class Room {
     if (this.count(RoomRole.PLAYER) < MIN_PLAYERS)
       throw new RoomRuleError(ErrorCode.NOT_ENOUGH_PLAYERS);
     this.status = RoomStatus.PLAYING;
+    this.gamePlayers = new Set(
+      [...this.members].filter(([, member]) => member.role === RoomRole.PLAYER).map(([id]) => id),
+    );
+  }
+
+  /** 원래 참가자는 다음 판에도 참가석으로, 원래 관전자는 관전석으로 돌아간다. */
+  finish(): void {
+    this.status = RoomStatus.WAITING;
+    for (const [id, member] of this.members) {
+      this.members.set(id, {
+        ...member,
+        role: this.gamePlayers.has(id) ? RoomRole.PLAYER : RoomRole.SPECTATOR,
+      });
+    }
+    this.gamePlayers.clear();
+    if (!this.has(this.hostId) && !this.isEmpty) this.hostId = this.members.keys().next().value!;
   }
 
   snapshot(): RoomResponse {

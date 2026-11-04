@@ -84,12 +84,6 @@ export class RoomGateway implements OnGatewayInit, OnGatewayConnection {
     return OK;
   }
 
-  @SubscribeMessage(RoomClientEvent.START)
-  start(@ConnectedSocket() socket: Socket): RoomAck {
-    this.rooms.start(socketUser(socket).userId);
-    return OK;
-  }
-
   private async authenticate(socket: Socket): Promise<void> {
     const token: unknown = socket.handshake.auth?.token;
     const claims = await this.tokens.verify(typeof token === 'string' ? token : '', 'access');
