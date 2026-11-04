@@ -1,11 +1,11 @@
-import { ErrorCode, GamePlayerStatus, GameStatus } from '@nlmlio/shared';
+import { ErrorCode, GamePlayerStatus, GameStatus, TURN_TIME_MS } from '@nlmlio/shared';
 import type { GameAction, GameSnapshot, SettleGameInput } from '@nlmlio/shared';
 import { Card, Deck } from '../card/deck';
 import { GamePlayer } from '../player/game-player';
 import { GameSettlement } from './game-settlement';
 import { Table } from './table';
 
-export const TURN_TIME_MS = 10_000;
+export { TURN_TIME_MS };
 export interface StartGameInput {
   gameId: string;
   roomCode: string;

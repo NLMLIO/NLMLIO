@@ -16,9 +16,8 @@ function sceneFromHash(): PreviewScene {
 }
 
 /**
- * 게임 화면 미리보기(#game/<장면>). 서버 게임 이벤트와의 연결 전이라 고정된 상태를 그리고,
- * 카드 내기·종·채팅 같은 «의도»는 아직 전송하지 않는다.
- * 관전자의 방 나가기(FUNC-003-06·005-16)만 기존 방 나가기 API로 실제 동작한다.
+ * 개발 서버 전용 게임 화면 미리보기(#game-preview/<장면>). 고정된 상태를 그리고 «의도»는 보내지 않는다.
+ * 실제 게임은 GamePage가 서버 스냅샷으로 그린다. 관전자의 방 나가기만 기존 방 나가기 API로 동작한다.
  */
 export function GamePreviewPage({
   onExit,
@@ -90,7 +89,11 @@ export function GamePreviewPage({
       {import.meta.env.DEV && (
         <nav className="scene-switcher" aria-label="미리보기 장면">
           {SCENES.map((name) => (
-            <a key={name} href={`#game/${name}`} aria-current={name === scene ? 'page' : undefined}>
+            <a
+              key={name}
+              href={`#game-preview/${name}`}
+              aria-current={name === scene ? 'page' : undefined}
+            >
               {name}
             </a>
           ))}

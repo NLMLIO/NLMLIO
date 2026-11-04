@@ -1,6 +1,11 @@
 import type { Fruit } from './domain';
 import type { ErrorCode } from './errors';
 
+/** 차례마다 카드를 낼 수 있는 시간(FUNC-005-15). 넘기면 서버가 대신 낸다. */
+export const TURN_TIME_MS = 10_000;
+/** 게임 중 연결이 끊긴 뒤 이탈 처리까지 기다리는 시간(FUNC-003-07) */
+export const GAME_RECONNECT_GRACE_MS = 5_000;
+
 export const GameStatus = { PLAYING: 'PLAYING', ENDED: 'ENDED' } as const;
 export type GameStatus = (typeof GameStatus)[keyof typeof GameStatus];
 export const GamePlayerStatus = {

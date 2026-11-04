@@ -2,11 +2,11 @@ import type { Fruit } from '@nlmlio/shared';
 
 /**
  * 게임 화면이 그리는 상태. 서버가 확정해 보낸 값을 그대로 담는 그릇이고, 여기서 규칙을 계산하지 않는다.
- * 게임 엔진·소켓 이벤트가 생기면 shared의 스냅샷 타입에서 이 모양으로 옮겨 담는다.
+ * 서버 스냅샷(shared GameSnapshot)은 `to-game-view.ts`가 이 모양으로 옮겨 담는다.
  */
 
-/** 아바타·채팅 닉네임 색 */
-export type PlayerColor = 'strawberry' | 'banana' | 'lime' | 'plum' | 'white';
+/** 아바타·채팅 닉네임 색. 과일 이름(디자인 토큰)이나 대기실과 같은 회원 색(#hex) */
+export type PlayerColor = 'strawberry' | 'banana' | 'lime' | 'plum' | 'white' | `#${string}`;
 
 export interface CardFace {
   fruit: Fruit;
@@ -15,7 +15,7 @@ export interface CardFace {
 
 /**
  * 종 판정 직후 플레이어 슬롯 아래에 붙는 결과 배지.
- * win: 종 성공(WIN +10) / misfire: 오발한 사람이 나눠 준 장수(오발 −3) / receive: 오발 벌칙으로 받은 카드(+1)
+ * win: 종 성공(WIN +10) / misfire: 오발(오발 −1) / receive: 카드를 받은 사람(+1)
  */
 export interface SeatOutcome {
   tone: 'win' | 'misfire' | 'receive';
@@ -31,9 +31,15 @@ export interface PlayerView {
   topCard: CardFace | null;
   /** active: 플레이 중 / out: 탈락·이탈(관전자) / offline: 연결 끊김 유예 중 */
   state: 'active' | 'out' | 'offline';
-  /** offline일 때 화면에 보여 줄 남은 유예 시간(초) */
+  /** offline일 때 화면에 보여 줄 남은 유예 시간(초). 모르면 비워 둔다 */
   offlineSeconds?: number;
   isTurn: boolean;
+  /** 차례인 사람의 남은 턴 시간(초, FUNC-005-15) */
+  turnSeconds?: number;
+  /** 맨 위 카드가 바뀔 때마다 달라지는 값. 바뀌면 카드 뒤집기 애니메이션을 다시 튼다 */
+  cardKey?: number;
+  /** 맨 위 카드를 서버가 대신 냈으면 '자동' 표시 */
+  autoPlayed?: boolean;
   /** 방금 보낸 감정표현 이모티콘 */
   emote?: string;
   outcome?: SeatOutcome;
@@ -66,7 +72,14 @@ export interface Banner {
 }
 
 export type LogEntry =
-  | { kind: 'chat'; id: string; nickname: string; color: PlayerColor; text: string }
+  | {
+      kind: 'chat';
+      id: string;
+      nickname: string;
+      color: PlayerColor;
+      text: string;
+      spectator?: boolean;
+    }
   | { kind: 'event'; id: string; tone: 'success' | 'danger'; nickname: string; text: string }
   | { kind: 'system'; id: string; text: string };
 
@@ -74,9 +87,13 @@ export interface GameView {
   roomName: string;
   /** 자리 순서(시계 방향). 첫 번째가 나이고 화면 아래에 앉는다 */
   players: PlayerView[];
+  /** false면 첫 번째 자리는 처음부터 관전한 나라서 테이블 카드 자리를 그리지 않는다 */
+  selfSeated?: boolean;
   myPhase: MyPhase;
   /** 지금 차례인 플레이어 닉네임(waiting일 때 표시) */
   turnNickname?: string;
+  /** 내 차례의 남은 시간(초) */
+  myTurnSeconds?: number;
   /** 종 아래 보관 스택 카드 수 */
   pileCount: number;
   bell: BellState;
@@ -90,6 +107,9 @@ export interface RankingEntry {
   nickname: string;
   color: PlayerColor;
   isMe: boolean;
+  /** 획득 포인트(FUNC-006-01). 이탈자는 0 */
+  points?: number;
+  departed?: boolean;
 }
 
 export const FRUIT_NAMES: Record<Fruit, string> = {

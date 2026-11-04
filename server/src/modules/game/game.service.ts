@@ -1,6 +1,12 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { ErrorCode, GameStatus, RoomRole, RoomStatus } from '@nlmlio/shared';
+import {
+  ErrorCode,
+  GAME_RECONNECT_GRACE_MS,
+  GameStatus,
+  RoomRole,
+  RoomStatus,
+} from '@nlmlio/shared';
 import type { BellRingRequest, CardPlayRequest, GameAction, GameSnapshot } from '@nlmlio/shared';
 import { appError } from '../../common/app-error';
 import { GameRuleError } from '../../domain/game/game';
@@ -289,7 +295,7 @@ export class GameService implements OnModuleInit {
     });
   }
   private scheduleDisconnect(userId: number, code: string, gameId: string): void {
-    this.timers.schedule(`connection:${userId}`, Date.now() + 5000, () => {
+    this.timers.schedule(`connection:${userId}`, Date.now() + GAME_RECONNECT_GRACE_MS, () => {
       this.background(() =>
         this.queue.run(code, async () => {
           if (this.connections.get(userId)?.size) return;
