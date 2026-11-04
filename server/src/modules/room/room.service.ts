@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { randomInt } from 'node:crypto';
-import { ErrorCode } from '@nlmlio/shared';
+import { ErrorCode, RoomStatus } from '@nlmlio/shared';
 import type {
   CreateRoomRequest,
   CurrentRoomResponse,
@@ -13,6 +13,7 @@ import { Room, RoomRuleError } from '../../domain/room/room';
 import { RoomStore } from '../../infra/game-state/room.store';
 import { RoomCodeRegistry } from '../../infra/redis/room-code.registry';
 import { RoomEvents } from './room.events';
+import { RoomGameLifecycle } from './room-game.lifecycle';
 
 const MAX_CODE_ATTEMPTS = 20;
 
@@ -22,6 +23,7 @@ export class RoomService {
     private readonly rooms: RoomStore,
     private readonly codes: RoomCodeRegistry,
     private readonly events: RoomEvents,
+    private readonly game: RoomGameLifecycle,
   ) {}
 
   async create(account: UserAccount, input: CreateRoomRequest): Promise<RoomResponse> {
@@ -72,15 +74,25 @@ export class RoomService {
   }
 
   async leave(account: UserAccount): Promise<void> {
-    const room = this.requireRoom(account.id);
-    const nickname = room.nicknameOf(account.id);
-    const host = room.host;
-    room.leave(account.id);
-    await this.removed(room, account.id);
-    if (room.isEmpty) return;
-    this.events.notice(room.code, { type: 'left', nickname });
-    this.announceHost(room, host);
-    this.events.state(room);
+    await this.leaveMember(account.id);
+  }
+
+  async leaveMember(userId: number): Promise<void> {
+    const room = this.requireRoom(userId);
+    const remove = async () => {
+      if (!room.has(userId)) return;
+      const nickname = room.nicknameOf(userId);
+      const host = room.host;
+      room.leave(userId);
+      await this.removed(room, userId);
+      if (room.isEmpty) return;
+      this.events.notice(room.code, { type: 'left', nickname });
+      this.announceHost(room, host);
+      this.events.state(room);
+    };
+    // 게임 이탈 판정과 실제 방 제거를 하나의 게임 큐 작업으로 마친다.
+    if (room.snapshot().status === RoomStatus.PLAYING) await this.game.leaving(userId, remove);
+    else await remove();
   }
 
   move(actorId: number, targetId: number, role: RoomRole): void {
@@ -107,10 +119,24 @@ export class RoomService {
     this.events.state(room);
   }
 
-  start(actorId: number): void {
+  async start(actorId: number): Promise<void> {
+    await this.game.start(actorId);
+  }
+
+  beginGame(actorId: number): RoomResponse {
     const room = this.requireRoom(actorId);
     this.rule(() => room.start(actorId));
     this.events.notice(room.code, { type: 'started' });
+    this.events.state(room);
+    return room.snapshot();
+  }
+
+  finishGame(code: string): void {
+    const room = this.rooms.findByCode(code);
+    if (!room) return;
+    const host = room.host;
+    room.finish();
+    this.announceHost(room, host);
     this.events.state(room);
   }
 
@@ -123,7 +149,10 @@ export class RoomService {
   private async removed(room: Room, userId: number): Promise<void> {
     this.rooms.removeMember(room, userId);
     this.events.unsubscribe(userId, room.code);
-    if (room.isEmpty) await this.codes.release(room.code);
+    if (room.isEmpty) {
+      this.game.closed(room.code);
+      await this.codes.release(room.code);
+    }
   }
 
   private announceHost(room: Room, previousHost: number): void {

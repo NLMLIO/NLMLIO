@@ -4,3 +4,4 @@ export * from './dto';
 export * from './validation';
 export * from './events';
 export * from './room-events';
+export * from './game-events';

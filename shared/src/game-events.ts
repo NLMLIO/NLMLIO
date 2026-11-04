@@ -1,0 +1,95 @@
+import type { Fruit } from './domain';
+import type { ErrorCode } from './errors';
+
+export const GameStatus = { PLAYING: 'PLAYING', ENDED: 'ENDED' } as const;
+export type GameStatus = (typeof GameStatus)[keyof typeof GameStatus];
+export const GamePlayerStatus = {
+  ACTIVE: 'ACTIVE',
+  ELIMINATED: 'ELIMINATED',
+  DEPARTED: 'DEPARTED',
+} as const;
+export type GamePlayerStatus = (typeof GamePlayerStatus)[keyof typeof GamePlayerStatus];
+export interface GameCard {
+  fruit: Fruit;
+  count: 1 | 2 | 3 | 4 | 5;
+}
+export const GameClientEvent = {
+  SYNC: 'game:sync',
+  PLAY: 'card:play',
+  BELL: 'bell:ring',
+  RETURN: 'game:return',
+} as const;
+export const GameServerEvent = { STATE: 'game:state', ACTION: 'game:action' } as const;
+export interface CardPlayRequest {
+  gameId: string;
+  turnId: number;
+}
+export interface BellRingRequest {
+  gameId: string;
+  turnSeq: number;
+}
+export interface GamePlayerView {
+  userId: number;
+  nickname: string;
+  status: GamePlayerStatus;
+  connected: boolean;
+  handCount: number;
+  tableCount: number;
+  topCard: GameCard | null;
+  automaticTurns: number;
+}
+export interface GameResultEntry {
+  userId: number;
+  nickname: string;
+  rank: number;
+  departed: boolean;
+  pointDelta: number;
+  bellSuccess: number;
+  bellFail: number;
+  reactionSumMs: number;
+}
+export interface GameSnapshot {
+  gameId: string;
+  roomCode: string;
+  roomName: string;
+  status: GameStatus;
+  revision: number;
+  round: number;
+  turnUserId: number | null;
+  /** 카드 내기/종 판정으로 새 차례가 될 때마다 변경. 카드 중복 요청 방지용. */
+  turnId: number;
+  /** 카드를 낼 때마다 변경. 같은 공개 테이블에 대한 종 중복 요청 방지용. */
+  turnSeq: number;
+  turnDeadline: number | null;
+  lastPlayAt: number | null;
+  startedAt: number;
+  endedAt: number | null;
+  players: GamePlayerView[];
+  pileCount: number;
+  fruitTotals: Record<Fruit, number>;
+  results: GameResultEntry[];
+  settled: boolean;
+}
+export type GameAction =
+  | { kind: 'card'; userId: number; card: GameCard; automatic: boolean }
+  | {
+      kind: 'bell';
+      userId: number;
+      success: boolean;
+      movedCards: number;
+      totals: Record<Fruit, number>;
+    }
+  | { kind: 'departed'; userId: number }
+  | { kind: 'connection'; userId: number; connected: boolean };
+export type GameActionEvent = GameAction & { gameId: string; revision: number };
+export type GameAck = { ok: true; ignored?: boolean } | { ok: false; code: ErrorCode };
+export interface GameClientToServerEvents {
+  'game:sync': (payload: Record<string, never>, ack: (result: GameAck) => void) => void;
+  'card:play': (payload: CardPlayRequest, ack: (result: GameAck) => void) => void;
+  'bell:ring': (payload: BellRingRequest, ack: (result: GameAck) => void) => void;
+  'game:return': (payload: Record<string, never>, ack: (result: GameAck) => void) => void;
+}
+export interface GameServerToClientEvents {
+  'game:state': (state: GameSnapshot | null) => void;
+  'game:action': (action: GameActionEvent) => void;
+}

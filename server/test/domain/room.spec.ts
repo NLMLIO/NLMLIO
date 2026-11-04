@@ -28,6 +28,29 @@ const roles = (room: Room) =>
     .join('');
 
 describe('Room', () => {
+  it('게임 중 방장 이탈의 승계와 참가석 복귀는 게임 종료 시 처리한다', () => {
+    const room = roomWith(3);
+    room.start(1);
+    room.leave(1);
+    room.markSpectator(2);
+    expect(room.snapshot().hostId).toBe(1);
+    room.finish();
+    expect(room.snapshot()).toMatchObject({ status: 'WAITING', hostId: 2 });
+    expect(room.snapshot().members.map((member) => member.role)).toEqual(['PLAYER', 'PLAYER']);
+  });
+
+  it('게임 중 탈락자가 관전자로 바뀌어도 전체 16명을 보존하고 종료 후 원래 자리로 복귀한다', () => {
+    const room = roomWith(16);
+    room.start(1);
+    for (let id = 2; id <= 6; id++) room.markSpectator(id);
+    expect(room.snapshot().members).toHaveLength(16);
+    expect(room.snapshot().members.filter((member) => member.role === 'SPECTATOR')).toHaveLength(
+      15,
+    );
+    room.finish();
+    expect(roles(room)).toBe('P'.repeat(6) + 'S'.repeat(10));
+  });
+
   it('만든 회원이 방장이자 유일한 참가자인 대기 중 방이 된다', () => {
     expect(Room.create(input({ name: '  점심 내기  ' })).snapshot()).toEqual({
       code: '012345',
