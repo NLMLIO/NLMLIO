@@ -34,7 +34,7 @@ export interface GameViewInput {
   emojis: Record<number, { emoji: ChatEmojiCode }>;
   /** 화면에 보여 주는 중인 종 판정. 표시 시간이 지나면 null */
   bell: BellEvent | null;
-  lastCard: CardEvent | null;
+  lastCards: Record<number, CardEvent>;
   offlineSince: Record<number, number>;
   /** 서버 시각으로 맞춘 지금 */
   serverNow: number;
@@ -179,7 +179,7 @@ function bannerOf(input: GameViewInput, seated: boolean): Banner | undefined {
 }
 
 export function toGameView(input: GameViewInput): GameView {
-  const { snapshot, userId, bell, lastCard } = input;
+  const { snapshot, userId, bell } = input;
   const seat = snapshot.players.findIndex((player) => player.userId === userId);
   const seated = seat !== -1;
   const ordered = seated
@@ -198,7 +198,7 @@ export function toGameView(input: GameViewInput): GameView {
     const isTurn = playing && player.userId === snapshot.turnUserId;
     const ringer = bell?.action.userId === player.userId;
     const emoji = input.emojis[player.userId];
-    const cardIsNew = lastCard?.userId === player.userId;
+    const card = input.lastCards[player.userId];
     return {
       id: String(player.userId),
       nickname: player.nickname,
@@ -212,8 +212,8 @@ export function toGameView(input: GameViewInput): GameView {
           : undefined,
       isTurn,
       turnSeconds: isTurn ? turnSeconds : undefined,
-      cardKey: cardIsNew ? lastCard.id : undefined,
-      autoPlayed: cardIsNew && lastCard.automatic,
+      cardKey: card?.id,
+      autoPlayed: card?.automatic ?? false,
       emote: emoji ? ChatEmoji[emoji.emoji] : undefined,
       outcome:
         bell && ringer

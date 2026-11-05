@@ -75,6 +75,8 @@ export interface GameSnapshot {
   results: GameResultEntry[];
   settled: boolean;
 }
+/** `game:state` 페이로드. 보낼 때의 서버 시각을 붙여 클라이언트가 시계 차이를 잰다. */
+export type GameStateEvent = GameSnapshot & { serverTime: number };
 export type GameAction =
   | { kind: 'card'; userId: number; card: GameCard; automatic: boolean }
   | {
@@ -95,6 +97,6 @@ export interface GameClientToServerEvents {
   'game:return': (payload: Record<string, never>, ack: (result: GameAck) => void) => void;
 }
 export interface GameServerToClientEvents {
-  'game:state': (state: GameSnapshot | null) => void;
+  'game:state': (state: GameStateEvent | null) => void;
   'game:action': (action: GameActionEvent) => void;
 }

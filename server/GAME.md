@@ -33,7 +33,7 @@
 | C→S | `bell:ring` | `{ gameId, turnSeq }` |
 | C→S | `game:sync` | `{}` — 이 소켓에 현재 전체 상태 재전송 |
 | C→S | `game:return` | `{}` — 종료·정산 확인 후 이 소켓에 `game:state: null` |
-| S→C | `game:state` | `GameSnapshot \| null` |
+| S→C | `game:state` | `GameStateEvent \| null` — 스냅샷 + 보낸 순간의 서버 시각 `serverTime`(클라이언트 시계 차이 계산용) |
 | S→C | `game:action` | 카드 내기·종 판정·이탈·연결 변경 `GameActionEvent` (gameId·revision 포함) |
 
 Ack는 `{ ok: true }`, 지난 중복 요청이면 `{ ok: true, ignored: true }`, 실패면 `{ ok: false, code }`다. 연결 끊김으로 Ack가 오지 않으면 클라이언트는 시간 초과로 안내하고 `game:sync` 또는 재접속 후 상태를 확인해야 한다.

@@ -38,7 +38,7 @@ export function GamePage({
 }) {
   const snapshot = useGameStore((state) => state.snapshot);
   const lastBell = useGameStore((state) => state.lastBell);
-  const lastCard = useGameStore((state) => state.lastCard);
+  const lastCards = useGameStore((state) => state.lastCards);
   const offlineSince = useGameStore((state) => state.offlineSince);
   const clockOffset = useGameStore((state) => state.clockOffset);
   const room = useRoomStore((state) => state.room);
@@ -195,7 +195,7 @@ export function GamePage({
     log,
     emojis,
     bell: lastBell && lastBell.id === shownBellId ? lastBell : null,
-    lastCard,
+    lastCards,
     offlineSince,
     serverNow: now + clockOffset,
     now,
