@@ -164,6 +164,39 @@ describe('GameService 방 큐·타이머·정산 재시도', () => {
     expect(snapshots.claimBell).toHaveBeenCalledTimes(1);
   });
 
+  it('모두 카드를 낸 뒤 10초 동안 종이 없으면 액션 없이도 게임을 끝내고 정산한다', async () => {
+    const game = Game.create(
+      {
+        gameId: 'exhausted',
+        roomCode: '123456',
+        roomName: '카드 소진',
+        players: [
+          { userId: 1, nickname: '하나' },
+          { userId: 2, nickname: '둘' },
+        ],
+        now: Date.now(),
+      },
+      new Deck([new Card(Fruit.BANANA, 1), new Card(Fruit.LIME, 1)]),
+    );
+    store.set(game);
+    await service.play(1, { gameId: game.id, turnId: game.turnId });
+    await service.play(2, { gameId: game.id, turnId: game.turnId });
+    expect(state()).toMatchObject({ status: 'PLAYING', turnUserId: null });
+    await jest.advanceTimersByTimeAsync(9999);
+    expect(state().status).toBe('PLAYING');
+    await jest.advanceTimersByTimeAsync(1);
+    expect(state().status).toBe('ENDED');
+    expect(state().results.map((player) => [player.userId, player.rank])).toEqual([
+      [2, 1],
+      [1, 2],
+    ]);
+    expect(results.settle).toHaveBeenCalledTimes(1);
+    expect(events.state.mock.calls.at(-1)![0]).toMatchObject({
+      gameId: 'exhausted',
+      status: 'ENDED',
+    });
+  });
+
   it('이탈 회원을 방에서 제거하기 전에 다음 판을 시작하지 않는다', async () => {
     let saved!: () => void;
     results.settle.mockImplementationOnce(

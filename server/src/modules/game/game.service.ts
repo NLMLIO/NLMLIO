@@ -288,8 +288,10 @@ export class GameService implements OnModuleInit {
       this.background(() =>
         this.queue.run(game.roomCode, async () => {
           if (this.games.get(game.roomCode) !== session) return;
+          const version = game.version;
           const action = game.timeout(turnId, Date.now());
-          if (action) await this.changed(session, action);
+          // 아무도 낼 카드가 없어 끝난 경우는 액션 없이 상태만 바뀐다.
+          if (action || game.version !== version) await this.changed(session, action ?? undefined);
         }),
       );
     });
