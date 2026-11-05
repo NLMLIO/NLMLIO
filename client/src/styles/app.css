@@ -98,12 +98,9 @@ dd {
   margin-left: auto;
   font-size: 13px;
 }
-.header-account > div {
+.header-account > p {
   text-align: right;
   line-height: 1.7;
-}
-.header-account .lime {
-  font-size: 12px;
 }
 .avatar {
   display: inline-flex;
@@ -205,7 +202,7 @@ dd {
   letter-spacing: -0.02em;
 }
 .primary-metrics {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
 }
 .secondary-metrics {
   margin-top: 32px;

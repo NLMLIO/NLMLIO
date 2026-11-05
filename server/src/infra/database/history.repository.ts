@@ -56,7 +56,6 @@ export class HistoryRepository {
         playedAt: row.playedAt.toISOString(),
         players: row.game.playerCount,
         rank: row.rank,
-        point: row.pointDelta,
         departed: row.departed,
       })),
     };

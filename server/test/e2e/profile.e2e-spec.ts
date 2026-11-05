@@ -148,7 +148,7 @@ describe('마이페이지·전적 실제 PostgreSQL/Redis 통합', () => {
     expect(check.body.available).toBe(false);
     await patch({ nickname: null }).expect(400);
     await patch({ email: `new${username}@example.com` }).expect(400);
-    await patch({ userId: other.id, point: 100000 }).expect(400);
+    await patch({ userId: other.id }).expect(400);
   });
 
   it('닉네임 확인 후 변경을 저장한다', async () => {
@@ -165,12 +165,12 @@ describe('마이페이지·전적 실제 PostgreSQL/Redis 통합', () => {
     expect(response.body.requiresLogin).toBe(false);
   });
 
-  it('결과·포인트를 1회 정산하고 누적 통계·최신순 페이지 조회에 반영한다', async () => {
+  it('결과를 1회 정산하고 누적 통계·최신순 페이지 조회에 반영한다', async () => {
     expect(await settlement.settle(game('one'))).toEqual({ saved: true });
     expect(await settlement.settle(game('one'))).toEqual({ saved: false });
     await settlement.settle(game('two', 2));
     const response = await get('/users/me/dashboard').expect(200);
-    expect(response.body.user.point).toBe(33);
+    expect(response.body.user.point).toBeUndefined();
     expect(response.body.stats).toMatchObject({
       totalGames: 2,
       wins: 1,
@@ -185,44 +185,31 @@ describe('마이페이지·전적 실제 PostgreSQL/Redis 통합', () => {
     expect(first.body.total).toBe(2);
     expect(first.body.items[0].gameId).toBe(`${gamePrefix}-two`);
     expect(second.body.items[0].gameId).toBe(`${gamePrefix}-one`);
+    expect(first.body.items[0].point).toBeUndefined();
     await get('/users/me/history?page=0').expect(400);
   });
 
-  it('동시 중복 정산도 1회만 지급한다', async () => {
-    const results = await Promise.all([
-      settlement.settle(game('race')),
-      settlement.settle(game('race')),
-    ]);
+  it('동시 중복 정산도 1회만 저장한다', async () => {
+    const input = game('race');
+    const results = await Promise.all([settlement.settle(input), settlement.settle(input)]);
     expect(results.filter((result) => result.saved)).toHaveLength(1);
-    expect((await get('/users/me/dashboard')).body.user.point).toBe(55);
+    expect(await prisma.gameResult.count({ where: { gameId: input.gameId } })).toBe(2);
   });
 
-  it('중간 결과 저장 실패 시 게임·포인트를 모두 롤백한다', async () => {
+  it('중간 결과 저장 실패 시 게임·결과를 모두 롤백한다', async () => {
     const input = game('rollback');
     input.players[1].userId = 2147483647;
-    const before = await prisma.user.findUniqueOrThrow({ where: { id: me.id } });
     await expect(settlement.settle(input)).rejects.toThrow();
     expect(await prisma.game.count({ where: { id: input.gameId } })).toBe(0);
-    expect((await prisma.user.findUniqueOrThrow({ where: { id: me.id } })).point).toBe(
-      before.point,
-    );
+    expect(await prisma.gameResult.count({ where: { gameId: input.gameId } })).toBe(0);
   });
 
-  it('포인트와 무관하게 승수가 많은 사용자가 위에 오르고 대시보드 순위와 일치한다', async () => {
-    await prisma.user.update({
-      where: { id: me.id },
-      data: { point: 0, pointReachedAt: new Date('2026-10-02') },
-    });
-    await prisma.user.update({
-      where: { id: other.id },
-      data: { point: 1000000, pointReachedAt: new Date('2026-10-01') },
-    });
+  it('승수가 많은 사용자가 위에 오르고 대시보드 순위와 일치한다', async () => {
     const response = await get('/ranking').expect(200);
     expect(response.body.me).toMatchObject({ userId: me.id, rank: 1, wins: 2, losses: 1 });
     expect(response.body.items[0]).toEqual(response.body.me);
     expect(response.body.items[1]).toMatchObject({ userId: other.id, rank: 2, wins: 1, losses: 2 });
     expect((await get('/users/me/dashboard')).body.rank).toBe(response.body.me.rank);
-    expect(response.body.items[0].point).toBeUndefined();
   });
 
   it('승수가 같으면 승률이 높은 사용자가 위에 온다', async () => {

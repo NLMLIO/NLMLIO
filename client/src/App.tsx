@@ -147,10 +147,7 @@ export function App() {
           </a>
         </nav>
         <div className="header-account">
-          <div>
-            <p>{user.nickname}</p>
-            <span className="lime">{user.point.toLocaleString()} P</span>
-          </div>
+          <p>{user.nickname}</p>
           <span className="avatar small" aria-hidden="true">
             {user.nickname.slice(0, 1)}
           </span>

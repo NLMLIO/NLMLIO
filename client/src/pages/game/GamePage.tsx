@@ -179,7 +179,7 @@ export function GamePage({
       <GameFrame>
         <GameResult
           ranking={toRanking(snapshot, room, user.id)}
-          notice={error || (snapshot.settled ? undefined : '결과와 포인트를 저장하는 중이에요…')}
+          notice={error || (snapshot.settled ? undefined : '결과를 저장하는 중이에요…')}
           busy={returning || leaving}
           onLobby={() => void leaveRoom()}
           onWaitingRoom={() => void backToWaitingRoom()}

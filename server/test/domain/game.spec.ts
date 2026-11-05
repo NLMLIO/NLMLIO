@@ -268,7 +268,6 @@ describe('Game (FUNC-005-01~13,15,16)', () => {
       [1, 3, false],
       [2, 4, true],
     ]);
-    expect(game.snapshot().results[3].pointDelta).toBe(0);
     expect(game.depart(2, 50)).toBeNull();
     expect(total(game)).toBe(4);
   });
@@ -283,7 +282,6 @@ describe('Game (FUNC-005-01~13,15,16)', () => {
       status: GamePlayerStatus.DEPARTED,
       automaticTurns: 3,
     });
-    expect(game.snapshot().results[1].pointDelta).toBe(0);
     expect(total(game)).toBe(56);
   });
   it('직접 내면 연속 자동 횟수가 초기화되고 지난 타이머는 무시한다', () => {

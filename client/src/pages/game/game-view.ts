@@ -107,8 +107,6 @@ export interface RankingEntry {
   nickname: string;
   color: PlayerColor;
   isMe: boolean;
-  /** 획득 포인트(FUNC-006-01). 이탈자는 0 */
-  points?: number;
   departed?: boolean;
 }
 

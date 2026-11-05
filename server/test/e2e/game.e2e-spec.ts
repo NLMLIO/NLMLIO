@@ -255,19 +255,18 @@ describe('게임 서버 Socket.io / Redis / PostgreSQL (FUNC-005)', () => {
       true,
     );
   });
-  it('게임 중 나가기는 이탈 정산하고 결과·포인트를 1회 저장한 뒤 Redis 상태를 삭제한다', async () => {
+  it('게임 중 나가기는 이탈 정산하고 결과를 1회 저장한 뒤 Redis 상태를 삭제한다', async () => {
     await request(app.getHttpServer())
       .post('/api/rooms/me/leave')
       .auth(guest.accessToken, { type: 'bearer' })
       .expect(204);
     const state = await waitState(c, (value) => value.status === 'ENDED' && value.settled);
-    expect(state.results.map((entry) => [entry.userId, entry.departed, entry.pointDelta])).toEqual([
-      [host.user.id, false, 33],
-      [guest.user.id, true, 0],
+    expect(state.results.map((entry) => [entry.userId, entry.rank, entry.departed])).toEqual([
+      [host.user.id, 1, false],
+      [guest.user.id, 2, true],
     ]);
     expect(await prisma.game.count({ where: { id: gameId } })).toBe(1);
     expect(await prisma.gameResult.count({ where: { gameId } })).toBe(2);
-    expect((await prisma.user.findUniqueOrThrow({ where: { id: host.user.id } })).point).toBe(33);
     expect(await redis.exists(`game:${gameId}`, `game:${gameId}:keys`)).toBe(0);
     expect(await redis.exists(`settled:${gameId}`)).toBe(1);
     expect(app.get(RoomService).memberRoom(host.user.id)?.status).toBe('WAITING');

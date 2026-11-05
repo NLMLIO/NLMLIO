@@ -1,6 +1,6 @@
 import type { SettleGameInput } from '@nlmlio/shared';
 
-/** 최종 순위는 게임 엔진이 확정한다. 정산 객체는 검증과 포인트 계산만 맡는다. */
+/** 최종 순위는 게임 엔진이 확정한다. 정산 객체는 저장 전 결과 검증만 맡는다. */
 export class GameSettlement {
   constructor(private readonly result: SettleGameInput) {
     const players = result.players;
@@ -37,28 +37,14 @@ export class GameSettlement {
 
   snapshot() {
     const result = this.result;
-    const count = result.players.length;
-    const finishers = result.players.filter((player) => !player.departed).length;
-    const rewardOrder = result.players
-      .filter((player) => !player.departed)
-      .sort((first, second) => first.rank - second.rank)
-      .map((player) => player.userId);
     return {
       gameId: result.gameId,
       roomCode: result.roomCode,
       roomName: result.roomName,
-      playerCount: count,
+      playerCount: result.players.length,
       startedAt: new Date(result.startedAt),
       endedAt: new Date(result.endedAt),
-      players: result.players.map((player) => ({
-        ...player,
-        pointDelta: player.departed
-          ? 0
-          : Math.round(
-              (((100 * count) / 6) * 2 ** (finishers - rewardOrder.indexOf(player.userId) - 1)) /
-                (2 ** finishers - 1),
-            ),
-      })),
+      players: result.players.map((player) => ({ ...player })),
     };
   }
 }

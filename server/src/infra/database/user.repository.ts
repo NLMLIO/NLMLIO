@@ -47,7 +47,6 @@ export function toPublicUser(user: UserAccount): PublicUser {
     username: user.username,
     nickname: user.nickname,
     createdAt: user.createdAt.toISOString(),
-    point: user.point,
   };
 }
 

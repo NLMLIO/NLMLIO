@@ -11,7 +11,7 @@ interface GameResultProps {
   busy?: boolean;
 }
 
-/** 게임 결과 · 최종 순위(FUNC-005-10)와 획득 포인트(FUNC-006-01) */
+/** 게임 결과 · 최종 순위(FUNC-005-10) */
 export function GameResult({
   ranking,
   onLobby,
@@ -33,7 +33,6 @@ export function GameResult({
         <p className="result-ranking-head" aria-hidden="true">
           <span>RANK</span>
           <span>PLAYER</span>
-          {ranking.some((entry) => entry.points !== undefined) && <span>POINT</span>}
         </p>
         <ol>
           {ranking.map((entry) => (
@@ -45,9 +44,6 @@ export function GameResult({
                 {entry.isMe && <small>YOU</small>}
                 {entry.departed && <small className="departed">이탈</small>}
               </span>
-              {entry.points !== undefined && (
-                <span className="result-points">+{entry.points.toLocaleString()} P</span>
-              )}
             </li>
           ))}
         </ol>

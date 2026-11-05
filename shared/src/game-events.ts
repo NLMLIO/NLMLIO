@@ -48,7 +48,6 @@ export interface GameResultEntry {
   nickname: string;
   rank: number;
   departed: boolean;
-  pointDelta: number;
   bellSuccess: number;
   bellFail: number;
   reactionSumMs: number;

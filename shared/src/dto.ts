@@ -13,7 +13,6 @@ export interface PublicUser {
   username: string;
   nickname: string;
   createdAt: string;
-  point: number;
 }
 
 export interface PlayerStats {
@@ -40,7 +39,6 @@ export interface GameHistoryItem {
   playedAt: string;
   players: number;
   rank: number;
-  point: number;
   departed: boolean;
 }
 
