@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ErrorCode } from '@nlmlio/shared';
+import { ErrorCode, RANKING_LIMIT } from '@nlmlio/shared';
 import type { HistoryResponse, RankingResponse } from '@nlmlio/shared';
 import type { UserAccount } from '../../domain/user/account';
 import { PlayerStatistics } from '../../domain/user/player-statistics';
@@ -31,12 +31,13 @@ export class RankingService {
   async ranking(account: UserAccount, page: number, pageSize: number): Promise<RankingResponse> {
     const result = await this.standings.ranking(account.id, page, pageSize);
     if (!result.me) throw appError(ErrorCode.USER_NOT_FOUND);
+    // total은 전체 회원 수, 쪽 수는 목록에 보이는 상위 RANKING_LIMIT명 기준이다.
     return {
       items: result.items,
       total: result.total,
       page,
       pageSize,
-      totalPages: Math.ceil(result.total / pageSize),
+      totalPages: Math.ceil(Math.min(result.total, RANKING_LIMIT) / pageSize),
       me: result.me,
     };
   }

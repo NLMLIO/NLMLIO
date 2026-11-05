@@ -213,7 +213,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `client/src/components/`, `hooks/`, `styles/`: 통계·페이지네이션·오류 UI와 조회 훅, 공통 스타일.
 - `server/tsconfig.seed.json`: Prisma 7 생성 코드의 `.js` import를 ts-node에서 원본 `.ts`로 해석하는 seed 전용 설정.
 
-위 구현에서 전적·포인트의 영속 원본은 PostgreSQL이다. 개인 통계는 전체 `GameResult` 합계로 계산하며 페이지 크기에 영향을 받지 않는다. Redis의 `ranking`·`user:{id}:history`는 이번 구현에 필수 캐시로 추가하지 않는다. 글로벌 랭킹은 승수 내림차순·패수 오름차순, 동률이면 가입일·ID 오름차순으로 계산한다. 기록이 없으면 0승 0패이며, 중도 이탈은 패배로 센다.
+위 구현에서 전적·포인트의 영속 원본은 PostgreSQL이다. 개인 통계는 전체 `GameResult` 합계로 계산하며 페이지 크기에 영향을 받지 않는다. Redis의 `ranking`·`user:{id}:history`는 이번 구현에 필수 캐시로 추가하지 않는다. 글로벌 랭킹은 승수 내림차순·승률 내림차순, 동률이면 가입일·ID 오름차순으로 계산하고, 목록은 상위 `RANKING_LIMIT`(100)위까지만 준다. 내 순위는 범위 밖이어도 `me`로 함께 준다. 기록이 없으면 0승 0패이며, 중도 이탈은 패배로 센다.
 
 - `server/src/domain` → 아무것도 import하지 않는다(`shared` 타입 제외). `@Injectable` 등 Nest 데코레이터도 붙이지 않는다.
 - Controller·Gateway는 **입력 검증·인증·이벤트 변환만** 하고 Service를 호출한다. 규칙은 Service → domain 클래스에 맡긴다.

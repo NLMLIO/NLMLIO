@@ -10,6 +10,13 @@ function ordinal(rank: number): string {
   return `${rank}${endings[(number - 20) % 10] ?? endings[number] ?? endings[0]}`;
 }
 
+/** 디자인 표기 `10.20 14:12`. */
+function playedAt(iso: string): string {
+  const date = new Date(iso);
+  const two = (value: number) => String(value).padStart(2, '0');
+  return `${two(date.getMonth() + 1)}.${two(date.getDate())} ${two(date.getHours())}:${two(date.getMinutes())}`;
+}
+
 export function HistoryPage() {
   const [page, setPage] = useState(1);
   const { data, error, loading, reload } = useApiResource<HistoryResponse>(
@@ -23,20 +30,19 @@ export function HistoryPage() {
         <>
           <Stats stats={data.stats} />
           <div className="table-scroll">
-            <table className="history-table">
+            <table className="records-table history-table">
               <thead>
                 <tr>
                   <th scope="col">DATE</th>
                   <th scope="col">ROOM</th>
                   <th scope="col">PLAYERS</th>
                   <th scope="col">RANK</th>
-                  <th scope="col">POINT</th>
                 </tr>
               </thead>
               <tbody>
                 {data.items.length === 0 ? (
                   <tr>
-                    <td className="empty-state" colSpan={5}>
+                    <td className="empty-state" colSpan={4}>
                       아직 플레이한 게임이 없습니다.
                     </td>
                   </tr>
@@ -44,31 +50,12 @@ export function HistoryPage() {
                   data.items.map((item) => (
                     <tr key={item.gameId}>
                       <td>
-                        <time dateTime={item.playedAt}>
-                          {new Intl.DateTimeFormat('ko-KR', {
-                            month: '2-digit',
-                            day: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            hourCycle: 'h23',
-                          }).format(new Date(item.playedAt))}
-                        </time>
+                        <time dateTime={item.playedAt}>{playedAt(item.playedAt)}</time>
                       </td>
                       <td>{item.roomName}</td>
-                      <td>{item.players}</td>
-                      <td className={item.rank === 1 && !item.departed ? 'lime' : ''}>
+                      <td className="muted">{item.players}</td>
+                      <td className={item.departed ? 'muted' : item.rank === 1 ? 'lime' : ''}>
                         {item.departed ? '이탈' : ordinal(item.rank)}
-                      </td>
-                      <td
-                        className={
-                          item.rank === 1 && !item.departed
-                            ? 'lime'
-                            : item.point === 0
-                              ? 'muted'
-                              : ''
-                        }
-                      >
-                        {item.point > 0 ? `+${item.point}` : item.point}
                       </td>
                     </tr>
                   ))

@@ -26,6 +26,23 @@ export function PageState({
   return null;
 }
 
+/** 맨 앞·맨 뒤 쪽과 현재 쪽 앞뒤 2쪽. 사이에 한 쪽만 빠지면 줄임표 대신 그 번호를 보인다. */
+export function pageItems(page: number, totalPages: number): (number | 'gap')[] {
+  const shown = new Set([1, totalPages]);
+  for (let near = page - 2; near <= page + 2; near++) {
+    if (near >= 1 && near <= totalPages) shown.add(near);
+  }
+  const items: (number | 'gap')[] = [];
+  let previous = 0;
+  for (const current of [...shown].sort((a, b) => a - b)) {
+    if (current - previous === 2) items.push(current - 1);
+    else if (current - previous > 2) items.push('gap');
+    items.push(current);
+    previous = current;
+  }
+  return items;
+}
+
 export function Pagination({
   page,
   totalPages,
@@ -38,14 +55,27 @@ export function Pagination({
   if (totalPages <= 1) return null;
   return (
     <nav className="pagination" aria-label="페이지 이동">
-      <button className="button outline" disabled={page <= 1} onClick={() => onChange(page - 1)}>
+      <button className="page-step" disabled={page <= 1} onClick={() => onChange(page - 1)}>
         이전
       </button>
-      <span>
-        {page} / {totalPages}
-      </span>
+      {pageItems(page, totalPages).map((item, index) =>
+        item === 'gap' ? (
+          <span key={`gap-${index}`} className="page-gap" aria-hidden="true">
+            …
+          </span>
+        ) : (
+          <button
+            key={item}
+            className="page-number"
+            aria-current={item === page ? 'page' : undefined}
+            onClick={() => onChange(item)}
+          >
+            {item}
+          </button>
+        ),
+      )}
       <button
-        className="button outline"
+        className="page-step"
         disabled={page >= totalPages}
         onClick={() => onChange(page + 1)}
       >
