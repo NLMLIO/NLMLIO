@@ -1,36 +1,51 @@
-import { useState, type FormEvent } from 'react';
-import { CHAT_MAX_LENGTH } from '@nlmlio/shared';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { CHAT_MAX_LENGTH, ChatEmoji } from '@nlmlio/shared';
+import type { ChatEmojiCode } from '@nlmlio/shared';
 import type { LogEntry } from './game-view';
 import { playerColorStyle } from './PlayerSeat';
 
-/** 미리 정해진 감정표현(FUNC-004-02) */
-export const EMOTES = ['ㅋㅋ', 'GG', '!!', '?!', 'ㅠㅠ', '굿'] as const;
+/** 미리 정해진 감정표현(FUNC-004-02). 서버 허용 목록과 같다 */
+const EMOTE_CODES = Object.keys(ChatEmoji) as ChatEmojiCode[];
 
 interface GameChatProps {
   log: LogEntry[];
-  onSendChat: (text: string) => void;
-  onSendEmote: (emote: string) => void;
+  /** 보냈으면 null, 실패하면 안내 문구 */
+  onSendChat: (text: string) => Promise<string | null> | void;
+  onSendEmote: (emote: ChatEmojiCode) => Promise<string | null> | void;
 }
 
 /** 오른쪽 채팅·게임 로그 패널 */
 export function GameChat({ log, onSendChat, onSendEmote }: GameChatProps) {
   const [draft, setDraft] = useState('');
-  function submit(event: FormEvent) {
+  const [error, setError] = useState('');
+  const [sending, setSending] = useState(false);
+  const listRef = useRef<HTMLOListElement>(null);
+  useEffect(() => {
+    listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
+  }, [log]);
+  async function submit(event: FormEvent) {
     event.preventDefault();
     const text = draft.trim();
-    if (!text) return;
-    onSendChat(text);
-    setDraft('');
+    if (!text || sending) return;
+    setSending(true);
+    const failure = (await onSendChat(text)) ?? null;
+    setSending(false);
+    setError(failure ?? '');
+    if (!failure) setDraft('');
+  }
+  async function emote(code: ChatEmojiCode) {
+    setError((await onSendEmote(code)) ?? '');
   }
   return (
     <aside className="game-chat" aria-label="채팅">
       <h2 className="game-chat-title">CHAT · LOG</h2>
-      <ol className="game-log" aria-live="polite">
+      <ol className="game-log" aria-live="polite" ref={listRef}>
         {log.map((entry) => (
           <li key={entry.id} className={`log-${entry.kind}`}>
             {entry.kind === 'chat' && (
               <>
                 <b style={playerColorStyle(entry.color)}>{entry.nickname}</b>
+                {entry.spectator && <small className="log-tag">관전</small>}
                 <span>{entry.text}</span>
               </>
             )}
@@ -46,18 +61,24 @@ export function GameChat({ log, onSendChat, onSendEmote }: GameChatProps) {
       </ol>
       <div className="game-chat-footer">
         <div className="emote-row" aria-label="감정표현">
-          {EMOTES.map((emote) => (
+          {EMOTE_CODES.map((code) => (
             <button
-              key={emote}
+              key={code}
               type="button"
               className="emote-chip"
-              onClick={() => onSendEmote(emote)}
+              aria-label={`이모티콘 ${ChatEmoji[code]}`}
+              onClick={() => void emote(code)}
             >
-              {emote}
+              {ChatEmoji[code]}
             </button>
           ))}
         </div>
-        <form className="chat-form" onSubmit={submit}>
+        {error && (
+          <p className="game-chat-error" role="alert">
+            {error}
+          </p>
+        )}
+        <form className="chat-form" onSubmit={(event) => void submit(event)}>
           <input
             aria-label="메시지"
             placeholder="메시지 입력"

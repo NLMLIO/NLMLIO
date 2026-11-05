@@ -99,6 +99,13 @@
   color: var(--text-primary);
   border-color: var(--text-secondary);
 }
+.game-chip.sound-toggle {
+  left: 910px;
+  width: 73px;
+}
+.game-chip.sound-toggle[aria-pressed='true'] {
+  color: var(--text-disabled);
+}
 .game-table {
   position: absolute;
   top: 175px;
@@ -138,6 +145,31 @@
 }
 .fruit-card-cell img {
   display: block;
+}
+/* 카드가 새로 공개될 때 뒤집히듯 나타난다(FUNC-005-12) */
+.table-card .fruit-card {
+  animation: card-flip 0.22s ease-out;
+}
+@keyframes card-flip {
+  from {
+    transform: perspective(600px) rotateY(90deg) scale(0.92);
+  }
+  to {
+    transform: perspective(600px) rotateY(0) scale(1);
+  }
+}
+.auto-tag {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  padding: 1px 6px;
+  color: var(--text-on-accent);
+  background: var(--text-secondary);
+  border-radius: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  transform: translateX(-50%);
 }
 .fruit-card-slot {
   border: 1.5px dashed var(--border-divider);
@@ -246,6 +278,23 @@
 }
 .player-seat.out {
   opacity: 0.45;
+}
+.player-seat.is-turn .player-avatar {
+  box-shadow:
+    0 0 0 3px var(--bg-base),
+    0 0 0 5px var(--accent-primary);
+}
+.player-emote {
+  animation: emote-pop 0.18s ease-out;
+}
+.player-emote.my-emote {
+  top: -22px;
+  left: 36px;
+}
+@keyframes emote-pop {
+  from {
+    transform: scale(0.6);
+  }
 }
 .player-seat.offline {
   opacity: 0.55;
@@ -684,29 +733,24 @@
 .emote-chip:hover {
   background: var(--border-default);
 }
-/* ㅋㅋ · GG · !! · ?! · ㅠㅠ · 굿 */
-.emote-chip:nth-child(1),
-.emote-chip:nth-child(5) {
-  width: 43px;
+/* 😂 · 😢 · 😮 · 👏 · 👍 (서버 허용 목록, FUNC-004-02) */
+.emote-chip {
+  width: 40px;
   font-family: var(--font-text);
-  font-size: 15px;
-  line-height: 1.6;
+  font-size: 18px;
+  line-height: 1.4;
 }
-.emote-chip:nth-child(2) {
-  width: 37px;
+.game-chat-error {
+  margin: -4px 24px 0 0;
+  color: var(--text-danger);
+  font-size: 12px;
+  line-height: 1.4;
 }
-.emote-chip:nth-child(3) {
-  width: 29px;
-}
-.emote-chip:nth-child(4),
-.emote-chip:nth-child(6) {
-  width: 32px;
-}
-.emote-chip:nth-child(6) {
-  font-family: var(--font-text);
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1.5;
+.log-tag {
+  margin-right: 6px;
+  color: var(--text-disabled);
+  font-family: var(--font-mono);
+  font-size: 11px;
 }
 .chat-form {
   display: flex;
@@ -853,6 +897,87 @@
   width: 40px;
   height: 40px;
   font-size: 18px;
+}
+.result-points {
+  margin-left: auto;
+  padding-right: 28px;
+  color: var(--accent-primary);
+  font-family: var(--font-mono);
+  font-size: 16px;
+  line-height: 1.4;
+}
+.result-ranking-head span:last-child:not(:nth-child(2)) {
+  margin-left: auto;
+  padding-right: 28px;
+}
+.result-player small.departed {
+  color: var(--text-danger);
+}
+.game-result-notice {
+  margin-top: -16px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.game-result-actions .button:disabled {
+  opacity: 0.5;
+}
+/* 게임 화면 안 확인 창(게임 중 나가기 FUNC-003-06) */
+.game-confirm-dim {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 8, 11, 0.72);
+}
+.game-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 420px;
+  padding: 28px;
+  background: var(--bg-surface);
+  border: 0.8px solid var(--border-default);
+  border-radius: 2px;
+}
+.game-confirm h2 {
+  font-size: 20px;
+  line-height: 1.4;
+}
+.game-confirm p {
+  color: var(--text-body);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.game-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+.game-confirm-actions .button {
+  min-height: 42px;
+  padding: 0 18px;
+  font-size: 14px;
+}
+.game-confirm-actions .button.danger {
+  color: var(--text-on-accent);
+  background: var(--status-danger);
+  border-color: var(--status-danger);
+}
+.game-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  width: 100%;
+  height: 100%;
+  color: var(--text-secondary);
+  background: var(--bg-base);
+  font-size: 15px;
 }
 .result-player small {
   color: var(--accent-primary);

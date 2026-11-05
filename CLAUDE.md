@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 이 저장소에서 작업하는 Claude Code(및 다른 코딩 에이전트)를 위한 안내서다. 작업을 시작하기 전에 끝까지 읽고 아래 규칙을 따른다.
 
-> **현재 상태**: 인증, 프로필·전적·랭킹, 로비·실시간 대기실·채팅, 게임 서버 엔진(FUNC-005-01~13,15,16)을 구현했다. 게임 화면은 미리보기이고 서버 이벤트 연결·효과음은 후속 프론트엔드 작업이다. 게임 서버 계약과 Redis 키는 `server/GAME.md`를 본다.
+> **현재 상태**: 인증, 프로필·전적·랭킹, 로비·실시간 대기실·채팅, 게임 서버 엔진(FUNC-005-01~13,15,16)과 실시간 게임 화면·효과음(005-14)을 구현했다. 게임 서버 계약과 Redis 키는 `server/GAME.md`를 본다.
 
 ## 명령어
 
@@ -201,11 +201,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `server/src/domain/room/room.ts`: 방 규칙(입장 순서, 참가자 6·관전자 10 칸, 자리 이동, 추방, 방장 위임·승계, 게임 시작). 규칙 위반은 `RoomRuleError(앱 에러 코드)`로 던지고 서비스가 HTTP·소켓 응답으로 바꾼다.
 - `server/src/modules/room`: HTTP `POST /api/rooms`, `POST /api/rooms/join`, `GET /api/rooms/me`, `POST /api/rooms/me/leave`와 `RoomGateway`(소켓 인증 미들웨어, 방 의도 이벤트). `RoomEvents`가 소켓 채널 `user:{id}`·`room:{code}`로 상태를 내보낸다. 방은 서버 메모리(`infra/game-state/room.store.ts`), 코드 예약은 Redis `room-code:{code}`(SET NX, TTL 24시간). 모든 방은 비공개다(2026-10-22 결정).
 - `server/src/common/ws-ack.filter.ts`, `ws-validation.pipe.ts`, `socket-user.ts`: 소켓 이벤트 예외를 ack `{ ok: false, code }`로 돌려주고, 페이로드를 HTTP와 같은 규칙으로 검증한다.
-- `client/src/socket/socket.ts`, `stores/room-store.ts`: 로그인한 동안 소켓 하나를 유지하고(토큰 만료 시 재발급 후 재연결), 서버 이벤트로만 방 스토어를 갱신한다. 의도는 `sendIntent`로 보내고 ack를 기다린다.
+- `client/src/socket/socket.ts`, `stores/room-store.ts`: 로그인한 동안 소켓 하나를 유지하고(토큰 만료 시 재발급 후 재연결), 서버 이벤트로만 방 스토어를 갱신한다. 의도는 `sendIntent`로 보내고 ack를 기다린다. 연결 중 토큰이 만료돼 ack가 `TOKEN_EXPIRED`·`TOKEN_INVALID`면 재발급 → 새 토큰으로 재연결 → 한 번 다시 보낸다.
 - `client/src/pages/lobby/LobbyPage.tsx`, `CreateRoomPage.tsx`, `pages/room/WaitingRoomPage.tsx`, `RoomChat.tsx`(채팅·이모티콘·방 안내): 로비(`#lobby`, 기본 화면), 방 만들기(`#create-room`), 대기실(`#room`, 상단 메뉴 없이 전체 화면).
 - `server/src/modules/chat/`: Socket.io 인증·방 소속 검증, 텍스트/이모티콘 DTO, Redis Pub/Sub 전달과 사용자별 전송 제한. 방 소속 정보는 `RoomService`만 조회한다.
 - `shared/src/events.ts`: 채팅 Socket.io 이벤트 이름, 페이로드, 허용 이모티콘과 Ack 타입.
-- `client/src/pages/game/`, `styles/game.css`, `assets/game/`: Figma NLML_design 「03 · 게임」 화면 9개 퍼블리싱(FUNC-005). `GameView`(서버 상태를 그대로 담는 화면 모델)를 받아 그리는 컴포넌트와, 엔진이 없는 동안 쓰는 미리보기(`#game/<장면>`, `preview-scenes.ts`). 1440×900 좌표계로 그리고 `hooks/use-fit-scale.ts`로 창에 맞춘다. 단축키는 `hooks/use-game-shortcuts.ts`(J 카드 내기, Space 종).
+- `client/src/pages/game/`, `styles/game.css`, `assets/game/`: Figma NLML_design 「03 · 게임」 화면(FUNC-005). `GamePage`(`#game`)가 `stores/game-store.ts`의 서버 스냅샷을 `to-game-view.ts`로 `GameView`(화면 모델)에 옮겨 그리고, 카드 내기·종·결과 확인은 `socket.ts`의 `sendGameIntent`로 보낸다. 게임이 시작되거나 진행 중인 게임에 다시 연결되면 `App`이 `#game`으로 옮긴다. 개발 서버에서는 고정 장면 미리보기(`#game-preview/<장면>`, `preview-scenes.ts`)도 볼 수 있다. 1440×900 좌표계로 그리고 `hooks/use-fit-scale.ts`로 창에 맞춘다. 단축키는 `hooks/use-game-shortcuts.ts`(J 카드 내기, Space 종).
+- `client/src/stores/game-store.ts`: `game:state`·`game:action`의 거울. 같은 게임의 낮은 revision은 버리고, 스냅샷의 `serverTime`으로 서버 시계 차이를 추정한다. 플레이어별 마지막 카드 공개(`lastCards`)로 뒤집기 key와 '자동' 표시를 유지한다. 게임 진행 로그는 채팅과 같은 순서로 `room-store` 로그에 쌓는다.
+- `client/src/audio/sounds.ts`, `public/sounds/`: Howler 효과음(FUNC-005-14). 앱 시작 시 preload, 첫 입력에서 오디오 활성화, 음소거는 localStorage. 효과음은 `client/scripts/generate-sounds.mjs`로 합성한 자체 제작물이다(`public/sounds/LICENSES.md`).
 - `server/src/infra/database/*repository.ts`: Prisma 타입·쿼리와 트랜잭션을 캡슐화. `RankingRepository`는 전체 경기의 승패를 SQL에서 집계해 목록과 내 순위를 같은 기준으로 계산한다.
 - `client/src/pages/auth`, `mypage`, `ranking`: 요청 이미지에 맞춘 화면. `api/http.ts`는 단일 Refresh 요청과 한 번의 HTTP 재시도를 담당한다.
 - `client/src/components/`, `hooks/`, `styles/`: 통계·페이지네이션·오류 UI와 조회 훅, 공통 스타일.
@@ -340,7 +342,7 @@ C→S 이벤트는 ack로 `{ ok: true }` 또는 `{ ok: false, code }`를 받는�
 | C→S | `card:play` | `{ gameId, turnId }` → `GameAck` | 005-12,13 |
 | C→S | `bell:ring` | `{ gameId, turnSeq }` → `GameAck` | 005-06,07,08 |
 | C→S | `game:sync`, `game:return` | `{}` → `GameAck` | 003-07,005-10 |
-| S→C | `game:state` | `GameSnapshot \| null` (숨긴 덱은 개수만) | 005 |
+| S→C | `game:state` | `GameStateEvent \| null` (숨긴 덱은 개수만, 보낸 서버 시각 `serverTime`) | 005 |
 | S→C | `game:action` | `GameAction` (카드·종·이탈·연결 상태) | 005 |
 | S→C | `room:state` | `RoomResponse \| null` 연결 직후와 방이 바뀔 때마다 전체 상태 | 003 |
 | S→C | `room:notice` | 입장·퇴장·이동·추방·방장 변경·게임 시작 안내 | 003 |

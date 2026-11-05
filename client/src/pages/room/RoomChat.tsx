@@ -7,7 +7,7 @@ import { colorOf } from './member-color';
 
 const EMOJI_CODES = Object.keys(ChatEmoji) as ChatEmojiCode[];
 
-function noticeText(notice: RoomNotice): string {
+export function noticeText(notice: RoomNotice): string {
   switch (notice.type) {
     case 'joined':
       return `${notice.nickname}님이 입장했습니다.`;
@@ -49,7 +49,8 @@ export function RoomChat({ room }: { room: RoomResponse }) {
       <p className="mono-label room-chat-title">CHAT</p>
       <ol className="room-chat-log" ref={listRef} aria-live="polite">
         {log.map((entry) =>
-          entry.kind === 'notice' ? (
+          // 게임 진행 기록은 게임 화면 로그에만 보여 준다.
+          entry.kind === 'game' ? null : entry.kind === 'notice' ? (
             <li key={entry.id} className="chat-notice">
               {noticeText(entry.notice)}
             </li>

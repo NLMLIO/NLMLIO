@@ -555,7 +555,7 @@ td {
   gap: clamp(28px, 4vw, 56px);
   padding-left: 8px;
 }
-.fruit-card {
+.fruit-cards .fruit-card {
   position: relative;
   flex-shrink: 0;
   width: clamp(104px, 9vw, 136px);
@@ -567,24 +567,24 @@ td {
     7px 7px 0 -1px #141419,
     7px 7px 0 0 #2c2c35;
 }
-.fruit-card.strawberry {
+.fruit-cards .fruit-card.strawberry {
   color: #ff4f86;
   transform: rotate(-6deg);
 }
-.fruit-card.lime {
+.fruit-cards .fruit-card.lime {
   color: var(--lime);
   transform: translateY(-14px) rotate(-3deg);
 }
-.fruit-card.plum {
+.fruit-cards .fruit-card.plum {
   color: #b07cff;
   transform: rotate(3deg);
 }
-.fruit-card span {
+.fruit-cards .fruit-card span {
   position: absolute;
   width: 26%;
   transform: translate(-50%, -50%);
 }
-.fruit-card svg {
+.fruit-cards .fruit-card svg {
   display: block;
   width: 100%;
   stroke: currentColor;

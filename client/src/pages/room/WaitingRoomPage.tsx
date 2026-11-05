@@ -167,7 +167,7 @@ export function WaitingRoomPage({ userId, onLeft }: { userId: number; onLeft: ()
 
         {!waiting && (
           <p className="room-banner" role="status">
-            게임이 시작됐어요. 게임 화면은 아직 준비 중이에요.
+            게임이 진행 중이에요. <a href="#game">게임 화면으로 돌아가기</a>
           </p>
         )}
 

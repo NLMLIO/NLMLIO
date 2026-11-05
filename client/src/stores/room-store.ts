@@ -1,9 +1,17 @@
 import { create } from 'zustand';
-import type { ChatEmojiCode, ChatMessageEvent, RoomNotice, RoomResponse } from '@nlmlio/shared';
+import type {
+  ChatEmojiCode,
+  ChatMessageEvent,
+  GameActionEvent,
+  RoomNotice,
+  RoomResponse,
+} from '@nlmlio/shared';
 
+/** 채팅·방 안내·게임 진행을 받은 순서대로 한 기록에 쌓는다. 문구는 화면이 정한다. */
 export type LogEntry =
   | { id: number; kind: 'notice'; notice: RoomNotice }
-  | ({ id: number; kind: 'chat' } & ChatMessageEvent);
+  | ({ id: number; kind: 'chat' } & ChatMessageEvent)
+  | { id: number; kind: 'game'; action: GameActionEvent; nickname: string };
 
 interface RoomState {
   connected: boolean;
@@ -51,6 +59,9 @@ export const roomActions = {
   },
   chat(message: ChatMessageEvent) {
     append({ id: nextId++, kind: 'chat', ...message });
+  },
+  game(action: GameActionEvent, nickname: string) {
+    append({ id: nextId++, kind: 'game', action, nickname });
   },
   emoji(userId: number, emoji: ChatEmojiCode) {
     const id = nextId++;

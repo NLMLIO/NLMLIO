@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
+import { GameStatus } from '@nlmlio/shared';
 import type { AuthResponse, PublicUser } from '@nlmlio/shared';
 import { api, refreshSession, setAccessToken } from './api/http';
 import { connectSocket, disconnectSocket } from './socket/socket';
+import { useGameStore } from './stores/game-store';
 import { roomActions, useRoomStore } from './stores/room-store';
 import { AuthPage } from './pages/auth/AuthPage';
+import { GamePage } from './pages/game/GamePage';
 import { GamePreviewPage } from './pages/game/GamePreviewPage';
 import { CreateRoomPage } from './pages/lobby/CreateRoomPage';
 import { LobbyPage } from './pages/lobby/LobbyPage';
@@ -14,10 +17,20 @@ import { WaitingRoomPage } from './pages/room/WaitingRoomPage';
 import './styles/app.css';
 import './styles/game.css';
 
-const PAGES = ['lobby', 'mypage', 'history', 'ranking', 'create-room', 'room', 'game'] as const;
+const PAGES = [
+  'lobby',
+  'mypage',
+  'history',
+  'ranking',
+  'create-room',
+  'room',
+  'game',
+  // 개발 서버 전용: 고정 상태로 게임 화면 장면을 확인한다(#game-preview/<장면>).
+  ...(import.meta.env.DEV ? (['game-preview'] as const) : []),
+] as const;
 type Page = (typeof PAGES)[number];
 function pageFromHash(): Page {
-  // #game/my-turn 처럼 '/' 뒤는 페이지 안에서 쓰는 값이다.
+  // #game-preview/my-turn 처럼 '/' 뒤는 페이지 안에서 쓰는 값이다.
   const page = location.hash.slice(1).split('/')[0];
   return PAGES.find((name) => name === page) ?? 'lobby';
 }
@@ -30,7 +43,16 @@ export function App() {
   const [lobbyNotice, setLobbyNotice] = useState('');
   const kicked = useRoomStore((state) => state.kicked);
   const leaveCreateRoom = useCallback(() => navigate('lobby'), []);
+  const toLobby = useCallback(() => navigate('lobby'), []);
+  const toWaitingRoom = useCallback(() => navigate('room'), []);
+  // 게임이 시작되거나 진행 중인 게임에 다시 연결되면 게임 화면으로 옮긴다(005-01, 003-07).
+  const liveGameId = useGameStore((state) =>
+    state.snapshot?.status === GameStatus.PLAYING ? state.snapshot.gameId : null,
+  );
   const loggedIn = user !== null;
+  useEffect(() => {
+    if (liveGameId && page !== 'game' && page !== 'game-preview') navigate('game');
+  }, [liveGameId, page]);
   useEffect(() => {
     if (!loggedIn) return;
     connectSocket();
@@ -98,9 +120,9 @@ export function App() {
   if (page === 'room') return <WaitingRoomPage userId={user.id} onLeft={() => navigate('lobby')} />;
   // 게임 화면은 상단 메뉴 없이 창 전체를 쓴다.
   if (page === 'game')
-    return (
-      <GamePreviewPage onExit={() => navigate('lobby')} onWaitingRoom={() => navigate('room')} />
-    );
+    return <GamePage user={user} onLobby={toLobby} onWaitingRoom={toWaitingRoom} />;
+  if (page === 'game-preview')
+    return <GamePreviewPage onExit={toLobby} onWaitingRoom={toWaitingRoom} />;
   return (
     <div className="app-shell">
       <header className="site-header">

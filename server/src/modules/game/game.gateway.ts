@@ -18,7 +18,7 @@ import { WsAckFilter } from '../../common/ws-ack.filter';
 import { wsValidationPipe } from '../../common/ws-validation.pipe';
 import { UserRepository } from '../../infra/database/user.repository';
 import { CardPlayDto, BellRingDto, EmptyGameDto } from './dto/game.dto';
-import { GameEvents } from './game.events';
+import { GameEvents, stamped } from './game.events';
 import { GameService } from './game.service';
 
 @WebSocketGateway()
@@ -40,7 +40,7 @@ export class GameGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     void this.games
       .connected(userId, socket.id)
       .then(() => {
-        socket.emit(GameServerEvent.STATE, this.games.sync(userId));
+        socket.emit(GameServerEvent.STATE, stamped(this.games.sync(userId)));
       })
       .catch(() => this.logger.warn('Game connection sync failed'));
   }
@@ -83,7 +83,7 @@ export class GameGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     @MessageBody() _input: EmptyGameDto,
   ): Promise<GameAck> {
     await this.authorize(socket);
-    socket.emit(GameServerEvent.STATE, this.games.sync(socketUser(socket).userId));
+    socket.emit(GameServerEvent.STATE, stamped(this.games.sync(socketUser(socket).userId)));
     return { ok: true };
   }
   @SubscribeMessage(GameClientEvent.RETURN)

@@ -159,34 +159,25 @@ export const PREVIEW_SCENES = {
     ],
   },
   /** 07B · 종 판정 · 오발 */
-  // 오발 벌칙(FUNC-005-08): 바나나킥이 덱 맨 위 카드를 다음 자리부터(자두씨 → 과일왕 → 딸기러버) 1장씩 준다.
-  // 테이블 카드와 보관 스택은 그대로다.
+  // 오발 벌칙(FUNC-005-08, 2026-11-04 첨부 명세): 바나나킥의 덱 1장과 테이블 카드 전체가 종 아래 보관 스택으로 간다.
   'bell-misfire': {
     roomName: ROOM_NAME,
     players: [
       player('me', '과일왕', 'lime', 14, card('BANANA', 1)),
-      player('p1', '딸기러버', 'strawberry', 18, card('STRAWBERRY', 4), {
-        outcome: { tone: 'receive', label: '+1' },
+      player('p1', '딸기러버', 'strawberry', 17, card('STRAWBERRY', 4)),
+      player('p2', '바나나킥', 'banana', 4, card('BANANA', 2), {
+        outcome: { tone: 'misfire', label: '오발' },
       }),
-      player('p2', '바나나킥', 'banana', 2, card('BANANA', 2), {
-        outcome: { tone: 'misfire', label: '오발 −3' },
-      }),
-      player('p3', '자두씨', 'plum', 15, card('PLUM', 1), {
-        outcome: { tone: 'receive', label: '+1' },
-      }),
+      player('p3', '자두씨', 'plum', 14, card('PLUM', 1)),
     ],
     myPhase: 'judging',
-    pileCount: 4,
+    pileCount: 9,
     bell: { kind: 'misfire' },
-    banner: {
-      tone: 'danger',
-      messages: ['오발! 바나나킥 · 5개인 과일이 없어요', '다른 플레이어 3명에게 1장씩'],
-    },
     verdict: {
       tone: 'misfire',
       ringer: { nickname: '바나나킥', color: 'banana' },
       formula: '딸기 4 · 바나나 3 · 자두 1',
-      detail: '5개인 과일이 없어요 · 자두씨 → 과일왕 → 딸기러버에게 1장씩',
+      detail: '5개인 과일이 없어요 · 덱 1장과 테이블 카드, 모두 5장이 종 아래로',
     },
     log: [
       { kind: 'chat', id: 'l1', nickname: '바나나킥', color: 'banana', text: '바나나 2장' },
@@ -195,10 +186,9 @@ export const PREVIEW_SCENES = {
         id: 'l2',
         tone: 'danger',
         nickname: '바나나킥',
-        text: '오발 · 3명에게 1장씩',
+        text: '오발 · 5장 보관 스택으로',
       },
-      { kind: 'system', id: 'l3', text: '자두씨 · 과일왕 · 딸기러버 +1장' },
-      { kind: 'chat', id: 'l4', nickname: '딸기러버', color: 'strawberry', text: 'ㅋㅋ' },
+      { kind: 'chat', id: 'l3', nickname: '딸기러버', color: 'strawberry', text: 'ㅋㅋ' },
     ],
   },
   /** 16 · 게임 · 탈락 후 관전 */

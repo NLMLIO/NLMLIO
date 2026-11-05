@@ -1,6 +1,11 @@
 import type { Fruit } from './domain';
 import type { ErrorCode } from './errors';
 
+/** 차례마다 카드를 낼 수 있는 시간(FUNC-005-15). 넘기면 서버가 대신 낸다. */
+export const TURN_TIME_MS = 10_000;
+/** 게임 중 연결이 끊긴 뒤 이탈 처리까지 기다리는 시간(FUNC-003-07) */
+export const GAME_RECONNECT_GRACE_MS = 5_000;
+
 export const GameStatus = { PLAYING: 'PLAYING', ENDED: 'ENDED' } as const;
 export type GameStatus = (typeof GameStatus)[keyof typeof GameStatus];
 export const GamePlayerStatus = {
@@ -70,6 +75,8 @@ export interface GameSnapshot {
   results: GameResultEntry[];
   settled: boolean;
 }
+/** `game:state` 페이로드. 보낼 때의 서버 시각을 붙여 클라이언트가 시계 차이를 잰다. */
+export type GameStateEvent = GameSnapshot & { serverTime: number };
 export type GameAction =
   | { kind: 'card'; userId: number; card: GameCard; automatic: boolean }
   | {
@@ -90,6 +97,6 @@ export interface GameClientToServerEvents {
   'game:return': (payload: Record<string, never>, ack: (result: GameAck) => void) => void;
 }
 export interface GameServerToClientEvents {
-  'game:state': (state: GameSnapshot | null) => void;
+  'game:state': (state: GameStateEvent | null) => void;
   'game:action': (action: GameActionEvent) => void;
 }

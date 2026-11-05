@@ -93,6 +93,12 @@ const MESSAGES: Partial<Record<ErrorCode, string>> = {
   USER_NOT_FOUND: '이미 방을 나간 회원이에요.',
   CHAT_TOO_LONG: '메시지는 1~200자로 보내주세요.',
   RATE_LIMITED: '너무 빨리 보내고 있어요. 잠시 후 다시 보내주세요.',
+  NOT_YOUR_TURN: '내 차례가 아니에요.',
+  SPECTATOR_FORBIDDEN: '관전 중에는 카드를 내거나 종을 칠 수 없어요.',
+  GAME_NOT_FOUND: '진행 중인 게임이 없어요.',
+  GAME_ENDED: '이미 끝난 게임이에요.',
+  GAME_NOT_FINISHED: '아직 게임이 진행 중이에요.',
+  GAME_RESULT_PENDING: '결과를 저장하는 중이에요. 잠시 후 다시 시도해주세요.',
   INTERNAL_ERROR: '요청을 처리하지 못했습니다. 잠시 후 다시 시도해주세요.',
 };
 

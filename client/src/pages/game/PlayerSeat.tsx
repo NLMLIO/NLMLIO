@@ -2,7 +2,8 @@ import type { CSSProperties } from 'react';
 import type { PlayerColor, PlayerView, SeatOutcome } from './game-view';
 
 export function playerColorStyle(color: PlayerColor): CSSProperties {
-  return { '--player-color': `var(--fruit-${color})` } as CSSProperties;
+  const value = color.startsWith('#') ? color : `var(--fruit-${color})`;
+  return { '--player-color': value } as CSSProperties;
 }
 
 export function PlayerAvatar({ nickname, color }: { nickname: string; color: PlayerColor }) {
@@ -29,11 +30,18 @@ function seatBadge(player: PlayerView) {
   if (player.state === 'offline')
     return {
       className: 'offline wide',
-      label: `OFFLINE ${formatSeconds(player.offlineSeconds ?? 0)}`,
+      label:
+        player.offlineSeconds === undefined
+          ? 'OFFLINE'
+          : `OFFLINE ${formatSeconds(player.offlineSeconds)}`,
     };
   if (player.outcome)
     return { className: OUTCOME_BADGE_CLASS[player.outcome.tone], label: player.outcome.label };
-  if (player.isTurn) return { className: 'accent', label: 'TURN' };
+  if (player.isTurn)
+    return {
+      className: player.turnSeconds !== undefined && player.turnSeconds <= 3 ? 'danger' : 'accent',
+      label: player.turnSeconds === undefined ? 'TURN' : `TURN ${player.turnSeconds}s`,
+    };
   return null;
 }
 
@@ -49,10 +57,17 @@ export function PlayerSeat({
 }) {
   const badge = seatBadge(player);
   return (
-    <div className={`player-seat ${player.state}${growsUp ? ' grows-up' : ''}`} style={style}>
+    <div
+      className={`player-seat ${player.state}${player.isTurn ? ' is-turn' : ''}${growsUp ? ' grows-up' : ''}`}
+      style={style}
+    >
       <div className="player-seat-avatar">
         <PlayerAvatar nickname={player.nickname} color={player.color} />
-        {player.emote && <span className="player-emote">{player.emote}</span>}
+        {player.emote && (
+          <span key={player.emote} className="player-emote">
+            {player.emote}
+          </span>
+        )}
       </div>
       <p className="player-seat-name">{player.nickname}</p>
       <p className="deck-count" aria-label={`남은 카드 ${player.deckCount}장`}>

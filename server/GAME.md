@@ -1,6 +1,6 @@
 # 게임 서버 (FUNC-005)
 
-서버 범위는 FUNC-005-01~13, 15~16과 FUNC-006-01이다. 방 생성·참가·관전석·채팅에 게임 엔진을 연결했다. 게임 화면 미리보기의 서버 이벤트 연결과 Howler 효과음(005-14)은 프론트엔드 후속 작업이다.
+서버 범위는 FUNC-005-01~13, 15~16과 FUNC-006-01이다. 방 생성·참가·관전석·채팅에 게임 엔진을 연결했다. 클라이언트 게임 화면(`client/src/pages/game/GamePage.tsx`)이 아래 소켓 계약으로 붙어 있고, Howler 효과음(005-14)은 클라이언트가 낸다. 턴 시간(`TURN_TIME_MS`)과 게임 중 재접속 유예(`GAME_RECONNECT_GRACE_MS`)는 `shared/src/game-events.ts`에서 양쪽이 같이 쓴다.
 
 ## 규칙
 
@@ -33,7 +33,7 @@
 | C→S | `bell:ring` | `{ gameId, turnSeq }` |
 | C→S | `game:sync` | `{}` — 이 소켓에 현재 전체 상태 재전송 |
 | C→S | `game:return` | `{}` — 종료·정산 확인 후 이 소켓에 `game:state: null` |
-| S→C | `game:state` | `GameSnapshot \| null` |
+| S→C | `game:state` | `GameStateEvent \| null` — 스냅샷 + 보낸 순간의 서버 시각 `serverTime`(클라이언트 시계 차이 계산용) |
 | S→C | `game:action` | 카드 내기·종 판정·이탈·연결 변경 `GameActionEvent` (gameId·revision 포함) |
 
 Ack는 `{ ok: true }`, 지난 중복 요청이면 `{ ok: true, ignored: true }`, 실패면 `{ ok: false, code }`다. 연결 끊김으로 Ack가 오지 않으면 클라이언트는 시간 초과로 안내하고 `game:sync` 또는 재접속 후 상태를 확인해야 한다.
