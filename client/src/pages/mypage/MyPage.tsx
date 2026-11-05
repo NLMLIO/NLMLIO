@@ -35,10 +35,6 @@ export function MyPage({
         </div>
         <dl className="metric-grid primary-metrics">
           <div>
-            <dt>보유 포인트</dt>
-            <dd className="lime">{user.point.toLocaleString()}</dd>
-          </div>
-          <div>
             <dt>승패 기준 순위</dt>
             <dd>{rank.toLocaleString()}위</dd>
           </div>

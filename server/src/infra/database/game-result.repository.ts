@@ -21,29 +21,13 @@ export class GameResultRepository {
             endedAt: result.endedAt,
           },
         });
-        const reachedAt = new Date();
-        // Lock/update users in a deterministic order to avoid deadlocks across simultaneous games.
-        for (const player of [...result.players].sort(
-          (first, second) => first.userId - second.userId,
-        )) {
-          await tx.gameResult.create({
-            data: {
-              ...player,
-              userId: player.userId,
-              gameId: result.gameId,
-              playedAt: result.endedAt,
-            },
-          });
-          if (player.pointDelta > 0) {
-            await tx.user.update({
-              where: { id: player.userId },
-              data: {
-                point: { increment: player.pointDelta },
-                pointReachedAt: reachedAt,
-              },
-            });
-          }
-        }
+        await tx.gameResult.createMany({
+          data: result.players.map((player) => ({
+            ...player,
+            gameId: result.gameId,
+            playedAt: result.endedAt,
+          })),
+        });
       });
       return { saved: true };
     } catch (error) {

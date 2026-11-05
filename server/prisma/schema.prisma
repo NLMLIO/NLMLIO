@@ -1,5 +1,5 @@
 // DB 스키마의 유일한 원본. 바꾸면 `pnpm db:migrate --name <설명>`으로 마이그레이션을 만든다.
-// 모델(User, Game, GameResult, PointHistory …)은 기능을 구현하면서 추가한다.
+// 모델(User, Game, GameResult …)은 기능을 구현하면서 추가한다.
 
 generator client {
   provider     = "prisma-client"
@@ -12,18 +12,14 @@ datasource db {
 }
 
 model User {
-  id             Int          @id @default(autoincrement())
-  username       String       @unique @db.VarChar(20)
-  nickname       String       @unique @db.VarChar(10)
-  passwordHash   String
-  authVersion    Int          @default(0)
-  point          Int          @default(0)
-  pointReachedAt DateTime     @default(now())
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  results        GameResult[]
-
-  @@index([point(sort: Desc), pointReachedAt, createdAt, id])
+  id           Int          @id @default(autoincrement())
+  username     String       @unique @db.VarChar(20)
+  nickname     String       @unique @db.VarChar(10)
+  passwordHash String
+  authVersion  Int          @default(0)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  results      GameResult[]
 }
 
 model Game {
@@ -41,7 +37,6 @@ model GameResult {
   gameId        String
   userId        Int
   rank          Int
-  pointDelta    Int
   bellSuccess   Int      @default(0)
   bellFail      Int      @default(0)
   reactionSumMs Int      @default(0)

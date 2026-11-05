@@ -54,28 +54,13 @@ describe('PlayerStatistics', () => {
   });
 });
 
-describe('GameSettlement FUNC-005-11 / FUNC-006-01', () => {
-  it.each([
-    [2, [22, 11]],
-    [3, [29, 14, 7]],
-    [4, [36, 18, 9, 4]],
-    [5, [43, 22, 11, 5, 3]],
-    [6, [51, 25, 13, 6, 3, 2]],
-  ])('%i명 지급표를 적용한다', (count, points) => {
-    expect(
-      new GameSettlement(game(count as number))
-        .snapshot()
-        .players.map((player) => player.pointDelta),
-    ).toEqual(points);
-  });
-
-  it('이탈자는 0점이고 나머지 한 명이 총점을 받는다', () => {
+describe('GameSettlement FUNC-005-11', () => {
+  it('검증한 순위·이탈·종 기록을 그대로 저장용으로 넘긴다', () => {
     const input = game(3);
-    input.players[1].departed = true;
     input.players[2].departed = true;
-    expect(new GameSettlement(input).snapshot().players.map((player) => player.pointDelta)).toEqual(
-      [50, 0, 0],
-    );
+    const snapshot = new GameSettlement(input).snapshot();
+    expect(snapshot.playerCount).toBe(3);
+    expect(snapshot.players).toEqual(input.players);
   });
 
   it('중복 순위와 잘못된 반응 속도를 차단한다', () => {

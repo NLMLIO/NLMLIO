@@ -4,8 +4,6 @@ export interface UserAccount {
   nickname: string;
   passwordHash: string;
   authVersion: number;
-  point: number;
-  pointReachedAt: Date;
   createdAt: Date;
 }
 

@@ -293,7 +293,6 @@ export function toRanking(
       nickname: entry.nickname,
       color: playerColor(snapshot, room, entry.userId),
       isMe: entry.userId === userId,
-      points: entry.pointDelta,
       departed: entry.departed,
     }));
 }

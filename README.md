@@ -5,9 +5,9 @@ React + TypeScript 클라이언트, NestJS 서버, 공유 HTTP 타입으로 구�
 ## 이번 구현
 
 - `FUNC-001-01~05`: 회원가입, 닉네임 중복 확인, 입력 검증, 로그인, Refresh 회전과 로그아웃.
-- `FUNC-002-01`, `FUNC-008-01~02`: 프로필, 닉네임·비밀번호 수정, 누적 전적·포인트·내 순위 대시보드. 이번 요청 범위에서는 티어를 제외했습니다.
+- `FUNC-002-01`, `FUNC-008-01~02`: 프로필, 닉네임·비밀번호 수정, 누적 전적·내 순위 대시보드. 이번 요청 범위에서는 티어를 제외했습니다.
 - `FUNC-007-01~02`: 승수 내림차순·승률 내림차순의 상위 100위 글로벌 랭킹과 개인 전적, 승패·승률·종 성공률·평균 반응 시간.
-- `FUNC-005-11`, `FUNC-006-01`: 확정된 게임 결과와 순위별 포인트를 한 PostgreSQL 트랜잭션으로 저장하는 서버 내부 서비스.
+- `FUNC-005-11`: 확정된 게임 결과를 한 PostgreSQL 트랜잭션으로 저장하는 서버 내부 서비스. 포인트 기능(FUNC-006)은 2026-11-05 결정으로 뺐습니다.
 - `FUNC-005-01~13,15,16`: 게임 서버 엔진, 카드 분배·턴·종 선착순·오발·탈락·순위·정산, 서버 타이머와 재접속. 소켓 계약과 Redis 키는 [게임 서버 문서](server/GAME.md)에 있습니다.
 - `FUNC-004-01~02`: 서버 Socket.io 채팅·이모티콘, 방 소속 검증, Redis Pub/Sub 실시간 전달과 사용자별 도배 제한.
 
@@ -42,7 +42,7 @@ pnpm dev
 DEMO_PASSWORD='<직접 정한 영문·숫자 포함 비밀번호>' pnpm db:seed
 ```
 
-아이디는 `fruitking`, `banana`, `strawberry`, `lime`입니다. seed는 기존 사용자의 비밀번호를 덮어쓰지 않습니다. 이미 저장한 경기 ID는 건너뛰므로 다시 실행해도 포인트가 중복 지급되지 않습니다. 운영 DB에 실행하지 마세요.
+아이디는 `fruitking`, `banana`, `strawberry`, `lime`입니다. seed는 기존 사용자의 비밀번호를 덮어쓰지 않습니다. 이미 저장한 경기 ID는 건너뛰므로 다시 실행해도 경기가 중복 저장되지 않습니다. 운영 DB에 실행하지 마세요.
 
 ## 주요 API
 
@@ -110,7 +110,7 @@ Socket.io 연결 시 `auth.token`에 Access JWT를 넣습니다. 토큰이 없�
 - Refresh: 로그인할 때마다 기기 세션 ID(`sid`)를 만들고 `refresh:{userId}:{sid}`에 SHA-256 지문과 토큰 만료에 맞춘 TTL을 저장합니다. 재발급·로그아웃은 그 기기 세션만 바꾸고, 비밀번호를 바꾸면 모든 기기 세션을 지웁니다. 원문 토큰은 HttpOnly·SameSite 쿠키로만 브라우저에 전달합니다.
 - 통계는 PostgreSQL 원본에서 전체를 집계합니다. Redis 전적 50개 캐시나 단순 점수 ZSET을 통계의 원본으로 사용하지 않습니다.
 
-게임 엔진의 종료 처리에서는 `GameModule`이 내보내는 `GameResultService.settle(input)`을 호출하면 됩니다. `SettleGameInput`은 `shared/src/dto.ts`에 있습니다. 같은 `gameId`의 중복 호출은 `{ saved: false }`, 첫 저장은 `{ saved: true }`를 반환합니다. 브라우저가 순위·포인트를 위조할 수 없도록 결과 제출용 HTTP API는 제공하지 않습니다.
+게임 엔진의 종료 처리에서는 `GameModule`이 내보내는 `GameResultService.settle(input)`을 호출하면 됩니다. `SettleGameInput`은 `shared/src/dto.ts`에 있습니다. 같은 `gameId`의 중복 호출은 `{ saved: false }`, 첫 저장은 `{ saved: true }`를 반환합니다. 브라우저가 순위를 위조할 수 없도록 결과 제출용 HTTP API는 제공하지 않습니다.
 
 ## 검사
 
