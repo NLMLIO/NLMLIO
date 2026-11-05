@@ -18,3 +18,6 @@ export function validRoomName(value: string): boolean {
 
 /** 채팅 메시지 최대 길이(FUNC-004-01) */
 export const CHAT_MAX_LENGTH = 200;
+
+/** 글로벌 랭킹 목록에 보이는 최대 순위(FUNC-007-01). 그 밖의 내 순위는 목록 아래에 따로 보인다. */
+export const RANKING_LIMIT = 100;

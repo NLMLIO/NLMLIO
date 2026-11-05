@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { RANKING_LIMIT } from '@nlmlio/shared';
 import type { RankingEntry } from '@nlmlio/shared';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from './prisma.service';
@@ -12,6 +13,7 @@ interface StandingRow {
 }
 
 // 목록과 내 순위가 같은 승패 집계와 동률 기준을 사용한다.
+// 승수 내림차순, 같으면 승률 내림차순, 그래도 같으면 가입일·ID 오름차순.
 const standings = Prisma.sql`
   WITH records AS (
     SELECT "userId",
@@ -24,7 +26,8 @@ const standings = Prisma.sql`
       COALESCE(r.wins, 0) AS wins,
       COALESCE(r.losses, 0) AS losses,
       ROW_NUMBER() OVER (
-        ORDER BY COALESCE(r.wins, 0) DESC, COALESCE(r.losses, 0) ASC,
+        ORDER BY COALESCE(r.wins, 0) DESC,
+          COALESCE(r.wins::numeric / NULLIF(r.wins + r.losses, 0), 0) DESC,
           u."createdAt" ASC, u.id ASC
       ) AS rank
     FROM "User" u
@@ -57,7 +60,7 @@ export class RankingRepository {
     const [rows, ownRows, total] = await this.prisma.$transaction(
       [
         this.prisma.$queryRaw<StandingRow[]>`
-          ${standings} SELECT * FROM standings ORDER BY rank
+          ${standings} SELECT * FROM standings WHERE rank <= ${RANKING_LIMIT} ORDER BY rank
           LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}
         `,
         this.prisma.$queryRaw<StandingRow[]>`

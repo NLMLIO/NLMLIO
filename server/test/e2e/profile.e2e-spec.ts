@@ -225,7 +225,7 @@ describe('마이페이지·전적 실제 PostgreSQL/Redis 통합', () => {
     expect(response.body.items[0].point).toBeUndefined();
   });
 
-  it('승수가 같으면 패수가 적은 사용자가 위에 온다', async () => {
+  it('승수가 같으면 승률이 높은 사용자가 위에 온다', async () => {
     const rival = await signup(`r${suffix}`, `셋${suffix}`);
     extraAccounts.push(rival);
     const input = game('same-wins');
