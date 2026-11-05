@@ -157,6 +157,27 @@ function bannerOf(input: GameViewInput, seated: boolean): Banner | undefined {
       tone: 'danger',
       messages: ['이탈 처리됐어요 · 0점으로 기록돼요', '끝날 때까지 관전할 수 있어요'],
     };
+  if (snapshot.status === GameStatus.PLAYING && snapshot.turnUserId === null) {
+    const seconds =
+      snapshot.turnDeadline === null
+        ? undefined
+        : secondsLeft(snapshot.turnDeadline, input.serverNow, TURN_TIME_MS / 1000);
+    return {
+      tone: 'accent',
+      messages: [
+        '모두 카드를 다 냈어요 · 지금 종을 칠 수 있어요',
+        `${seconds === undefined ? '' : `${seconds}초 안에 `}아무도 종을 치지 않으면 마지막으로 카드를 낸 사람이 이겨요`,
+      ],
+    };
+  }
+  if (me?.status === GamePlayerStatus.ACTIVE && me.handCount === 0)
+    return {
+      tone: 'accent',
+      messages: [
+        '카드를 다 냈어요 · 차례 없이 종만 칠 수 있어요',
+        '다음 종 판정 때 카드를 못 얻으면 탈락해요',
+      ],
+    };
   if (me && me.automaticTurns > 0)
     return {
       tone: 'danger',

@@ -160,26 +160,91 @@ describe('Game (FUNC-005-01~13,15,16)', () => {
     expect(game.snapshot().players[2].handCount).toBe(6);
     expect(total(game)).toBe(8);
   });
-  it('마지막 카드가 나가면 테이블까지 보관하고 탈락시킨 뒤 최종 순위를 만든다', () => {
-    const game = start(new Deck([card(Fruit.LIME, 5), card(Fruit.PLUM, 1)]));
+  it('마지막 카드를 내도 바로 탈락하지 않고, 차례에서만 빠진 채 종을 칠 수 있다', () => {
+    // 분배: 1번 [딸기2, 바나나1], 2번 [딸기3, 바나나1]
+    const game = start(
+      new Deck([
+        card(Fruit.STRAWBERRY, 2),
+        card(Fruit.STRAWBERRY, 3),
+        card(Fruit.BANANA, 1),
+        card(Fruit.BANANA, 1),
+      ]),
+    );
     game.play(1, game.turnId, 10);
-    expect(game.snapshot()).toMatchObject({
-      status: 'ENDED',
-      turnUserId: null,
-      turnDeadline: null,
-      pileCount: 1,
+    game.play(2, game.turnId, 20);
+    expect(game.ring(2, game.turnSeq, 30)).toMatchObject({ success: true, movedCards: 2 });
+    game.play(2, game.turnId, 40);
+    game.play(1, game.turnId, 50);
+    // 1번은 덱 0장이지만 탈락하지 않고 테이블 카드도 남는다
+    expect(game.snapshot().players[0]).toMatchObject({
+      status: GamePlayerStatus.ACTIVE,
+      handCount: 0,
+      topCard: { fruit: Fruit.BANANA, count: 1 },
     });
-    expect(game.snapshot().players[0]).toMatchObject({ status: 'ELIMINATED', topCard: null });
+    // 카드가 남은 2번만 차례를 받아 혼자 연속으로 낸다
+    expect(game.snapshot()).toMatchObject({ status: 'PLAYING', turnUserId: 2 });
+    game.play(2, game.turnId, 60);
+    expect(game.snapshot()).toMatchObject({ status: 'PLAYING', turnUserId: 2 });
+    expectRule(() => game.play(1, game.turnId, 70), ErrorCode.NOT_YOUR_TURN);
+    // 1번이 종을 쳤지만 오발 → 테이블이 정리된 뒤에도 0장이므로 그 판정에서 탈락한다
+    expect(game.ring(1, game.turnSeq, 80)).toMatchObject({ success: false });
+    expect(game.snapshot().players[0].status).toBe(GamePlayerStatus.ELIMINATED);
+    expect(game.snapshot().status).toBe('ENDED');
     expect(game.snapshot().results.map((player) => [player.userId, player.rank])).toEqual([
       [2, 1],
       [1, 2],
     ]);
-    const revision = game.snapshot().revision;
-    game.confirmSettlement();
-    expect(game.snapshot()).toMatchObject({ settled: true, revision: revision + 1 });
-    game.confirmSettlement();
-    expect(game.snapshot().revision).toBe(revision + 1);
-    expect(total(game)).toBe(2);
+    expect(total(game)).toBe(4);
+  });
+  it('덱 0장인 플레이어가 종에 성공하면 카드를 받아 다시 차례에 들어오고, 못 받은 0장 플레이어는 탈락한다', () => {
+    // 1명당 1장, 남은 1장은 보관 스택
+    const game = start(
+      new Deck([card(Fruit.STRAWBERRY, 2), card(Fruit.STRAWBERRY, 3), card(Fruit.PLUM, 1)]),
+    );
+    game.play(1, game.turnId, 10);
+    game.play(2, game.turnId, 20);
+    // 아무도 낼 카드가 없어도 바로 끝나지 않고 종 기회(차례 없음, 10초)를 준다
+    expect(game.snapshot()).toMatchObject({
+      status: 'PLAYING',
+      turnUserId: null,
+      turnDeadline: 20 + 10_000,
+    });
+    expect(game.ring(1, game.turnSeq, 30)).toMatchObject({ success: true, movedCards: 3 });
+    expect(game.snapshot().players[0]).toMatchObject({
+      status: GamePlayerStatus.ACTIVE,
+      handCount: 3,
+    });
+    expect(game.snapshot().players[1].status).toBe(GamePlayerStatus.ELIMINATED);
+    expect(game.snapshot().status).toBe('ENDED');
+    expect(game.snapshot().results[0].userId).toBe(1);
+    expect(total(game)).toBe(3);
+  });
+  it('모두 덱이 떨어지고 10초 안에 아무도 종을 치지 않으면 마지막으로 카드를 낸 사람이 이긴다', () => {
+    const game = start(
+      new Deck([card(Fruit.BANANA, 1), card(Fruit.LIME, 1), card(Fruit.PLUM, 1)]),
+      3,
+    );
+    game.play(1, game.turnId, 10);
+    game.play(2, game.turnId, 20);
+    game.play(3, game.turnId, 30);
+    expect(game.snapshot()).toMatchObject({ status: 'PLAYING', turnUserId: null });
+    expect(game.timeout(game.turnId, 30 + 9_999)).toBeNull();
+    expect(game.status).toBe('PLAYING');
+    const version = game.version;
+    expect(game.timeout(game.turnId, 30 + 10_000)).toBeNull();
+    expect(game.version).toBe(version + 1);
+    expect(game.snapshot()).toMatchObject({
+      status: 'ENDED',
+      turnUserId: null,
+      turnDeadline: null,
+    });
+    // 먼저 덱이 떨어진 사람일수록 아래 순위
+    expect(game.snapshot().results.map((player) => [player.userId, player.rank])).toEqual([
+      [3, 1],
+      [2, 2],
+      [1, 3],
+    ]);
+    expect(total(game)).toBe(3);
   });
   it('오발 벌칙으로 0장이 되면 탈락하고 남은 플레이어가 승리한다', () => {
     const game = start(new Deck([card(Fruit.LIME, 5), card(Fruit.PLUM, 1)]));
@@ -193,15 +258,18 @@ describe('Game (FUNC-005-01~13,15,16)', () => {
     game.play(1, game.turnId, 10);
     game.depart(2, 20);
     game.play(3, game.turnId, 30);
+    game.play(4, game.turnId, 40);
+    game.timeout(game.turnId, game.turnDeadline!);
     expect(
-      game.snapshot().results.map((player) => [player.userId, player.rank, player.pointDelta]),
+      game.snapshot().results.map((player) => [player.userId, player.rank, player.departed]),
     ).toEqual([
-      [4, 1, 38],
-      [3, 2, 19],
-      [2, 3, 0],
-      [1, 4, 10],
+      [4, 1, false],
+      [3, 2, false],
+      [1, 3, false],
+      [2, 4, true],
     ]);
-    expect(game.depart(2, 40)).toBeNull();
+    expect(game.snapshot().results[3].pointDelta).toBe(0);
+    expect(game.depart(2, 50)).toBeNull();
     expect(total(game)).toBe(4);
   });
   it('10초 전에는 자동으로 내지 않고 세 번 연속 자동 내기 시 이탈한다', () => {
@@ -235,7 +303,8 @@ describe('Game (FUNC-005-01~13,15,16)', () => {
       );
       let now = 0;
       while (game.status === 'PLAYING') {
-        game.play(game.turnUserId!, game.turnId, ++now);
+        if (game.turnUserId === null) game.timeout(game.turnId, game.turnDeadline!);
+        else game.play(game.turnUserId, game.turnId, ++now);
         expect(total(game)).toBe(56);
       }
       const results = game.snapshot().results;

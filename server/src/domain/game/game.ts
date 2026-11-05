@@ -30,6 +30,7 @@ export interface GameCheckpoint {
   startedAt: number;
   order: number[];
   out: number[];
+  emptied: number[];
   players: {
     userId: number;
     hand: string[];
@@ -47,6 +48,8 @@ export class Game {
   private readonly table: Table;
   private pile: Card[];
   private readonly out: number[] = [];
+  /** 덱을 다 낸 순서. 아무도 낼 카드가 없을 때 마지막에 낸 사람이 이기고, 나머지는 먼저 떨어진 순으로 아래 순위다 */
+  private emptied: number[] = [];
   private phase: GameStatus = GameStatus.PLAYING;
   private roundNumber = 1;
   private sequence = 0;
@@ -119,6 +122,10 @@ export class Game {
   get eliminatedIds(): number[] {
     return [...this.out];
   }
+  /** 상태가 바뀔 때마다 오른다. 액션 없이 바뀐 경우(카드 소진 종료)도 서비스가 알아챌 수 있게 공개한다 */
+  get version(): number {
+    return this.revision;
+  }
   has(userId: number): boolean {
     return this.players.some((player) => player.userId === userId);
   }
@@ -146,7 +153,8 @@ export class Game {
     this.sequence++;
     this.playedAt = now;
     if (automatic && player.automaticTurns >= 3) this.remove(player, true);
-    else if (player.handCount === 0) this.remove(player, false);
+    // 마지막 카드를 내도 바로 탈락하지 않는다. 차례에서만 빠지고 다음 종 판정까지 종을 칠 수 있다.
+    else if (player.handCount === 0) this.markEmptied(userId);
     this.current = this.nextAfter(userId);
     this.newTurn(now);
     this.finishIfNeeded(now);
@@ -170,14 +178,16 @@ export class Game {
       movedCards = cards.length;
       this.current = userId;
     } else {
-      const cards = [...player.penalty(), ...this.table.collect()];
+      const penalty = player.penalty();
+      // 벌칙으로 덱이 떨어진 사람은 마지막에 카드를 «낸» 사람이 아니므로 가장 앞(낮은 순위)에 둔다.
+      if (penalty.length && player.handCount === 0) this.emptied.unshift(userId);
+      const cards = [...penalty, ...this.table.collect()];
       this.pile.push(...cards);
       movedCards = cards.length;
-      if (player.handCount === 0) {
-        this.remove(player, false, false);
-        if (this.current === userId) this.current = this.nextAfter(userId);
-      }
     }
+    this.eliminateEmpty();
+    if (this.current === null || !this.canPlay(this.current))
+      this.current = this.nextAfter(this.current ?? userId);
     this.roundNumber++;
     this.newTurn(now);
     this.finishIfNeeded(now);
@@ -185,16 +195,24 @@ export class Game {
     return { kind: 'bell', userId, success, movedCards, totals };
   }
 
+  /**
+   * 차례 시간이 끝났다. 차례인 사람이 있으면 대신 내고(005-15), 아무도 낼 카드가 없어 종 기회만 주던
+   * 중이었다면 마지막으로 카드를 낸 사람을 남기고 게임을 끝낸다. 이때는 액션 없이 상태만 바뀐다.
+   */
   timeout(turnId: number, now: number): GameAction | null {
     if (
       this.phase !== GameStatus.PLAYING ||
       turnId !== this.turnToken ||
       this.deadline === null ||
-      now < this.deadline ||
-      this.current === null
+      now < this.deadline
     )
       return null;
-    return this.play(this.current, turnId, now, true);
+    if (this.current !== null) return this.play(this.current, turnId, now, true);
+    now = this.time(now);
+    this.eliminateEmpty(true);
+    this.finishIfNeeded(now);
+    this.revision++;
+    return null;
   }
 
   depart(userId: number, now: number): GameAction | null {
@@ -304,6 +322,7 @@ export class Game {
       startedAt: this.input.now,
       order: this.players.filter((player) => player.active).map((player) => player.userId),
       out: [...this.out],
+      emptied: [...this.emptied],
       players: this.players.map((player) => ({
         userId: player.userId,
         hand: player.handCodes(),
@@ -322,13 +341,39 @@ export class Game {
   private remove(player: GamePlayer, departed: boolean, advanceRound = true): void {
     this.pile.push(...player.eliminate(departed), ...this.table.remove(player.userId));
     this.out.push(player.userId);
+    this.emptied = this.emptied.filter((id) => id !== player.userId);
     if (advanceRound) this.roundNumber++;
+  }
+  private markEmptied(userId: number): void {
+    this.emptied = [...this.emptied.filter((id) => id !== userId), userId];
+  }
+  /** 차례에서 카드를 낼 수 있는 사람: 게임 중이고 덱이 남은 플레이어 */
+  private canPlay(userId: number): boolean {
+    const player = this.players.find((entry) => entry.userId === userId);
+    return !!player?.active && player.handCount > 0;
+  }
+  /**
+   * 종 판정이 끝났거나 아무도 종을 치지 않았다. 덱이 0장인 플레이어를 덱이 떨어진 순서대로 탈락시킨다.
+   * 모두 0장이면 마지막으로 카드를 낸 사람(emptied의 끝)은 남겨 1등이 되게 한다.
+   */
+  private eliminateEmpty(exhausted = false): void {
+    const empty = this.players.filter((player) => player.active && player.handCount === 0);
+    if (!empty.length) return;
+    const holders = this.players.filter((player) => player.active && player.handCount > 0);
+    const survivor = holders.length
+      ? null
+      : (this.emptied.filter((id) => empty.some((player) => player.userId === id)).at(-1) ?? null);
+    const ordered = [...empty].sort(
+      (a, b) => this.emptied.indexOf(a.userId) - this.emptied.indexOf(b.userId),
+    );
+    for (const player of ordered) if (player.userId !== survivor) this.remove(player, false, false);
+    if (exhausted) this.current = null;
   }
   private nextAfter(userId: number): number | null {
     const index = this.players.findIndex((player) => player.userId === userId);
     for (let step = 1; step <= this.players.length; step++) {
       const player = this.players[(index + step) % this.players.length];
-      if (player.active) return player.userId;
+      if (player.active && player.handCount > 0) return player.userId;
     }
     return null;
   }
