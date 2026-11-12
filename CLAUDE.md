@@ -195,7 +195,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `server/src/common/security/`: Argon2id, JWT, HTTP Guard, Redis Refresh 세션. Refresh는 HttpOnly 쿠키에 저장하고 Redis에는 기기 세션마다(`refresh:{userId}:{sid}`) 토큰의 SHA-256 지문을 저장한다.
 - `server/src/domain/user/`: 인프라와 독립적인 계정 타입, 누적 통계 계산 객체.
 - `server/src/domain/game/game-settlement.ts`: 저장 전 확정 순위·기록 검증.
-- `server/src/domain/card/deck.ts`, `domain/player/game-player.ts`, `domain/game/game.ts`, `table.ts`: 카드·셔플·분배, 보유 카드, 테이블, 턴·종·벌칙·탈락·순위를 캡슐화한 순수 TS 객체.
+- `server/src/domain/card/deck.ts`, `domain/player/game-player.ts`, `domain/game/game.ts`, `table.ts`: 카드·셔플·분배, 보유 카드, 테이블, 턴·종·벌칙·탈락·순위를 캡슐화한 순수 TS 객체. 종 판정 후 1.8초 동안 서버도 카드 내기를 막고 `roundResumeAt`을 공개한다.
 - `server/src/modules/game/`: 게임 Gateway, 서비스, 서버 셔플 팩토리, 타이머, 브로드캐스트, 결과 저장. `infra/game-state/room-queue.ts`가 인증·타이머·이탈·정산을 방별 접수 순서로 직렬화한다.
 - `server/src/infra/redis/game-state.repository.ts`: 첨부 Redis 명세의 미러, 종 예약과 정산 후 삭제. `shared/src/game-events.ts`는 공개 스냅샷과 소켓 계약이다.
 - `server/src/modules/room/room-game.lifecycle.ts`: Room→Game 모듈 순환 참조 없이 시작·이탈·방 종료를 게임 큐에 연결한다.
@@ -240,7 +240,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | 보관 스택 | 종 아래에 모아 두는 카드(분배 후 남은 카드, 탈락·이탈자의 카드). 다음에 정당하게 종을 친 승자가 가져간다 |
 | 종 누르기 | 테이블 위 같은 과일 합이 **정확히 5개**일 때 누르는 행동 |
 | 선착순 판정 | 여러 명이 거의 동시에 종을 쳤을 때 **서버 도착 시각 기준 1명**만 인정 |
-| 오발 벌칙 | 오발자 카드 1장과 테이블 전체 카드를 종 아래 보관 스택으로 옮김(2026-11-04 첨부 명세) |
+| 오발 벌칙 | 오발자 카드 1장만 종 아래 보관 스택으로 옮기고 테이블은 유지(2026-11-12 피드백) |
 | 탈락 / 이탈 | 덱 0장인 채로 종 판정이 끝나 빠짐(순위 정상) / 나가기·연결 끊김 5초·턴 시간 초과 3회로 빠짐(맨 아래, 패배). 둘 다 관전자가 된다 |
 | 턴 제한 시간 | 차례마다 10초. 넘기면 서버가 대신 카드를 낸다 |
 | 라운드 | 카드를 차례로 내다가 종 판정이 나거나 탈락자가 생기면 끝나는 단위 |

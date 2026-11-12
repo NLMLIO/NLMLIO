@@ -1546,20 +1546,23 @@ td {
 }
 .emoji-bubble {
   position: absolute;
-  top: -14px;
+  z-index: 5;
+  top: -34px;
   left: calc(100% - 14px);
   padding: 4px 8px;
-  background: #ffd23f;
+  background: #f8f9ff;
+  border: 2px solid #717184;
+  box-shadow: 0 5px 18px #0008;
   border-radius: 12px 12px 12px 2px;
-  font-size: 18px;
+  font-size: 30px;
   line-height: 1.2;
   white-space: nowrap;
   animation: emoji-pop 0.18s ease-out;
 }
 .spectator-chip .emoji-bubble {
-  top: -18px;
+  top: -34px;
   padding: 2px 6px;
-  font-size: 14px;
+  font-size: 28px;
 }
 @keyframes emoji-pop {
   from {
@@ -1817,13 +1820,13 @@ td {
   gap: 6px;
 }
 .emoji-chip {
-  min-width: 31px;
+  min-width: 44px;
   padding: 5px 9px;
   color: #ffd23f;
   background: #1c1c24;
   border: 0;
   border-radius: 2px;
-  font-size: 15px;
+  font-size: 26px;
 }
 .emoji-chip:hover {
   background: #26262f;
@@ -1901,4 +1904,21 @@ td {
   .player-slots {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+/* 개인정보 수정은 사용자가 버튼으로 연 경우에만 표시한다. */
+.mypage-layout.profile-overview {
+  grid-template-columns: minmax(0, 1fr);
+}
+.mypage-layout .dashboard {
+  position: relative;
+}
+.profile-overview .dashboard {
+  width: 100%;
+  max-width: 1200px;
+  margin-inline: auto;
+}
+.profile-edit-button {
+  display: block;
+  margin-bottom: 24px;
 }

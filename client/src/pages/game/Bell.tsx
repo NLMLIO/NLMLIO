@@ -17,6 +17,18 @@ export function Bell({ state, pileCount, disabled, onRing }: BellProps) {
     glow === 'success' ? bellSuccessIcon : glow === 'misfire' ? bellMisfireIcon : bellIcon;
   return (
     <div className="bell">
+      {pileCount > 0 && (
+        <div className="bell-storage" aria-hidden="true">
+          {Array.from({ length: Math.min(pileCount, 3) }, (_, index) => (
+            <span
+              key={index}
+              style={{
+                transform: `rotate(${index * 7 - 7}deg) translate(${index * 3}px, ${index * 3}px)`,
+              }}
+            />
+          ))}
+        </div>
+      )}
       <button
         type="button"
         className={glow ? 'bell-button glow' : 'bell-button'}
@@ -32,8 +44,13 @@ export function Bell({ state, pileCount, disabled, onRing }: BellProps) {
           {state.value}
         </div>
       )}
-      <p className="bell-pile">
-        보관 <span>{pileCount}</span>
+      {state.kind === 'last-chance' && (
+        <p className="bell-last-chance" role="timer">
+          마지막 종 기회 <b>{state.value}s</b>
+        </p>
+      )}
+      <p className="bell-pile" aria-label={`종 아래 보관 카드 ${pileCount}장`}>
+        보관 <span>{pileCount}장</span>
       </p>
     </div>
   );
