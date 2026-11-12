@@ -1,0 +1,118 @@
+# 팀원 접속용 배포: Cloudflare Tunnel → web(nginx) → server. 호스트 포트를 열지 않는다.
+# 실행은 `pnpm tunnel:up` / `pnpm tunnel:down`. 값은 .env에서 읽는다.
+# 개발용 compose.yaml과 프로젝트·볼륨이 분리되어 있다.
+x-app: &app
+  image: nlmlio-app:local
+  build:
+    context: .
+    dockerfile: deploy/Dockerfile
+    target: app
+  environment: &app-env
+    NODE_ENV: production
+    SERVER_PORT: '3000'
+    DATABASE_URL: postgresql://${POSTGRES_USER:-nlmlio}:${POSTGRES_PASSWORD:-nlmlio}@postgres:5432/${POSTGRES_DB:-nlmlio}
+    REDIS_URL: redis://redis:6379
+    JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?.env에 JWT_ACCESS_SECRET을 설정하세요}
+    JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?.env에 JWT_REFRESH_SECRET을 설정하세요}
+    JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+    JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-14d}
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nlmlio}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nlmlio}
+      POSTGRES_DB: ${POSTGRES_DB:-nlmlio}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  migrate:
+    <<: *app
+    command: ['./node_modules/.bin/prisma', 'migrate', 'deploy']
+    restart: 'no'
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  server:
+    <<: *app
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/health').then(r=>r.json()).then(b=>process.exit(b.status==='ok'?0:1),()=>process.exit(1))"
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  web:
+    image: nlmlio-web:local
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      target: web
+    restart: unless-stopped
+    depends_on:
+      server:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://127.0.0.1/']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.8.2
+    command: ['tunnel', '--no-autoupdate', 'run']
+    restart: unless-stopped
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?.env에 CLOUDFLARE_TUNNEL_TOKEN을 설정하세요}
+    depends_on:
+      web:
+        condition: service_healthy
+
+  # 포트포워딩 직접 접속용 HTTPS 입구. 공유기의 80·443을 이 PC로 넘겨야 한다.
+  # `pnpm tunnel:direct`로 시작한다. 인증서는 Let's Encrypt로 자동 발급·갱신한다.
+  caddy:
+    image: caddy:2.11-alpine
+    profiles: [direct]
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro,Z
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  caddy-data:
+  caddy-config:

@@ -14,6 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 |---|---|
 | `pnpm install` | 의존성 설치 + `shared` 빌드 + `prisma generate` |
 | `pnpm db:up` / `pnpm db:down` | PostgreSQL·Redis 컨테이너 시작(헬스체크까지 대기) / 정지 |
+| `pnpm tunnel:up` / `pnpm tunnel:down` / `pnpm tunnel:logs` | 팀원 접속용 배포(`compose.tunnel.yaml`) 빌드·시작 / 정지(볼륨 유지) / 로그. `.env`의 `CLOUDFLARE_TUNNEL_TOKEN` 필요. `pnpm tunnel:direct`는 포트포워딩 직접 접속용 Caddy(80·443) 시작 |
 | `pnpm dev` | shared(tsc watch) + server(nest watch) + client(vite) 동시 실행 |
 | `pnpm build` | shared → server, client 빌드 |
 | `pnpm typecheck` / `pnpm lint` / `pnpm format` | 타입 검사 / oxlint / prettier |
@@ -125,6 +126,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ├── package.json              # 워크스페이스 루트 (공통 스크립트, packageManager: pnpm, devEngines: Node 24)
 ├── pnpm-workspace.yaml       # 패키지 목록, allowBuilds
 ├── compose.yaml              # 개발용 PostgreSQL 18 · Redis 8
+├── compose.tunnel.yaml       # 팀원 접속용 배포: cloudflared 또는 caddy(포트포워딩) → web → server (개발 DB와 분리)
+├── deploy/                   # 배포 이미지: Dockerfile, nginx.conf(정적 파일 + /api·/socket.io 프록시), Caddyfile(HTTPS)
 ├── .env.example              # 환경변수 이름만 (값 금지)
 │
 ├── shared/                   # 프론트·백엔드가 함께 쓰는 타입 — 여기만 고치면 양쪽이 같이 바뀐다
