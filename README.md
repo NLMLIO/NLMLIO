@@ -34,6 +34,22 @@ pnpm dev
 
 이 작업에서 만든 로컬 체크아웃은 `.superset/workspace.env`에 클라이언트 3210, 서버 3211, PostgreSQL 3212, Redis 3213을 설정했습니다. 브라우저에서 `http://localhost:3210`을 열면 됩니다. 다른 체크아웃은 기존 Superset setup의 포트 할당을 사용합니다.
 
+## 팀원 접속용 배포 (Cloudflare Tunnel)
+
+`https://nlmlio.heijionline.com`으로 접속하는 구성입니다. 앱 전체를 컨테이너로 띄우고 Cloudflare Tunnel로 공개하므로 공유기 포트를 열 필요가 없습니다. 개발용 DB와 볼륨이 분리되어 있습니다.
+
+`.env`에 `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `CLOUDFLARE_TUNNEL_TOKEN`을 설정한 뒤 실행합니다. 터널의 Public Hostname은 `http://web:80`을 가리켜야 합니다.
+
+```bash
+pnpm tunnel:up    # 빌드 후 시작. 마이그레이션도 자동 적용
+pnpm tunnel:logs  # 로그 보기
+pnpm tunnel:down  # 정지. 데이터(볼륨)는 유지
+```
+
+Cloudflare 경로는 국내에서도 해외 엣지를 거쳐 왕복 지연이 0.5초 안팎입니다. 공유기 포트포워딩(TCP 80·443 → 이 PC)이 가능하면 DNS를 프록시 없이 공인 IP로 바꾸고 `pnpm tunnel:direct`로 Caddy를 띄워 직접 접속할 수 있습니다. 인증서는 Let's Encrypt로 자동 발급되며, 도메인은 `deploy/Caddyfile`에 있습니다.
+
+코드를 바꾼 뒤 `pnpm tunnel:up`을 다시 실행하면 반영됩니다. 띄운 PC가 켜져 있는 동안에만 접속할 수 있고, Docker가 켜지면 컨테이너는 자동으로 다시 시작합니다.
+
 ## 샘플 데이터
 
 빈 계정으로 직접 가입하거나, 개발용 4계정과 48경기를 생성할 수 있습니다.
