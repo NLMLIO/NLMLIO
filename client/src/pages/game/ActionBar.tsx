@@ -18,7 +18,7 @@ function phaseLabel(phase: MyPhase, turnNickname?: string, turnSeconds?: number)
     case 'judging':
       return { text: 'WAITING', className: 'mono' };
     case 'spectating':
-      return { text: 'OUT · 관전 중', className: 'danger' };
+      return { text: '관전 중', className: 'accent' };
   }
 }
 
@@ -31,6 +31,7 @@ interface ActionBarProps {
   turnSeconds?: number;
   /** 내가 방금 보낸 감정표현 */
   emote?: string;
+  emoteKey?: number;
   /** 카드 내기 요청을 보내는 중 */
   playing?: boolean;
   /** 방 나가기 요청을 보내는 중 */
@@ -47,6 +48,7 @@ export function ActionBar({
   turnNickname,
   turnSeconds,
   emote,
+  emoteKey,
   playing = false,
   leaving,
   onPlayCard,
@@ -62,7 +64,7 @@ export function ActionBar({
         <span />
       </div>
       {emote && (
-        <span key={emote} className="player-emote my-emote">
+        <span key={emoteKey ?? emote} className="player-emote my-emote">
           {emote}
         </span>
       )}

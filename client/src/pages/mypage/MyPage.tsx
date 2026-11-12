@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react';
 import type { DashboardResponse, PublicUser } from '@nlmlio/shared';
 import { useApiResource } from '../../hooks/use-api-resource';
 import { PageState } from '../../components/PageState';
@@ -13,13 +14,19 @@ export function MyPage({
   onHistory: () => void;
   onPasswordChanged: () => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const editButton = useRef<HTMLButtonElement>(null);
+  function closeEditor() {
+    setEditing(false);
+    editButton.current?.focus();
+  }
   const { data, error, loading, reload, setData } =
     useApiResource<DashboardResponse>('/users/me/dashboard');
   if (loading || error || !data)
     return <PageState loading={loading} error={error} retry={reload} />;
   const { user, stats, rank } = data;
   return (
-    <main className="mypage-layout">
+    <main className={`mypage-layout${editing ? '' : ' profile-overview'}`}>
       <section className="dashboard" aria-label="개인 대시보드">
         <div className="profile-heading">
           <span className="avatar large" aria-hidden="true">
@@ -33,6 +40,16 @@ export function MyPage({
             </p>
           </div>
         </div>
+        <button
+          ref={editButton}
+          type="button"
+          className="button outline profile-edit-button"
+          aria-expanded={editing}
+          aria-controls="profile-editor"
+          onClick={() => (editing ? closeEditor() : setEditing(true))}
+        >
+          {editing ? '수정 닫기' : '개인정보 수정'}
+        </button>
         <dl className="metric-grid primary-metrics">
           <div>
             <dt>승패 기준 순위</dt>
@@ -81,14 +98,18 @@ export function MyPage({
           </div>
         </dl>
       </section>
-      <ProfileForm
-        user={user}
-        onSave={(next) => {
-          onProfileChange(next);
-          setData((current) => (current ? { ...current, user: next } : current));
-        }}
-        onPasswordChanged={onPasswordChanged}
-      />
+      {editing && (
+        <ProfileForm
+          user={user}
+          onSave={(next) => {
+            onProfileChange(next);
+            setData((current) => (current ? { ...current, user: next } : current));
+            closeEditor();
+          }}
+          onClose={closeEditor}
+          onPasswordChanged={onPasswordChanged}
+        />
+      )}
     </main>
   );
 }

@@ -1,4 +1,4 @@
-import { ErrorCode, Fruit, GamePlayerStatus } from '@nlmlio/shared';
+import { ErrorCode, Fruit, GamePlayerStatus, ROUND_RESULT_MS } from '@nlmlio/shared';
 import { Card, Deck } from '../../src/domain/card/deck';
 import { Game, GameRuleError } from '../../src/domain/game/game';
 import { Table } from '../../src/domain/game/table';
@@ -121,13 +121,13 @@ describe('Game (FUNC-005-01~13,15,16)', () => {
     expect(game.snapshot().pileCount).toBe(0);
     expect(total(game)).toBe(8);
   });
-  it('합이 5가 아니면 자기 카드 1장과 테이블 전체를 보관 스택으로 옮긴다', () => {
+  it('합이 5가 아니면 자기 카드 1장만 보관하고 공개 테이블을 유지한다', () => {
     const game = start(eight());
     game.play(1, game.turnId, 10);
     const oldTurn = game.turnId;
-    expect(game.ring(1, game.turnSeq, 20)).toMatchObject({ success: false, movedCards: 2 });
-    expect(game.checkpoint().pile).toEqual(['B1', 'S2']);
-    expect(game.snapshot().players.map((player) => player.tableCount)).toEqual([0, 0]);
+    expect(game.ring(1, game.turnSeq, 20)).toMatchObject({ success: false, movedCards: 1 });
+    expect(game.checkpoint().pile).toEqual(['B1']);
+    expect(game.snapshot().players.map((player) => player.tableCount)).toEqual([1, 0]);
     expect(game.checkpoint().players[0]).toMatchObject({ bellFail: 1 });
     expect(game.play(2, oldTurn, 21)).toBeNull();
     expect(total(game)).toBe(8);
@@ -137,6 +137,35 @@ describe('Game (FUNC-005-01~13,15,16)', () => {
     game.play(1, game.turnId, 10);
     game.play(2, game.turnId, 20);
     expect(game.ring(1, game.turnSeq, 30)).toMatchObject({ success: false });
+  });
+  it('결과 표시 중 카드 입력은 무시하고 종료 시점부터 온전한 10초를 준다', () => {
+    const game = start(eight());
+    game.play(1, game.turnId, 10);
+    game.play(2, game.turnId, 20);
+    game.ring(1, game.turnSeq, 30);
+    const before = game.snapshot();
+    expect(before.roundResumeAt).toBe(30 + ROUND_RESULT_MS);
+    expect(before.turnDeadline).toBe(30 + ROUND_RESULT_MS + 10_000);
+    expect(game.play(1, game.turnId, 30 + ROUND_RESULT_MS - 1)).toBeNull();
+    expect(game.snapshot()).toEqual(before);
+    expect(game.play(1, game.turnId, 30 + ROUND_RESULT_MS)).toMatchObject({ kind: 'card' });
+    expect(game.snapshot().roundResumeAt).toBeNull();
+    expect(total(game)).toBe(8);
+  });
+  it('오발 직후 중복 종은 벌칙을 반복하지 않고 다음 정상 종은 테이블과 벌칙 카드를 받는다', () => {
+    const game = start(eight());
+    game.play(1, game.turnId, 10);
+    game.ring(1, game.turnSeq, 20);
+    expect(game.ring(2, game.turnSeq, 21)).toBeNull();
+    expect(game.snapshot().pileCount).toBe(1);
+    expect(game.snapshot().players[0].topCard).toEqual({ fruit: Fruit.STRAWBERRY, count: 2 });
+    game.play(2, game.turnId, 20 + ROUND_RESULT_MS);
+    expect(game.ring(2, game.turnSeq, 21 + ROUND_RESULT_MS)).toMatchObject({
+      success: true,
+      movedCards: 3,
+    });
+    expect(game.snapshot().pileCount).toBe(0);
+    expect(total(game)).toBe(8);
   });
   it('나눠 주고 남긴 카드도 정상 종 승자가 테이블 카드와 함께 가져간다', () => {
     const game = start(
@@ -173,8 +202,8 @@ describe('Game (FUNC-005-01~13,15,16)', () => {
     game.play(1, game.turnId, 10);
     game.play(2, game.turnId, 20);
     expect(game.ring(2, game.turnSeq, 30)).toMatchObject({ success: true, movedCards: 2 });
-    game.play(2, game.turnId, 40);
-    game.play(1, game.turnId, 50);
+    game.play(2, game.turnId, 40 + ROUND_RESULT_MS);
+    game.play(1, game.turnId, 50 + ROUND_RESULT_MS);
     // 1번은 덱 0장이지만 탈락하지 않고 테이블 카드도 남는다
     expect(game.snapshot().players[0]).toMatchObject({
       status: GamePlayerStatus.ACTIVE,
@@ -183,11 +212,11 @@ describe('Game (FUNC-005-01~13,15,16)', () => {
     });
     // 카드가 남은 2번만 차례를 받아 혼자 연속으로 낸다
     expect(game.snapshot()).toMatchObject({ status: 'PLAYING', turnUserId: 2 });
-    game.play(2, game.turnId, 60);
+    game.play(2, game.turnId, 60 + ROUND_RESULT_MS);
     expect(game.snapshot()).toMatchObject({ status: 'PLAYING', turnUserId: 2 });
-    expectRule(() => game.play(1, game.turnId, 70), ErrorCode.NOT_YOUR_TURN);
+    expectRule(() => game.play(1, game.turnId, 70 + ROUND_RESULT_MS), ErrorCode.NOT_YOUR_TURN);
     // 1번이 종을 쳤지만 오발 → 테이블이 정리된 뒤에도 0장이므로 그 판정에서 탈락한다
-    expect(game.ring(1, game.turnSeq, 80)).toMatchObject({ success: false });
+    expect(game.ring(1, game.turnSeq, 80 + ROUND_RESULT_MS)).toMatchObject({ success: false });
     expect(game.snapshot().players[0].status).toBe(GamePlayerStatus.ELIMINATED);
     expect(game.snapshot().status).toBe('ENDED');
     expect(game.snapshot().results.map((player) => [player.userId, player.rank])).toEqual([

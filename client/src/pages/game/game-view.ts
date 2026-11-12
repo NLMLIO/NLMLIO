@@ -29,6 +29,8 @@ export interface PlayerView {
   deckCount: number;
   /** 자기 앞 테이블의 맨 위 카드. 아직 안 냈거나 관전자면 null */
   topCard: CardFace | null;
+  /** 실제 테이블 카드 장수. 첫 카드는 겹침 없이 그린다. */
+  tableCount?: number;
   /** active: 플레이 중 / out: 탈락·이탈(관전자) / offline: 연결 끊김 유예 중 */
   state: 'active' | 'out' | 'offline';
   /** offline일 때 화면에 보여 줄 남은 유예 시간(초). 모르면 비워 둔다 */
@@ -42,6 +44,7 @@ export interface PlayerView {
   autoPlayed?: boolean;
   /** 방금 보낸 감정표현 이모티콘 */
   emote?: string;
+  emoteKey?: number;
   outcome?: SeatOutcome;
 }
 
@@ -55,6 +58,7 @@ export type MyPhase = 'turn' | 'first' | 'waiting' | 'judging' | 'spectating';
 export type BellState =
   | { kind: 'idle' }
   | { kind: 'countdown'; value: number }
+  | { kind: 'last-chance'; value: number }
   | { kind: 'success' }
   | { kind: 'misfire' };
 
@@ -89,6 +93,7 @@ export interface GameView {
   players: PlayerView[];
   /** false면 첫 번째 자리는 처음부터 관전한 나라서 테이블 카드 자리를 그리지 않는다 */
   selfSeated?: boolean;
+  spectators?: { id: string; nickname: string; emote?: string; emoteKey?: number }[];
   myPhase: MyPhase;
   /** 지금 차례인 플레이어 닉네임(waiting일 때 표시) */
   turnNickname?: string;
@@ -124,7 +129,7 @@ export const SCREEN_HEIGHT = 900;
 /** 보드(채팅 패널 왼쪽 1100×900) 안의 테이블 중심과 자리 배치 반지름 */
 const TABLE_CENTER = { x: 550, y: 440 };
 const SEAT_RADIUS = { x: 420, y: 330 };
-const CARD_RADIUS = { x: 199, y: 189 };
+const CARD_RADIUS = { x: 180, y: 180 };
 
 export interface SeatPlacement {
   /** 플레이어 슬롯(아바타·닉네임·카드 수) 중심 */
@@ -140,16 +145,20 @@ export interface SeatPlacement {
 }
 
 /** 내 자리를 맨 아래(90°)로 두고 인원수만큼 시계 방향으로 같은 간격을 둔다 */
-export function seatPlacements(playerCount: number): SeatPlacement[] {
+export function seatPlacements(playerCount: number, spectating = false): SeatPlacement[] {
   return Array.from({ length: playerCount }, (_, index) => {
-    const degrees = 90 + (index * 360) / playerCount;
+    // 관전자에겐 아래쪽 내 자리가 없으므로 반 칸 돌리고 세로 반경을 줄여 상태 바를 비워 둔다.
+    const degrees = 90 + (spectating ? 180 / playerCount : 0) + (index * 360) / playerCount;
     const radians = (degrees * Math.PI) / 180;
     const cos = Math.cos(radians);
     const sin = Math.sin(radians);
     const rotation = degrees - 90;
     const turn = (rotation * Math.PI) / 180;
     return {
-      seat: { x: TABLE_CENTER.x + SEAT_RADIUS.x * cos, y: TABLE_CENTER.y + SEAT_RADIUS.y * sin },
+      seat: {
+        x: TABLE_CENTER.x + SEAT_RADIUS.x * cos,
+        y: TABLE_CENTER.y + (spectating ? 210 : SEAT_RADIUS.y) * sin,
+      },
       seatGrowsUp: sin < -0.7,
       card: { x: TABLE_CENTER.x + CARD_RADIUS.x * cos, y: TABLE_CENTER.y + CARD_RADIUS.y * sin },
       rotation,

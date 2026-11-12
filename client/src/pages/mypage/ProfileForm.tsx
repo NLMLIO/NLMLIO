@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { NICKNAME_PATTERN, PASSWORD_PATTERN } from '@nlmlio/shared';
 import type {
@@ -13,11 +13,17 @@ export function ProfileForm({
   user,
   onSave,
   onPasswordChanged,
+  onClose,
 }: {
   user: PublicUser;
   onSave: (user: PublicUser) => void;
   onPasswordChanged: () => void;
+  onClose: () => void;
 }) {
+  const firstField = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    firstField.current?.focus();
+  }, []);
   const [nickname, setNickname] = useState(user.nickname);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -98,7 +104,7 @@ export function ProfileForm({
   }
 
   return (
-    <section className="profile-panel" aria-labelledby="edit-heading">
+    <section id="profile-editor" className="profile-panel" aria-labelledby="edit-heading">
       <h2 id="edit-heading">개인정보 수정</h2>
       <form className="profile-form" onSubmit={submit}>
         <div className="profile-fields">
@@ -106,6 +112,7 @@ export function ProfileForm({
           <div className="nickname-row">
             <input
               id="nickname"
+              ref={firstField}
               value={nickname}
               maxLength={10}
               className={nicknameChanged && checked?.nickname !== nickname ? 'needs-check' : ''}
@@ -182,8 +189,11 @@ export function ProfileForm({
           <button
             className="button outline"
             type="button"
-            disabled={!dirty || saving}
-            onClick={cancel}
+            disabled={saving}
+            onClick={() => {
+              cancel();
+              onClose();
+            }}
           >
             취소
           </button>
