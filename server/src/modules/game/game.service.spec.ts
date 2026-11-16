@@ -21,7 +21,7 @@ describe('GameService 방 큐·타이머·정산 재시도', () => {
   let room: Room;
   let snapshots: { save: jest.Mock; claimBell: jest.Mock; clear: jest.Mock };
   let results: { settle: jest.Mock };
-  let events: { state: jest.Mock; action: jest.Mock };
+  let events: { state: jest.Mock; action: jest.Mock; sync: jest.Mock };
   beforeEach(async () => {
     jest.useFakeTimers({ now: new Date('2026-11-04T00:00:00Z') });
     room = Room.create({ code: '123456', name: '타이머', host: { userId: 1, nickname: '하나' } });
@@ -44,7 +44,7 @@ describe('GameService 방 큐·타이머·정산 재시도', () => {
       clear: jest.fn().mockResolvedValue(undefined),
     };
     results = { settle: jest.fn().mockResolvedValue({ saved: true }) };
-    events = { state: jest.fn(), action: jest.fn() };
+    events = { state: jest.fn(), action: jest.fn(), sync: jest.fn() };
     timers = new GameTimers();
     store = new GameStore();
     lifecycle = new RoomGameLifecycle();
@@ -69,6 +69,23 @@ describe('GameService 방 큐·타이머·정산 재시도', () => {
     jest.useRealTimers();
   });
   const state = () => service.sync(1)!;
+
+  it('도중에 들어온 관전자에게 현재 상태를 보내고 게임 참가자·차례·덱은 바꾸지 않는다', () => {
+    const before = state();
+    room.join({ userId: 3, nickname: '늦은관전' });
+    lifecycle.joined(3);
+    expect(events.sync).toHaveBeenCalledWith(3, before);
+    expect(state()).toEqual(before);
+    expect(room.roleOf(3)).toBe('SPECTATOR');
+  });
+
+  it('게임이 끝난 뒤 대기실에 입장하면 이전 게임 결과를 보내지 않는다', async () => {
+    await lifecycle.leaving(2);
+    room.join({ userId: 3, nickname: '대기참가' });
+    lifecycle.joined(3);
+    expect(room.roleOf(3)).toBe('PLAYER');
+    expect(events.sync).not.toHaveBeenCalled();
+  });
 
   it('10초마다 자동 진행하고 같은 회원이 세 번 연속 자동 내기하면 이탈한다', async () => {
     await jest.advanceTimersByTimeAsync(9999);

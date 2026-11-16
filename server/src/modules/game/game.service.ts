@@ -46,6 +46,10 @@ export class GameService implements OnModuleInit {
       start: (id) => this.start(id),
       leaving: (id, remove) => this.leaving(id, remove),
       closed: (code) => this.closed(code),
+      joined: (id) => {
+        const state = this.sync(id);
+        if (state?.status === GameStatus.PLAYING) this.events.sync(id, state);
+      },
     });
   }
 

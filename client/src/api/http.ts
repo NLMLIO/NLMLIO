@@ -87,7 +87,7 @@ const MESSAGES: Partial<Record<ErrorCode, string>> = {
   NOT_IN_ROOM: '참가 중인 방이 없습니다.',
   ROOM_NOT_FOUND: '없는 방 코드예요. 코드를 다시 확인해주세요.',
   ROOM_FULL: '자리가 가득 찼어요.',
-  ROOM_IN_GAME: '이미 게임이 시작된 방이에요.',
+  ROOM_IN_GAME: '게임 진행 중에는 이 작업을 할 수 없어요.',
   NOT_ROOM_HOST: '방장만 할 수 있어요.',
   NOT_ENOUGH_PLAYERS: '참가자가 2명 이상이어야 시작할 수 있어요.',
   USER_NOT_FOUND: '이미 방을 나간 회원이에요.',

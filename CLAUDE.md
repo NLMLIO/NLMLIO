@@ -201,8 +201,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `server/src/modules/room/room-game.lifecycle.ts`: Room→Game 모듈 순환 참조 없이 시작·이탈·방 종료를 게임 큐에 연결한다.
 - `server/src/modules/auth`, `user`, `ranking`: 인증, 프로필·대시보드, 개인 전적·리더보드.
 - `server/src/modules/game/game-result.service.ts`: 게임 엔진이 최종 결과를 전달할 서버 내부 진입점. 결과 제출용 HTTP 엔드포인트는 없다.
-- `server/src/domain/room/room.ts`: 방 규칙(입장 순서, 참가자 6·관전자 10 칸, 자리 이동, 추방, 방장 위임·승계, 게임 시작). 규칙 위반은 `RoomRuleError(앱 에러 코드)`로 던지고 서비스가 HTTP·소켓 응답으로 바꾼다.
-- `server/src/modules/room`: HTTP `POST /api/rooms`, `POST /api/rooms/join`, `GET /api/rooms/me`, `POST /api/rooms/me/leave`와 `RoomGateway`(소켓 인증 미들웨어, 방 의도 이벤트). `RoomEvents`가 소켓 채널 `user:{id}`·`room:{code}`로 상태를 내보낸다. 방은 서버 메모리(`infra/game-state/room.store.ts`), 코드 예약은 Redis `room-code:{code}`(SET NX, TTL 24시간). 모든 방은 비공개다(2026-10-22 결정).
+- `server/src/domain/room/room.ts`: 방 규칙(입장 순서, 참가자 6·관전자 10 칸, 자리 이동, 추방, 방장 위임·승계, 게임 시작). 진행 중 입장은 항상 관전자로 받고 탈락 참가자를 제외한 새 관전 10석·전체 16명 정원을 지킨다. 규칙 위반은 `RoomRuleError(앱 에러 코드)`로 던지고 서비스가 HTTP·소켓 응답으로 바꾼다.
+- `server/src/modules/room`: HTTP `POST /api/rooms`, `POST /api/rooms/join`(게임 중이면 관전 입장·현재 상태 전송), `GET /api/rooms/me`, `POST /api/rooms/me/leave`와 `RoomGateway`(소켓 인증 미들웨어, 방 의도 이벤트). `RoomEvents`가 소켓 채널 `user:{id}`·`room:{code}`로 상태를 내보낸다. 방은 서버 메모리(`infra/game-state/room.store.ts`), 코드 예약은 Redis `room-code:{code}`(SET NX, TTL 24시간). 모든 방은 비공개다(2026-10-22 결정).
 - `server/src/common/ws-ack.filter.ts`, `ws-validation.pipe.ts`, `socket-user.ts`: 소켓 이벤트 예외를 ack `{ ok: false, code }`로 돌려주고, 페이로드를 HTTP와 같은 규칙으로 검증한다.
 - `client/src/socket/socket.ts`, `stores/room-store.ts`: 로그인한 동안 소켓 하나를 유지하고(토큰 만료 시 재발급 후 재연결), 서버 이벤트로만 방 스토어를 갱신한다. 의도는 `sendIntent`로 보내고 ack를 기다린다. 연결 중 토큰이 만료돼 ack가 `TOKEN_EXPIRED`·`TOKEN_INVALID`면 재발급 → 새 토큰으로 재연결 → 한 번 다시 보낸다.
 - `client/src/pages/lobby/LobbyPage.tsx`, `CreateRoomPage.tsx`, `pages/room/WaitingRoomPage.tsx`, `RoomChat.tsx`(채팅·이모티콘·방 안내): 로비(`#lobby`, 기본 화면), 방 만들기(`#create-room`), 대기실(`#room`, 상단 메뉴 없이 전체 화면).

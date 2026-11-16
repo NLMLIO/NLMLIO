@@ -83,7 +83,11 @@ export function LobbyPage({
           <form className="lobby-card" onSubmit={join}>
             <p className="mono-label">JOIN WITH CODE</p>
             <h2>코드로 참가</h2>
-            <p className="lobby-card-desc">친구에게 받은 6자리 방 코드를 입력하세요.</p>
+            <p className="lobby-card-desc">
+              친구에게 받은 6자리 방 코드를 입력하세요.
+              <br />
+              게임 중인 방은 관전자로 참가해요.
+            </p>
             <div className="lobby-card-actions">
               <label className="code-boxes">
                 <span className="visually-hidden">방 코드 6자리</span>
