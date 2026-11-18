@@ -11,6 +11,15 @@ export const SKILL_PICK_EVERY = 5;
 export const SKILL_PICK_TIME_MS = 10_000;
 /** 스킬을 쓰면 모두의 화면 위쪽에 사용 알림이 뜨는 시간(009-04) */
 export const SKILL_CAST_MS = 1_600;
+/**
+ * 종 옮기기(009-05): 종이 옮겨지는 연출 0.5초 + 새 키로 치는 3초. 이동 중 처음 300ms는 종 입력을 무시한다.
+ * 새 키는 방 전체가 같은 키 하나를 쓴다.
+ */
+export const BELL_MOVE_MS = 3_500;
+export const BELL_MOVE_INPUT_LOCK_MS = 300;
+export const BELL_MOVE_KEYS = ['A', 'S', 'D', 'F', 'G', 'H', 'K', 'L'] as const;
+/** 종이 옮겨 갈 자리 수(테이블 위 대각선 4곳) */
+export const BELL_MOVE_POSITIONS = 4;
 /** 후보 칸 수와 보유 칸 수(009-02, 009-03) */
 export const SKILL_CANDIDATE_COUNT = 3;
 export const SKILL_SLOT_COUNT = 3;
@@ -88,7 +97,7 @@ export const SKILLS: readonly SkillDefinition[] = [
     timing: SkillTiming.ANYTIME,
     user: SkillUser.PLAYER,
     target: 'none',
-    available: false,
+    available: true,
     description: '3초 동안 종 위치와 종 단축키가 바뀐다.',
   },
   {
@@ -108,7 +117,7 @@ export const SKILLS: readonly SkillDefinition[] = [
     timing: SkillTiming.ANYTIME,
     user: SkillUser.PLAYER,
     target: 'none',
-    available: false,
+    available: true,
     description: '과일이 6개인 카드를 낸다. 종 판정이 나면 바로 사라진다.',
   },
   {
@@ -313,4 +322,11 @@ export interface SkillUseRequest {
   gameId: string;
   slot: number;
   targetUserId?: number;
+}
+
+/** 종 옮기기로 바뀐 종: 자리(0~3)와 새 키, 끝나는 서버 시각 */
+export interface BellMovePublic {
+  position: number;
+  key: string;
+  endsAt: number;
 }

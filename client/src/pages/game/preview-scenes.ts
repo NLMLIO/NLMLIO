@@ -309,6 +309,24 @@ export const PREVIEW_SCENES = {
     },
     skillCast: { key: 2, caster: '과일왕', skillId: SkillId.SPARKLE_CARD, target: null },
   },
+  /** M04 · 종 옮기기: 종이 옮겨졌고 새 키(K)로만 친다 */
+  'skill-bell-move': {
+    ...MY_TURN,
+    skills: { slots: [slot(SkillId.BELL_MOVE), EMPTY_SLOT, EMPTY_SLOT] },
+    skillCast: { key: 3, caster: '자두씨', skillId: SkillId.BELL_MOVE, target: null },
+    bellMove: { position: 0, key: 'K', locked: false },
+  },
+  /** M15 · 과일 6개 카드: 테이블에 놓인 6개짜리 특수 카드 */
+  'skill-six-card': {
+    ...MY_TURN,
+    players: MY_TURN.players.map((entry) =>
+      entry.id === 'me' && entry.topCard
+        ? { ...entry, topCard: { fruit: 'STRAWBERRY' as const, count: 6 as const, special: true } }
+        : entry,
+    ),
+    skills: { slots: [slot(SkillId.SIX_FRUIT_CARD), EMPTY_SLOT, EMPTY_SLOT] },
+    skillCast: { key: 4, caster: '과일왕', skillId: SkillId.SIX_FRUIT_CARD, target: null },
+  },
   /** 22 · 게임 · 스킬 슬롯 */
   'skill-slots': {
     ...MY_TURN,

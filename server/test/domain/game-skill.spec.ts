@@ -1,4 +1,7 @@
 import {
+  BELL_MOVE_KEYS,
+  BELL_MOVE_MS,
+  BELL_MOVE_POSITIONS,
   ErrorCode,
   Fruit,
   GameStatus,
@@ -239,6 +242,11 @@ describe('Game 스킬 선택 연결(FUNC-009-01)', () => {
   });
 });
 
+/** 후보 3칸이 모두 아직 효과를 구현하지 않은 스킬(숫자 바꾸기)이 되는 난수: 등급 ⭐⭐, 그 등급의 첫째 */
+const unavailableRandom = () => {
+  let index = 0;
+  return () => (index++ % 2 === 0 ? 0.6 : 0);
+};
 /** 후보 3칸이 모두 반짝반짝한 카드가 되도록 등급(⭐)·스킬(둘째)을 고르는 난수 */
 const sparkleRandom = () => {
   let index = 0;
@@ -302,11 +310,11 @@ describe('Game 스킬 사용 틀(FUNC-009-04)', () => {
   });
 
   it('효과를 아직 구현하지 않은 스킬은 쓸 수 없고 칸에서 사라지지도 않는다', () => {
-    const game = start(2, () => 0);
+    const game = start(2, unavailableRandom());
     const at = holdSkills(game);
-    expect(game.skillState(1).slots).toEqual([SkillId.BELL_MOVE]);
+    expect(game.skillState(1).slots).toEqual([SkillId.NUMBER_SHIFT]);
     expectRule(() => game.useSkill(1, 0, undefined, at + 1), ErrorCode.SKILL_UNAVAILABLE);
-    expect(game.skillState(1).slots).toEqual([SkillId.BELL_MOVE]);
+    expect(game.skillState(1).slots).toEqual([SkillId.NUMBER_SHIFT]);
   });
 
   it('빈 칸·잘못된 칸 번호·필요 없는 대상은 거부한다', () => {
@@ -358,5 +366,128 @@ describe('Game 스킬 사용 틀(FUNC-009-04)', () => {
     expect(game.skillPicking).toBe(true);
     expect(game.useSkill(1, 0, undefined, t)).toBeNull();
     expect(game.skillState(1).slots).toEqual([SkillId.SPARKLE_CARD]);
+  });
+});
+
+/** 후보가 모두 과일 6개 카드가 되는 난수(등급 ⭐, 같은 등급의 셋째) */
+const sixRandom = () => {
+  let index = 0;
+  return () => (index++ % 2 === 0 ? 0 : 0.9);
+};
+const totalCards = (game: Game) => {
+  const state = game.checkpoint();
+  return (
+    state.pile.length +
+    state.players.reduce((sum, player) => sum + player.hand.length + player.table.length, 0)
+  );
+};
+
+describe('스킬 효과: 과일 6개 카드(FUNC-009-05)', () => {
+  it('다음에 내는 카드가 같은 과일의 6개 특수 카드가 된다', () => {
+    const game = start(2, sixRandom());
+    const at = holdSkills(game);
+    expect(game.skillState(1).slots).toEqual([SkillId.SIX_FRUIT_CARD]);
+    game.useSkill(1, 0, undefined, at + 1);
+    game.play(1, game.turnId, at + 2);
+    expect(game.snapshot().players[0].topCard).toEqual({
+      fruit: 'STRAWBERRY',
+      count: 6,
+      special: true,
+    });
+    game.play(2, game.turnId, at + 3);
+    expect(game.snapshot().players[1].topCard).not.toHaveProperty('special');
+  });
+
+  it('딸기 합이 6 이상이라 5가 되지 못한다: 오발이면 특수 카드가 사라지고 보관 스택에도 가지 않는다', () => {
+    const game = start(2, sixRandom());
+    const at = holdSkills(game);
+    const before = totalCards(game);
+    game.useSkill(1, 0, undefined, at + 1);
+    game.play(1, game.turnId, at + 2);
+    game.play(2, game.turnId, at + 3);
+    // 6 + 3 = 9 이므로 5가 아니다 → 오발
+    expect(game.ring(2, game.turnSeq, at + 4)).toMatchObject({ kind: 'bell', success: false });
+    const state = game.checkpoint();
+    expect(state.players[0].table).toEqual([]);
+    expect(state.pile.some((code) => code.endsWith('*'))).toBe(false);
+    // 오발자의 카드 1장은 보관 스택으로 가고, 특수 카드(와 그 자리의 원래 카드)는 사라진다.
+    expect(totalCards(game)).toBe(before - 1);
+    expect(game.snapshot().players[1].topCard).not.toBeNull();
+  });
+
+  it('성공 판정이 나도 승자가 가져가지 않고 사라진다(테이블 아래 깔려 있어도)', () => {
+    const game = start(2, sixRandom());
+    const at = holdSkills(game);
+    const before = totalCards(game);
+    game.useSkill(1, 0, undefined, at + 1);
+    game.play(1, game.turnId, at + 2); // 6 (특수)
+    game.play(2, game.turnId, at + 3); // 3
+    game.play(1, game.turnId, at + 4); // 2: 특수 카드 위에 덮인다
+    game.play(2, game.turnId, at + 5); // 3 → 위 카드 합 2 + 3 = 5
+    const winnerHand = game.checkpoint().players[0].hand.length;
+    expect(game.ring(1, game.turnSeq, at + 6)).toMatchObject({ kind: 'bell', success: true });
+    const state = game.checkpoint();
+    // 가져간 카드는 일반 카드 4장(2·3·2·3 중 테이블의 4장)에서 특수 카드가 빠진 3장이다.
+    expect(state.players[0].hand.length).toBe(winnerHand + 3);
+    expect(
+      [...state.pile, ...state.players.flatMap((player) => player.hand)].some((code) =>
+        code.endsWith('*'),
+      ),
+    ).toBe(false);
+    expect(totalCards(game)).toBe(before - 1);
+  });
+
+  it('특수 카드를 내기 전에 탈락하면 예약이 사라진다', () => {
+    const game = start(3, sixRandom());
+    const at = holdSkills(game);
+    game.useSkill(3, 0, undefined, at + 1);
+    game.depart(3, at + 2);
+    expect(game.skillState(3).slots).toHaveLength(0);
+  });
+
+  it('금칠과 함께 쓰면 특수 카드에 금칠이 걸린다', () => {
+    const game = start(2, sixRandom());
+    const at = holdSkills(game);
+    game.useSkill(1, 0, undefined, at + 1);
+    game.play(1, game.turnId, at + 2);
+    expect(game.snapshot().players[0].topCard).toMatchObject({ count: 6, special: true });
+  });
+});
+
+describe('스킬 효과: 종 옮기기(FUNC-009-05)', () => {
+  it('모두가 같은 새 자리·새 키를 쓰는 상태를 만들고 3.5초 뒤 끝난다', () => {
+    const game = start(2, () => 0);
+    const at = holdSkills(game);
+    expect(game.snapshot().bellMove).toBeNull();
+    expect(game.useSkill(1, 0, undefined, at + 1)).toMatchObject({
+      kind: 'skill',
+      skillId: SkillId.BELL_MOVE,
+      targetUserId: null,
+    });
+    const move = game.snapshot().bellMove!;
+    expect(BELL_MOVE_KEYS as readonly string[]).toContain(move.key);
+    expect(move.position).toBeGreaterThanOrEqual(0);
+    expect(move.position).toBeLessThan(BELL_MOVE_POSITIONS);
+    expect(move.endsAt).toBe(at + 1 + BELL_MOVE_MS);
+    expect(game.skillState(1).slots).toEqual([]);
+  });
+
+  it('판정은 평소와 같다: 옮겨진 동안에도 서버는 같은 규칙으로 종을 판정한다', () => {
+    const game = start(2, () => 0);
+    const at = holdSkills(game);
+    game.useSkill(1, 0, undefined, at + 1);
+    game.play(1, game.turnId, at + 2);
+    game.play(2, game.turnId, at + 3);
+    expect(game.ring(2, game.turnSeq, at + 4)).toMatchObject({ kind: 'bell', success: true });
+  });
+
+  it('다시 쓰면 새로 정해 시간을 다시 세고, 게임이 끝나면 사라진다', () => {
+    const game = start(2, () => 0);
+    const at = holdSkills(game);
+    game.useSkill(1, 0, undefined, at + 1);
+    game.useSkill(2, 0, undefined, at + 2000);
+    expect(game.snapshot().bellMove!.endsAt).toBe(at + 2000 + BELL_MOVE_MS);
+    game.depart(2, at + 2100);
+    expect(game.snapshot().bellMove).toBeNull();
   });
 });

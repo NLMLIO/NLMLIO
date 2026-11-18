@@ -6,16 +6,27 @@ import {
   TURN_TIME_MS,
 } from '@nlmlio/shared';
 import type {
+  BellMovePublic,
   GameAction,
   GameSnapshot,
   SettleGameInput,
   SkillChoice,
   SkillStateEvent,
 } from '@nlmlio/shared';
-import { RoomRole, SkillId, SkillTiming, SkillUser, skillById } from '@nlmlio/shared';
+import {
+  BELL_MOVE_KEYS,
+  BELL_MOVE_MS,
+  BELL_MOVE_POSITIONS,
+  RoomRole,
+  SkillId,
+  SkillTiming,
+  SkillUser,
+  skillById,
+} from '@nlmlio/shared';
 import { Card, Deck } from '../card/deck';
 import { GamePlayer } from '../player/game-player';
 import { SkillBook, SkillRuleError } from '../skill/skill-book';
+import { pickIndex } from '../skill/skill-roll';
 import type { Random } from '../skill/skill-roll';
 import type { SkillParticipant } from '../skill/skill-selection';
 import { GameSettlement } from './game-settlement';
@@ -81,12 +92,17 @@ export class Game {
   private settlementConfirmed = false;
   private clock: number;
   private readonly skills: SkillBook;
+  private readonly random: Random;
   /** 종 성공이 5의 배수가 돼 스킬 선택을 열 차례다. 결과 표시가 끝나면 서비스가 연다 */
   private skillDue = false;
   /** 스킬 선택 중 멈춘 턴의 남은 시간. 선택이 끝나면 여기서부터 이어 간다 */
   private pausedTurnMs: number | null = null;
   /** 반짝반짝한 카드를 쓴 사람. 다음에 내는 카드가 금칠이 된다 */
   private readonly sparkle = new Set<number>();
+  /** 과일 6개 카드를 쓴 사람. 다음에 내는 카드가 같은 과일의 6개 특수 카드가 된다 */
+  private readonly sixCard = new Set<number>();
+  /** 종 옮기기: 방 전체가 새 자리·새 키로 치는 동안의 상태 */
+  private bellMove: BellMovePublic | null = null;
 
   private constructor(
     private readonly input: StartGameInput,
@@ -102,6 +118,7 @@ export class Game {
     this.current = this.players[0].userId;
     this.deadline = input.now + TURN_TIME_MS;
     this.clock = input.now;
+    this.random = random;
     this.skills = new SkillBook(random);
   }
 
@@ -185,7 +202,9 @@ export class Game {
     now = this.time(now);
     if (this.resumeAt !== null && now < this.resumeAt) return null;
     this.resumeAt = null;
-    const card = player.draw(automatic);
+    let card = player.draw(automatic);
+    // 과일 6개 카드: 낼 카드의 과일 그대로 6개짜리 특수 카드로 바뀐다(원래 카드는 함께 사라진다).
+    if (this.sixCard.delete(userId)) card = Card.six(card.fruit);
     if (this.sparkle.delete(userId)) card.gild();
     this.table.play(userId, card);
     this.sequence++;
@@ -224,6 +243,8 @@ export class Game {
       this.pile.push(...penalty);
       movedCards = penalty.length;
     }
+    // 판정이 났다: 테이블에 남은 과일 6개 카드는 성공·오발과 상관없이 사라진다.
+    this.table.discardSpecial();
     this.eliminateEmpty();
     if (this.current === null || !this.canPlay(this.current))
       this.current = this.nextAfter(this.current ?? userId);
@@ -380,9 +401,9 @@ export class Game {
       )
         throw new GameRuleError(ErrorCode.VALIDATION_FAILED);
     } else if (targetUserId !== undefined) throw new GameRuleError(ErrorCode.VALIDATION_FAILED);
-    this.time(now);
+    const at = this.time(now);
     this.skills.consume(userId, slot);
-    this.applySkill(skillId, userId);
+    this.applySkill(skillId, userId, at);
     this.revision++;
     return { kind: 'skill', userId, skillId, targetUserId: targetUserId ?? null };
   }
@@ -485,6 +506,7 @@ export class Game {
       results,
       settled: this.settlementConfirmed,
       skillSuccesses: this.skills.successCount,
+      bellMove: this.bellMove,
       skillPick: this.skills.selection
         ? {
             deadline: this.skills.selection.deadline,
@@ -528,10 +550,21 @@ export class Game {
     return player?.active ? player : null;
   }
   /** 스킬 효과. `available`이 true인 스킬만 여기까지 온다 */
-  private applySkill(skillId: SkillId, userId: number): void {
+  private applySkill(skillId: SkillId, userId: number, now: number): void {
     switch (skillId) {
       case SkillId.SPARKLE_CARD:
         this.sparkle.add(userId);
+        break;
+      case SkillId.SIX_FRUIT_CARD:
+        this.sixCard.add(userId);
+        break;
+      case SkillId.BELL_MOVE:
+        // 모두 같은 자리·같은 키. 다시 쓰면 새로 정해 시간을 다시 센다.
+        this.bellMove = {
+          position: pickIndex(this.random, BELL_MOVE_POSITIONS),
+          key: BELL_MOVE_KEYS[pickIndex(this.random, BELL_MOVE_KEYS.length)],
+          endsAt: now + BELL_MOVE_MS,
+        };
         break;
       default:
         throw new Error(`Skill effect not implemented: ${skillId}`);
@@ -547,6 +580,7 @@ export class Game {
     this.out.push(player.userId);
     this.skills.clear(player.userId);
     this.sparkle.delete(player.userId);
+    this.sixCard.delete(player.userId);
     this.emptied = this.emptied.filter((id) => id !== player.userId);
     if (advanceRound) this.roundNumber++;
   }
@@ -591,6 +625,7 @@ export class Game {
     if (this.players.filter((player) => player.active).length > 1) return;
     this.phase = GameStatus.ENDED;
     this.skills.cancelSelection();
+    this.bellMove = null;
     this.skillDue = false;
     this.pausedTurnMs = null;
     this.endedAt = now;

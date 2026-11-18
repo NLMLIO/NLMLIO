@@ -11,7 +11,10 @@ export type PlayerColor = 'strawberry' | 'banana' | 'lime' | 'plum' | 'white' | 
 
 export interface CardFace {
   fruit: Fruit;
-  count: 1 | 2 | 3 | 4 | 5;
+  /** 6은 과일 6개 카드(스킬)뿐이다 */
+  count: 1 | 2 | 3 | 4 | 5 | 6;
+  /** 과일 6개 카드: 판정이 나면 성공·오발과 상관없이 사라진다 */
+  special?: boolean;
   /** 반짝반짝한 카드(꾸미기). 판정으로 옮겨지면 사라진다 */
   gilded?: boolean;
 }
@@ -114,6 +117,17 @@ export interface GameView {
   skillCast?: SkillCastView;
   /** 대상 지정 중: 누를 수 있는 좌석 */
   targeting?: SkillTargeting;
+  /** 종 옮기기가 진행 중이면 옮겨진 종의 자리와 새 키 */
+  bellMove?: BellMoveView;
+}
+
+export interface BellMoveView {
+  /** 옮겨 간 자리(0~3) */
+  position: number;
+  /** 새 종 치기 키(Space 대신). 예: 'K' */
+  key: string;
+  /** 옮겨지는 중이라 종 입력을 무시하는 동안 */
+  locked: boolean;
 }
 
 export interface SkillCastView {

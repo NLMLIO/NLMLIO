@@ -129,10 +129,13 @@ export function GameBoard({
             spectating ||
             view.myPhase === 'judging' ||
             view.bell.kind === 'countdown' ||
-            !!view.skills?.pick
+            !!view.skills?.pick ||
+            !!view.bellMove?.locked
           }
           onRing={actions.onRingBell}
+          moved={view.bellMove}
         />
+        {view.bellMove && <span className="bell-ghost" aria-hidden="true" />}
         {seatedPlayers.map((player, index) => (
           <div
             key={`${player.id}:${strike?.playerId === player.id ? strike.id : 'rest'}`}
@@ -186,6 +189,7 @@ export function GameBoard({
           emoteKey={me.emoteKey}
           playing={playing}
           leaving={leaving}
+          bellKey={view.bellMove?.key}
           onPlayCard={actions.onPlayCard}
           onLeave={actions.onLeave}
         />

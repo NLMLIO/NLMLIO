@@ -28,7 +28,14 @@ const sparkleRandom = () => {
 
 describe.each([
   ['반짝반짝한 카드', sparkleRandom, true],
-  ['종 옮기기(효과 미구현)', () => () => 0, false],
+  [
+    '숫자 바꾸기(효과 미구현)',
+    () => {
+      let index = 0;
+      return () => (index++ % 2 === 0 ? 0.6 : 0);
+    },
+    false,
+  ],
 ])('GameService 스킬 사용 — %s (FUNC-009-04)', (_name, makeRandom, usable) => {
   let service: GameService;
   let timers: GameTimers;

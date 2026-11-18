@@ -7,6 +7,8 @@ interface GameShortcuts {
   space?: () => void;
   /** Q·W·E: 스킬 슬롯 0·1·2 사용 */
   skill?: (slot: number) => void;
+  /** 종 옮기기로 바뀐 종 치기 키(예: `KeyK`). 이 동안 Space는 쓰지 않는다 */
+  bell?: { code: string; run: () => void };
 }
 
 const SLOT_CODES = ['KeyQ', 'KeyW', 'KeyE'];
@@ -31,14 +33,17 @@ export function useGameShortcuts(shortcuts: GameShortcuts) {
         return;
       const slot = SLOT_CODES.indexOf(event.code);
       const skill = latest.current.skill;
+      const bell = latest.current.bell;
       const handler =
-        event.code === 'Space'
-          ? latest.current.space
-          : event.code === 'KeyJ'
-            ? latest.current.j
-            : slot >= 0 && skill
-              ? () => skill(slot)
-              : undefined;
+        bell && event.code === bell.code
+          ? bell.run
+          : event.code === 'Space'
+            ? latest.current.space
+            : event.code === 'KeyJ'
+              ? latest.current.j
+              : slot >= 0 && skill
+                ? () => skill(slot)
+                : undefined;
       if (!handler) return;
       event.preventDefault();
       handler();

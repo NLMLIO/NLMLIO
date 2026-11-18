@@ -1,6 +1,7 @@
 import type { Fruit } from './domain';
 import type { ErrorCode } from './errors';
 import type {
+  BellMovePublic,
   SkillId,
   SkillPickPublic,
   SkillPickRequest,
@@ -25,7 +26,10 @@ export const GamePlayerStatus = {
 export type GamePlayerStatus = (typeof GamePlayerStatus)[keyof typeof GamePlayerStatus];
 export interface GameCard {
   fruit: Fruit;
-  count: 1 | 2 | 3 | 4 | 5;
+  /** 6은 과일 6개 카드(스킬)뿐이다 */
+  count: 1 | 2 | 3 | 4 | 5 | 6;
+  /** 과일 6개 카드: 판정이 나면 성공·오발과 상관없이 사라진다 */
+  special?: true;
   /** 반짝반짝한 카드(꾸미기, 판정에 영향 없음). 판정으로 옮겨지면 사라진다 */
   gilded?: true;
 }
@@ -96,6 +100,8 @@ export interface GameSnapshot {
   skillSuccesses: number;
   /** 스킬 선택 중이면 진행 현황. 선택 중에는 카드 내기·종·턴 타이머가 멈춘다 */
   skillPick: SkillPickPublic | null;
+  /** 종 옮기기가 진행 중이면 새 자리·새 키(끝났어도 다음 변경까지 남을 수 있어 `endsAt`으로 판단한다) */
+  bellMove: BellMovePublic | null;
 }
 /** `game:state` 페이로드. 보낼 때의 서버 시각을 붙여 클라이언트가 시계 차이를 잰다. */
 export type GameStateEvent = GameSnapshot & { serverTime: number };

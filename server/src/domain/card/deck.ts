@@ -14,9 +14,21 @@ export class Card {
   constructor(
     readonly fruit: Fruit,
     readonly count: GameCard['count'],
+    /** 과일 6개 카드(스킬): 판정으로 테이블을 떠나면 승자도 보관 스택도 아닌 곳으로 사라진다 */
+    readonly special = false,
   ) {
-    if (!Object.values(Fruit).includes(fruit) || !Number.isInteger(count) || count < 1 || count > 5)
+    const max = special ? 6 : 5;
+    if (
+      !Object.values(Fruit).includes(fruit) ||
+      !Number.isInteger(count) ||
+      count < 1 ||
+      count > max
+    )
       throw new Error('Invalid card');
+  }
+  /** 과일 6개 카드: 이 과일의 6개짜리 특수 카드 */
+  static six(fruit: Fruit): Card {
+    return new Card(fruit, 6, true);
   }
   get gilded(): boolean {
     return this.gold;
@@ -31,11 +43,12 @@ export class Card {
     return {
       fruit: this.fruit,
       count: this.count,
+      ...(this.special ? { special: true as const } : {}),
       ...(this.gold ? { gilded: true as const } : {}),
     };
   }
   code(): string {
-    return `${INITIALS[this.fruit]}${this.count}`;
+    return `${INITIALS[this.fruit]}${this.count}${this.special ? '*' : ''}`;
   }
 }
 

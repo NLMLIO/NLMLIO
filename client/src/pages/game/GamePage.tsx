@@ -17,7 +17,7 @@ import { useRoomStore } from '../../stores/room-store';
 import { GameBoard, type GameActions } from './GameBoard';
 import { GameFrame } from './GameFrame';
 import { GameResult } from './GameResult';
-import { skillUsable, toGameView, toRanking } from './to-game-view';
+import { bellMoveAt, skillUsable, toGameView, toRanking } from './to-game-view';
 
 /** 의도 실패 안내를 띄워 두는 시간 */
 const ERROR_MS = 2500;
@@ -95,6 +95,7 @@ export function GamePage({
   const judging = live && (snapshot?.roundResumeAt ?? 0) > now + clockOffset;
   // 스킬 선택 중에는 게임이 멈춘다(FUNC-009-01). 카드 내기·종은 서버도 무시한다.
   const picking = live && !!snapshot?.skillPick;
+  const bellMoved = snapshot ? bellMoveAt(snapshot, now + clockOffset) : undefined;
 
   function isPaused() {
     const current = useGameStore.getState();
@@ -119,6 +120,9 @@ export function GamePage({
 
   function ringBell() {
     if (!snapshot || !canAct || isPaused()) return;
+    // 종이 옮겨지는 중(처음 300ms)에는 종 입력을 무시한다(종 옮기기).
+    const current = useGameStore.getState();
+    if (bellMoveAt(snapshot, Date.now() + current.clockOffset)?.locked) return;
     // 같은 공개 테이블에 대한 종은 서버가 한 번만 판정하므로 다시 보내지 않는다.
     const key = `${snapshot.gameId}:${snapshot.turnSeq}`;
     playSound('bell');
@@ -240,7 +244,12 @@ export function GamePage({
           : !canAct && !leaving
             ? actions.onLeave
             : undefined,
-    space: canAct && !confirmLeave && !judging && !picking ? ringBell : undefined,
+    // 종 옮기기 중에는 Space 대신 새 키로만 종을 친다.
+    space: canAct && !confirmLeave && !judging && !picking && !bellMoved ? ringBell : undefined,
+    bell:
+      canAct && !confirmLeave && !judging && !picking && bellMoved
+        ? { code: `Key${bellMoved.key}`, run: ringBell }
+        : undefined,
   });
 
   if (!snapshot)

@@ -4,6 +4,8 @@ import {
   GamePlayerStatus,
   GameStatus,
   RoomRole,
+  BELL_MOVE_INPUT_LOCK_MS,
+  BELL_MOVE_MS,
   SKILL_CAST_MS,
   SKILL_PICK_TIME_MS,
   SKILL_SLOT_COUNT,
@@ -31,6 +33,7 @@ import {
   type LogEntry,
   type PlayerColor,
   type PlayerView,
+  type BellMoveView,
   type RankingEntry,
   type SkillCastView,
   type SkillTargeting,
@@ -289,6 +292,18 @@ export function skillUsable(snapshot: GameSnapshot, userId: number, skillId: Ski
   );
 }
 
+/** 종 옮기기가 진행 중이면 옮겨진 자리·새 키. 끝나는 시각은 서버가 정하고 화면은 서버 시각으로 센다 */
+export function bellMoveAt(snapshot: GameSnapshot, serverNow: number): BellMoveView | undefined {
+  const move = snapshot.bellMove;
+  if (!move || snapshot.status !== GameStatus.PLAYING || serverNow >= move.endsAt) return undefined;
+  return {
+    position: move.position,
+    key: move.key,
+    // 옮겨지는 연출 중 처음 300ms는 종 입력을 무시한다
+    locked: serverNow < move.endsAt - BELL_MOVE_MS + BELL_MOVE_INPUT_LOCK_MS,
+  };
+}
+
 /** 서버가 보낸 내 스킬 상태 → 슬롯과 선택 창. 아직 못 받았거나 다른 게임의 것이면 만들지 않는다 */
 function skillsOf(input: GameViewInput): SkillsView | undefined {
   const { snapshot, skills } = input;
@@ -428,6 +443,7 @@ export function toGameView(input: GameViewInput): GameView {
     skills,
     skillCast: skillCastOf(input),
     targeting: targetingOf(input, skills),
+    bellMove: bellMoveAt(snapshot, input.serverNow),
   };
 }
 
