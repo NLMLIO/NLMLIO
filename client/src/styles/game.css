@@ -24,18 +24,25 @@
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
   position: fixed;
   inset: 0;
+  display: grid;
+  place-items: center;
+  height: 100dvh;
   overflow: hidden;
   background: #08080b;
   color: var(--text-primary);
   font-family: var(--font-text);
 }
+.game-fit {
+  position: relative;
+}
 .game-frame {
   position: absolute;
-  top: 50%;
-  left: 50%;
+  top: 0;
+  left: 0;
   width: 1440px;
   height: 900px;
-  transform: translate(-50%, -50%) scale(var(--game-scale, 1));
+  transform: scale(var(--game-scale, 1));
+  transform-origin: top left;
 }
 .game-screen {
   display: flex;
@@ -848,19 +855,25 @@
 }
 .player-hand {
   position: absolute;
-  width: 72px;
-  height: 99px;
-  left: -36px;
+  width: 88px;
+  height: 123px;
+  left: -44px;
   top: 0;
   z-index: 4;
   transform: translate(88px, 165px);
   overflow: visible;
 }
 .player-hand path {
-  fill: #ead3b1;
+  fill: #f5e5d0;
   stroke: #332b29;
-  stroke-width: 2.5;
+  stroke-width: 3;
   stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.player-hand .hand-crease {
+  fill: none;
+  stroke: #c7aa8b;
+  stroke-width: 2;
 }
 .player-hand .hand-cuff {
   fill: var(--player-color);

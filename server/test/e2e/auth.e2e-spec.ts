@@ -76,6 +76,16 @@ describe('로그인·기기별 세션 실제 PostgreSQL/Redis 통합 (FUNC-001-0
     await refresh(rotated.headers['set-cookie'][0].split(';')[0]).expect(200);
   });
 
+  it('같은 Refresh의 동시 요청은 하나만 회전하고 실패 응답이 새 쿠키를 지우지 않는다', async () => {
+    const session = await login();
+    const replies = await Promise.all([refresh(session.cookie), refresh(session.cookie)]);
+    expect(replies.map((reply) => reply.status).sort()).toEqual([200, 401]);
+    const rejected = replies.find((reply) => reply.status === 401)!;
+    expect(rejected.headers['set-cookie']).toBeUndefined();
+    const accepted = replies.find((reply) => reply.status === 200)!;
+    await refresh(accepted.headers['set-cookie'][0].split(';')[0]).expect(200);
+  });
+
   it('로그아웃은 그 기기의 세션만 끝낸다', async () => {
     const pc = await login();
     const phone = await login();

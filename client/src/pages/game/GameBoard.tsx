@@ -132,9 +132,10 @@ export function GameBoard({
             }
             aria-hidden="true"
           >
-            <svg className="player-hand" viewBox="0 0 80 110">
-              <path d="M22 104V81C13 74 7 62 9 57c2-5 7-4 11 0l5 6V20c0-8 11-8 11 0v29-37c0-8 11-8 11 0v37-30c0-8 11-8 11 0v33-21c0-8 11-8 11 0v35c0 12-5 20-10 27v11Z" />
-              <path className="hand-cuff" d="M20 94h42v14H20z" />
+            <svg className="player-hand" viewBox="0 0 100 140" focusable="false">
+              <path d="M30 117v-12c-7-6-15-16-20-26l-5-11c-2-5 1-9 5-9 3-1 6 1 9 5l8 10V29c0-5 3-8 7-8s7 3 7 8v32-45c0-5 3-8 7-8s7 3 7 8v45-40c0-5 3-8 7-8s7 3 7 8v43-29c0-5 3-8 7-8s7 3 7 8v44c0 13-3 22-11 30v8Z" />
+              <path className="hand-crease" d="M28 76c7-1 14 3 17 10M42 70v8m14-10v9m14-8v9" />
+              <path className="hand-cuff" d="M27 113h48v22H27z" />
             </svg>
           </div>
         ))}

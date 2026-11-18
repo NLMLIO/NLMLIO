@@ -249,7 +249,8 @@ export function toGameView(input: GameViewInput): GameView {
   if (!seated)
     players.unshift({
       id: 'me',
-      nickname: input.nickname,
+      nickname:
+        input.room?.members.find((member) => member.userId === userId)?.nickname ?? input.nickname,
       color: 'white',
       deckCount: 0,
       topCard: null,

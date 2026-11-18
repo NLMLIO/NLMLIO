@@ -242,6 +242,14 @@ export class Game {
     return { kind: 'departed', userId };
   }
 
+  rename(userId: number, nickname: string): boolean {
+    const player = this.players.find((entry) => entry.userId === userId);
+    if (!player || player.nickname === nickname) return false;
+    player.rename(nickname);
+    this.revision++;
+    return true;
+  }
+
   connection(userId: number, connected: boolean): GameAction | null {
     const player = this.players.find((entry) => entry.userId === userId);
     if (!player || player.connected === connected || this.phase !== GameStatus.PLAYING) return null;

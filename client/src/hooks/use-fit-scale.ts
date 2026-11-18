@@ -1,17 +1,37 @@
-import { useEffect, useState } from 'react';
+import { useLayoutEffect, useState, type RefObject } from 'react';
 
-/** width×height 화면을 창 안에 비율을 지켜 꽉 차게 넣는 배율 */
-export function useFitScale(width: number, height: number) {
-  const [scale, setScale] = useState(() => fit(width, height));
-  useEffect(() => {
-    const resize = () => setScale(fit(width, height));
-    resize();
-    window.addEventListener('resize', resize);
-    return () => window.removeEventListener('resize', resize);
-  }, [width, height]);
+/** 컨테이너 실제 크기와 모바일의 보이는 영역 중 작은 크기로 맞춘다. */
+export function useFitScale(
+  width: number,
+  height: number,
+  container: RefObject<HTMLDivElement | null>,
+) {
+  const [scale, setScale] = useState(0);
+  useLayoutEffect(() => {
+    const fit = () => {
+      const element = container.current;
+      if (!element) return;
+      const viewport = window.visualViewport;
+      setScale(
+        Math.max(
+          0,
+          Math.min(
+            Math.min(element.clientWidth, viewport?.width ?? window.innerWidth) / width,
+            Math.min(element.clientHeight, viewport?.height ?? window.innerHeight) / height,
+          ),
+        ),
+      );
+    };
+    const observer = new ResizeObserver(fit);
+    if (container.current) observer.observe(container.current);
+    fit();
+    window.addEventListener('resize', fit);
+    window.visualViewport?.addEventListener('resize', fit);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', fit);
+      window.visualViewport?.removeEventListener('resize', fit);
+    };
+  }, [width, height, container]);
   return scale;
-}
-
-function fit(width: number, height: number) {
-  return Math.min(window.innerWidth / width, window.innerHeight / height);
 }

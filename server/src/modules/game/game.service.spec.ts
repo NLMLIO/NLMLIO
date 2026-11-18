@@ -70,6 +70,47 @@ describe('GameService 방 큐·타이머·정산 재시도', () => {
   });
   const state = () => service.sync(1)!;
 
+  it('게임 중 늦게 입장한 관전자도 마지막 탭이 끊긴 뒤 60초 후 방에서 정리한다', async () => {
+    room.join({ userId: 3, nickname: '관전' });
+    await service.connected(3, 'observer-one');
+    await service.connected(3, 'observer-two');
+    lifecycle.joined(3);
+    timers.cancel(`turn:${room.code}`);
+    await service.disconnected(3, 'observer-one');
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(room.has(3)).toBe(true);
+    await service.disconnected(3, 'observer-two');
+    await jest.advanceTimersByTimeAsync(59_999);
+    expect(room.has(3)).toBe(true);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(room.has(3)).toBe(false);
+    expect(state().status).toBe('PLAYING');
+    expect(state().players).toHaveLength(2);
+  });
+
+  it('관전자가 유예 중 재접속하면 퇴장 타이머를 취소한다', async () => {
+    room.join({ userId: 3, nickname: '관전' });
+    await service.connected(3, 'observer');
+    timers.cancel(`turn:${room.code}`);
+    await service.disconnected(3, 'observer');
+    await jest.advanceTimersByTimeAsync(59_000);
+    await service.connected(3, 'observer-back');
+    await jest.advanceTimersByTimeAsync(1_000);
+    expect(room.has(3)).toBe(true);
+  });
+
+  it('닉네임만 바뀌면 덱과 차례는 유지하고 새 이름을 방송한다', async () => {
+    const before = state();
+    await lifecycle.renamed(1, '새닉네임');
+    expect(state().players[0].nickname).toBe('새닉네임');
+    expect(state().players.map((player) => player.handCount)).toEqual(
+      before.players.map((player) => player.handCount),
+    );
+    expect(state().turnId).toBe(before.turnId);
+    expect(state().revision).toBeGreaterThan(before.revision);
+    expect(events.state.mock.calls.at(-1)![0].players[0].nickname).toBe('새닉네임');
+  });
+
   it('도중에 들어온 관전자에게 현재 상태를 보내고 게임 참가자·차례·덱은 바꾸지 않는다', () => {
     const before = state();
     room.join({ userId: 3, nickname: '늦은관전' });

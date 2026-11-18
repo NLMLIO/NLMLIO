@@ -19,6 +19,7 @@ import { RankingRepository } from '../../infra/database/ranking.repository';
 import { PasswordService } from '../../common/security/password.service';
 import { TokenService } from '../../common/security/token.service';
 import { SessionService } from '../../common/security/session.service';
+import { RoomService } from '../room/room.service';
 import { appError } from '../../common/app-error';
 
 @Injectable()
@@ -30,6 +31,7 @@ export class UserService {
     private readonly passwords: PasswordService,
     private readonly tokens: TokenService,
     private readonly sessions: SessionService,
+    private readonly rooms: RoomService,
   ) {}
 
   findForLogin(username: string): Promise<UserAccount | null> {
@@ -99,6 +101,7 @@ export class UserService {
       const updated = await this.users.update(account, changes);
       if (!updated) throw appError(ErrorCode.TOKEN_INVALID);
       if (changes.passwordHash) await this.sessions.revokeAll(account.id);
+      if (changes.nickname) await this.rooms.rename(account.id, updated.nickname);
       return { user: toPublicUser(updated), requiresLogin: Boolean(changes.passwordHash) };
     } catch (error) {
       this.rethrowConflict(error);

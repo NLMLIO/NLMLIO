@@ -13,6 +13,7 @@ type BellAction = Extract<GameAction, { kind: 'bell' }>;
 /** 서버가 보낸 종 판정. 판정 직전 테이블(서버가 보낸 공개 카드)을 함께 기억해 화면이 근거를 보여 준다. */
 export interface BellEvent {
   id: number;
+  receivedAt: number;
   action: BellAction;
   /** 판정 직전 각 플레이어의 맨 위 공개 카드 */
   tableBefore: { userId: number; card: GameCard }[];
@@ -104,6 +105,7 @@ export const gameActions = {
         useGameStore.setState({
           lastBell: {
             id: nextId++,
+            receivedAt: Date.now(),
             action: event,
             tableBefore: snapshot.players.flatMap((player) =>
               player.topCard ? [{ userId: player.userId, card: player.topCard }] : [],
