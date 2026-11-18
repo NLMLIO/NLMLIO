@@ -45,11 +45,27 @@ export function SkillSlot({
 }
 
 /** 게임 화면 내 상태 바 오른쪽에 붙는 스킬 슬롯 묶음(Figma Skill Dock) */
-export function SkillDock({ slots }: { slots: SkillSlotView[] }) {
+export function SkillDock({
+  slots,
+  armed = null,
+  onUse,
+}: {
+  slots: SkillSlotView[];
+  /** 대상을 고르는 중인 슬롯 */
+  armed?: number | null;
+  /** 슬롯을 눌러 스킬을 쓴다. 쓸 수 없는 칸은 누를 수 없다 */
+  onUse?: (slot: number) => void;
+}) {
   return (
     <section className="skill-dock" aria-label="내 스킬">
       {slots.map((slot, index) => (
-        <SkillSlot key={index} index={index} slot={slot} />
+        <SkillSlot
+          key={index}
+          index={index}
+          slot={slot}
+          target={armed === index}
+          onClick={onUse && slot.skillId && slot.usable ? () => onUse(index) : undefined}
+        />
       ))}
     </section>
   );

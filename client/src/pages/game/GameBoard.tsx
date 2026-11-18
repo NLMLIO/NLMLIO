@@ -9,6 +9,7 @@ import { GameChat } from './GameChat';
 import { seatPlacements, type GameView } from './game-view';
 import { PlayerSeat, playerColorStyle } from './PlayerSeat';
 import { SkillPick } from './skill/SkillPick';
+import { SkillCast, SkillTargetHint } from './skill/SkillCast';
 import { SkillDock } from './skill/SkillSlot';
 import type { SkillPickHandler } from './skill/skill-view';
 import { VerdictOverlay } from './VerdictOverlay';
@@ -21,6 +22,10 @@ export interface GameActions {
   onSendEmote: (emote: ChatEmojiCode) => Promise<string | null> | void;
   /** 스킬 후보 선택(FUNC-009-03). 없으면 선택 창은 보기만 한다 */
   onPickSkill?: SkillPickHandler;
+  /** 슬롯의 스킬 사용(FUNC-009-04). 대상 지정 스킬이면 먼저 대상을 고르게 한다 */
+  onUseSkill?: (slot: number) => void;
+  /** 대상 지정 중 좌석을 눌러 대상으로 고른다 */
+  onPickTarget?: (userId: number) => void;
 }
 
 /** 게임 화면(06·15·18·19·05B·07A·07B·16·21·22): 테이블·자리·종·내 상태 바와 채팅 패널 */
@@ -156,6 +161,11 @@ export function GameBoard({
               player={player}
               growsUp={seatGrowsUp}
               style={{ left: seat.x, top: seat.y }}
+              onSelect={
+                view.targeting?.targetIds.includes(player.id) && actions.onPickTarget
+                  ? () => actions.onPickTarget?.(Number(player.id))
+                  : undefined
+              }
             />
           );
         })}
@@ -179,7 +189,15 @@ export function GameBoard({
           onPlayCard={actions.onPlayCard}
           onLeave={actions.onLeave}
         />
-        {view.skills && <SkillDock slots={view.skills.slots} />}
+        {view.skills && (
+          <SkillDock
+            slots={view.skills.slots}
+            armed={view.targeting?.slot ?? null}
+            onUse={actions.onUseSkill}
+          />
+        )}
+        {view.skillCast && <SkillCast cast={view.skillCast} />}
+        {view.targeting && <SkillTargetHint targeting={view.targeting} />}
         {view.verdict && <VerdictOverlay verdict={view.verdict} />}
         {children}
       </main>

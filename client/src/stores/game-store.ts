@@ -10,6 +10,15 @@ import type {
 } from '@nlmlio/shared';
 
 type BellAction = Extract<GameAction, { kind: 'bell' }>;
+type SkillAction = Extract<GameAction, { kind: 'skill' }>;
+
+/** 서버가 알린 스킬 사용. 화면 위쪽 알림을 잠깐 띄우는 데 쓴다 */
+export interface SkillCastEvent {
+  id: number;
+  action: SkillAction;
+  /** 이 브라우저가 받은 시각 */
+  castAt: number;
+}
 
 /** 서버가 보낸 종 판정. 판정 직전 테이블(서버가 보낸 공개 카드)을 함께 기억해 화면이 근거를 보여 준다. */
 export interface BellEvent {
@@ -28,6 +37,7 @@ export interface CardEvent {
 interface GameState {
   snapshot: GameSnapshot | null;
   lastBell: BellEvent | null;
+  lastSkill: SkillCastEvent | null;
   /** 플레이어별 마지막 카드 공개. 그 플레이어가 새 카드를 낼 때만 바뀐다 */
   lastCards: Record<number, CardEvent>;
   /** 연결이 끊긴 플레이어별로 끊김 이벤트를 받은 이 브라우저 시각 */
@@ -49,6 +59,7 @@ let nextId = 1;
 export const useGameStore = create<GameState>(() => ({
   snapshot: null,
   lastBell: null,
+  lastSkill: null,
   lastCards: {},
   offlineSince: {},
   clockOffset: 0,
@@ -65,6 +76,7 @@ export const gameActions = {
         return {
           snapshot: null,
           lastBell: null,
+          lastSkill: null,
           lastCards: {},
           offlineSince: {},
           skills: null,
@@ -87,7 +99,9 @@ export const gameActions = {
         snapshot: next,
         clockOffset,
         offlineSince,
-        ...(sameGame ? {} : { lastBell: null, lastCards: {}, skills: null, returnedGameId: null }),
+        ...(sameGame
+          ? {}
+          : { lastBell: null, lastSkill: null, lastCards: {}, skills: null, returnedGameId: null }),
       };
     });
   },
@@ -126,6 +140,11 @@ export const gameActions = {
           return {
             offlineSince: event.connected ? rest : { ...rest, [event.userId]: Date.now() },
           };
+        });
+        break;
+      case 'skill':
+        useGameStore.setState({
+          lastSkill: { id: nextId++, action: event, castAt: Date.now() },
         });
         break;
       case 'departed':

@@ -5,7 +5,11 @@ interface GameShortcuts {
   j?: () => void;
   /** Space: 종 누르기 */
   space?: () => void;
+  /** Q·W·E: 스킬 슬롯 0·1·2 사용 */
+  skill?: (slot: number) => void;
 }
+
+const SLOT_CODES = ['KeyQ', 'KeyW', 'KeyE'];
 
 /** 게임 단축키. 채팅 입력 중에는 동작하지 않고, 핸들러가 없으면 그 키는 무시한다 */
 export function useGameShortcuts(shortcuts: GameShortcuts) {
@@ -25,12 +29,16 @@ export function useGameShortcuts(shortcuts: GameShortcuts) {
         isTyping(event.target)
       )
         return;
+      const slot = SLOT_CODES.indexOf(event.code);
+      const skill = latest.current.skill;
       const handler =
         event.code === 'Space'
           ? latest.current.space
           : event.code === 'KeyJ'
             ? latest.current.j
-            : undefined;
+            : slot >= 0 && skill
+              ? () => skill(slot)
+              : undefined;
       if (!handler) return;
       event.preventDefault();
       handler();

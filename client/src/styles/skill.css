@@ -398,3 +398,163 @@
   line-height: normal;
   white-space: nowrap;
 }
+
+/* 스킬 사용 알림: 위쪽 가운데에 1.6초 (Skill Cast Banner) */
+.skill-cast {
+  position: absolute;
+  z-index: 25;
+  top: 118px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 22px 10px 10px;
+  background: rgba(16, 16, 21, 0.94);
+  border: 1.5px solid var(--grade);
+  border-radius: 999px;
+  filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.5));
+  transform: translateX(-50%);
+  pointer-events: none;
+  animation: skill-cast 1.6s ease-out both;
+}
+@keyframes skill-cast {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -10px) scale(0.94);
+  }
+  10% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.skill-cast-ring {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  color: var(--grade);
+  background: color-mix(in srgb, var(--grade) 18%, transparent);
+  border-radius: 22px;
+}
+.skill-cast-ring .skill-glyph.emoji {
+  font-size: 24px;
+}
+.skill-cast-ring .skill-glyph.icon {
+  width: 26px;
+  height: 26px;
+}
+.skill-cast-text {
+  display: flex;
+  flex-direction: column;
+  line-height: normal;
+  white-space: nowrap;
+}
+.skill-cast-text small {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.skill-cast-text b {
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 400;
+}
+.skill-cast-target {
+  color: var(--text-body);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: normal;
+  white-space: nowrap;
+}
+
+/* 대상 지정 안내(Figma 스킬 효과 안내 알약과 같은 모양) */
+.skill-hint {
+  position: absolute;
+  z-index: 8;
+  top: 716px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(16, 16, 21, 0.92);
+  border: 1.5px solid var(--grade);
+  border-radius: 999px;
+  line-height: normal;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+.skill-hint b {
+  color: var(--grade);
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 400;
+}
+.skill-hint span {
+  color: var(--text-body);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* 대상으로 고를 수 있는 좌석 */
+.player-seat.is-targetable {
+  cursor: pointer;
+}
+.player-seat.is-targetable .player-seat-avatar {
+  outline: 3px dashed var(--accent-primary);
+  outline-offset: 5px;
+  border-radius: 50%;
+  animation: target-pulse 1s ease-in-out infinite;
+}
+.player-seat.is-targetable:hover .player-seat-avatar,
+.player-seat.is-targetable:focus-visible .player-seat-avatar {
+  outline-style: solid;
+}
+@keyframes target-pulse {
+  50% {
+    outline-offset: 8px;
+  }
+}
+
+/* 반짝반짝한 카드: 카드 배경 전체가 금색, 과일은 그대로. 빛줄기가 1.5초마다 지나간다 */
+.fruit-card.is-gilded {
+  overflow: hidden;
+  background: linear-gradient(135deg, #f6d66b 0%, #e6b22a 48%, #fbe59a 100%);
+  border-color: #ffe08a;
+  box-shadow: 0 0 22px rgba(255, 210, 63, 0.55);
+}
+.fruit-card-shine {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    115deg,
+    transparent 35%,
+    rgba(255, 255, 255, 0.7) 50%,
+    transparent 65%
+  );
+  transform: translateX(-120%);
+  animation: gilded-shine 1.5s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes gilded-shine {
+  0% {
+    transform: translateX(-120%);
+  }
+  60%,
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+/* 개발 서버 미리보기(장면 전환 막대가 있을 때)에서는 알림을 계속 보여 준다 */
+body:has(.scene-switcher) .skill-cast {
+  animation: none;
+}

@@ -67,6 +67,9 @@ export function GamePreviewPage({
     onLeave: spectating ? () => void leaveAsSpectator() : onExit,
     onSendChat: () => {},
     onSendEmote: () => {},
+    onPickSkill: () => {},
+    onUseSkill: () => {},
+    onPickTarget: () => {},
   };
   useGameShortcuts({
     j:

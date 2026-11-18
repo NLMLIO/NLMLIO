@@ -276,6 +276,39 @@ export const PREVIEW_SCENES = {
       },
     },
   },
+  /** 24 · 스킬 사용 · 침 뱉기 알림(모두의 화면 위쪽에 1.6초) */
+  'skill-cast': {
+    ...MY_TURN,
+    skills: {
+      slots: [slot(SkillId.TIME_STOP), slot(SkillId.SPIT), slot(SkillId.RAT)],
+    },
+    skillCast: { key: 1, caster: '자두씨', skillId: SkillId.SPIT, target: '과일왕' },
+  },
+  /** (시안 없음) 대상 지정 스킬을 골라 좌석을 누르기 기다리는 중 */
+  'skill-target': {
+    ...MY_TURN,
+    skills: {
+      slots: [slot(SkillId.TIME_STOP), slot(SkillId.SPIT), slot(SkillId.RAT)],
+    },
+    targeting: {
+      slot: 1,
+      skillId: SkillId.SPIT,
+      targetIds: ['p1', 'p2', 'p3'],
+    },
+  },
+  /** M10 · 반짝반짝한 카드: 금칠이 된 카드가 테이블에 놓인 모습 */
+  'skill-gilded': {
+    ...MY_TURN,
+    players: MY_TURN.players.map((entry) =>
+      entry.id === 'me' && entry.topCard
+        ? { ...entry, topCard: { ...entry.topCard, gilded: true } }
+        : entry,
+    ),
+    skills: {
+      slots: [slot(SkillId.SPARKLE_CARD), EMPTY_SLOT, EMPTY_SLOT],
+    },
+    skillCast: { key: 2, caster: '과일왕', skillId: SkillId.SPARKLE_CARD, target: null },
+  },
   /** 22 · 게임 · 스킬 슬롯 */
   'skill-slots': {
     ...MY_TURN,

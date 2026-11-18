@@ -6,6 +6,7 @@ import {
   GameStatus,
   RoomStatus,
 } from '@nlmlio/shared';
+import { skillById } from '@nlmlio/shared';
 import type { PublicUser, SkillChoice } from '@nlmlio/shared';
 import { ApiError, api, errorMessage } from '../../api/http';
 import { playSound } from '../../audio/sounds';
@@ -16,7 +17,7 @@ import { useRoomStore } from '../../stores/room-store';
 import { GameBoard, type GameActions } from './GameBoard';
 import { GameFrame } from './GameFrame';
 import { GameResult } from './GameResult';
-import { toGameView, toRanking } from './to-game-view';
+import { skillUsable, toGameView, toRanking } from './to-game-view';
 
 /** 의도 실패 안내를 띄워 두는 시간 */
 const ERROR_MS = 2500;
@@ -40,6 +41,7 @@ export function GamePage({
   const offlineSince = useGameStore((state) => state.offlineSince);
   const clockOffset = useGameStore((state) => state.clockOffset);
   const skills = useGameStore((state) => state.skills);
+  const skillCast = useGameStore((state) => state.lastSkill);
   const room = useRoomStore((state) => state.room);
   const roomSynced = useRoomStore((state) => state.synced);
   const log = useRoomStore((state) => state.log);
@@ -49,6 +51,8 @@ export function GamePage({
   const [strike, setStrike] = useState<{ id: number; playerId: string }>();
   const strikeId = useRef(0);
   const [error, setError] = useState('');
+  /** 대상 지정 스킬을 골라 좌석을 누르길 기다리는 슬롯 */
+  const [targetingSlot, setTargetingSlot] = useState<number | null>(null);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -132,6 +136,38 @@ export function GamePage({
   }
 
   /** 후보 칸 선택(FUNC-009-03): 결과는 서버가 보내는 상태로만 화면에 반영한다 */
+  /**
+   * 슬롯의 스킬 사용(FUNC-009-04). 대상이 필요 없으면 바로 보내고, 대상 지정 스킬이면 좌석을 눌러
+   * 대상을 고르게 한다. 쓸 수 있는지는 서버가 다시 검사한다.
+   */
+  function useSkillSlot(slot: number) {
+    const id = skills?.slots[slot];
+    if (!snapshot || !id || !skillUsable(snapshot, user.id, id)) return;
+    if (skillById(id).target === 'one') {
+      setTargetingSlot((current) => (current === slot ? null : slot));
+      return;
+    }
+    setTargetingSlot(null);
+    void sendGameIntent(GameClientEvent.SKILL_USE, { gameId: snapshot.gameId, slot }).then(
+      (failure) => {
+        if (failure) setError(failure);
+      },
+    );
+  }
+
+  function pickTarget(targetUserId: number) {
+    if (!snapshot || targetingSlot === null) return;
+    const slot = targetingSlot;
+    setTargetingSlot(null);
+    void sendGameIntent(GameClientEvent.SKILL_USE, {
+      gameId: snapshot.gameId,
+      slot,
+      targetUserId,
+    }).then((failure) => {
+      if (failure) setError(failure);
+    });
+  }
+
   function pickSkill(choice: SkillChoice) {
     if (!snapshot) return;
     void sendGameIntent(GameClientEvent.SKILL_PICK, { gameId: snapshot.gameId, choice }).then(
@@ -174,10 +210,28 @@ export function GamePage({
     onSendChat: (text) => sendChat('message', text),
     onSendEmote: (emoji) => sendChat('emoji', emoji),
     onPickSkill: pickSkill,
+    onUseSkill: useSkillSlot,
+    onPickTarget: pickTarget,
   };
 
   const ended = snapshot?.status === GameStatus.ENDED;
+  // 선택 창이 뜨거나 게임이 끝나면 대상 지정을 취소하고, Esc로도 취소한다.
+  const targetingActive = targetingSlot !== null;
+  useEffect(() => {
+    if (!targetingActive) return;
+    if (picking || !live) {
+      setTargetingSlot(null);
+      return;
+    }
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setTargetingSlot(null);
+    };
+    window.addEventListener('keydown', escape);
+    return () => window.removeEventListener('keydown', escape);
+  }, [targetingActive, picking, live]);
+
   useGameShortcuts({
+    skill: confirmLeave || ended ? undefined : useSkillSlot,
     j:
       confirmLeave || ended || judging || picking
         ? undefined
@@ -220,6 +274,8 @@ export function GamePage({
     log,
     emojis,
     skills,
+    skillCast,
+    targetingSlot,
     bell: judging ? lastBell : null,
     lastCards,
     offlineSince,

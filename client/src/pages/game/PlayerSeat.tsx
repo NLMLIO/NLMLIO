@@ -50,16 +50,30 @@ export function PlayerSeat({
   player,
   growsUp,
   style,
+  onSelect,
 }: {
   player: PlayerView;
   growsUp: boolean;
   style: CSSProperties;
+  /** 대상 지정 중이면 이 자리를 눌러 대상으로 고른다 */
+  onSelect?: () => void;
 }) {
   const badge = seatBadge(player);
   return (
     <div
-      className={`player-seat ${player.state}${player.isTurn ? ' is-turn' : ''}${growsUp ? ' grows-up' : ''}`}
+      className={`player-seat ${player.state}${player.isTurn ? ' is-turn' : ''}${growsUp ? ' grows-up' : ''}${onSelect ? ' is-targetable' : ''}`}
       style={style}
+      {...(onSelect
+        ? {
+            role: 'button',
+            tabIndex: 0,
+            'aria-label': `${player.nickname}을(를) 대상으로 고르기`,
+            onClick: onSelect,
+            onKeyDown: (event: React.KeyboardEvent) => {
+              if (event.key === 'Enter') onSelect();
+            },
+          }
+        : {})}
     >
       <div className="player-seat-avatar">
         <PlayerAvatar nickname={player.nickname} color={player.color} />

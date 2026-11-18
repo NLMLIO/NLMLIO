@@ -25,7 +25,12 @@ const PIP_CELLS: Record<CardFace['count'], number[]> = {
 export function FruitCard({ card }: { card: CardFace }) {
   const cells = PIP_CELLS[card.count];
   return (
-    <div className="fruit-card" role="img" aria-label={`${FRUIT_NAMES[card.fruit]} ${card.count}`}>
+    <div
+      className={`fruit-card${card.gilded ? ' is-gilded' : ''}`}
+      role="img"
+      aria-label={`${FRUIT_NAMES[card.fruit]} ${card.count}${card.gilded ? ' 금칠' : ''}`}
+    >
+      {card.gilded && <span className="fruit-card-shine" aria-hidden="true" />}
       <div className="fruit-card-pips">
         {Array.from({ length: 9 }, (_, cell) => (
           <span key={cell} className="fruit-card-cell">

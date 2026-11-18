@@ -25,6 +25,13 @@
 - 후보와 보유 스킬은 공개 스냅샷에 넣지 않는다. 공개 스냅샷에는 `skillSuccesses`와 진행 현황 `skillPick`(마감 시각, 몇 번째, 고른 사람 수·전체)만 있고, 본인에게만 `game:skills`로 보유 스킬과 후보·내 선택을 보낸다. 상태가 바뀐 사람에게만 다시 보낸다.
 - Redis 미러(`game:{id}:*`)에는 스킬 상태를 넣지 않는다(첨부 Redis 명세 유지). 프로세스 재시작 복구를 지원하지 않으므로 필요가 없다.
 
+## 스킬 사용 (FUNC-009-04)
+
+- `skill:use { gameId, slot, targetUserId? }`: 보유 칸 `slot`(0~2)의 스킬을 쓴다. 쓰면 칸에서 사라지고 `game:action`으로 `{ kind: 'skill', userId, skillId, targetUserId }`가 방 전체에 가며, 슬롯이 바뀐 사람에게만 `game:skills`를 다시 보낸다.
+- 쓸 수 있는 스킬은 `SkillDefinition.available`이 true인 것뿐이다(현재 반짝반짝한 카드). 나머지는 보유할 수 있어도 `SKILL_UNAVAILABLE`이고 칸에서 사라지지 않는다. 사용 시점은 지금 `ANYTIME`만 지원한다.
+- 플레이 중인 사람은 플레이어, 아니면 관전자로 보고 스킬의 사용 역할과 맞는지 검사한다. 대상 지정 스킬은 플레이 중인 다른 사람만 대상이 된다. 선택 중에는 조용히 무시(`ignored`)한다.
+- 반짝반짝한 카드는 사용자별 예약으로 두고, 그 사람이 다음에 내는 카드에 `Card.gild()`를 건다. 공개 스냅샷의 `topCard.gilded`로 보이고, 카드가 테이블을 떠나면(`Table.remove`) 사라진다.
+
 ## 계층과 동시성
 
 `GameGateway → GameService → Game / GamePlayer / Table / Deck` 순으로 연결된다. 도메인에는 NestJS·DB·Redis·Socket.io 의존성이 없고, 모든 규칙 변경이 동기로 끝난다. 서비스는 `RoomQueue`에 요청을 접수한 다음 인증·Redis·DB를 기다린다. 먼저 접수된 종 요청이 느린 인증 때문에 뒤 요청에 추월당하지 않는다. 자동 턴, 연결 유예 만료, 게임 중 나가기와 실제 방 소속 제거도 같은 큐에서 처리한다.
@@ -43,6 +50,7 @@
 | C→S | `card:play` | `{ gameId, turnId }` |
 | C→S | `bell:ring` | `{ gameId, turnSeq }` |
 | C→S | `skill:pick` | `{ gameId, choice }` — `choice`는 `{ slot, replace? }`(후보 칸, 보유 칸이 가득 찼으면 바꿀 칸) 또는 `{ decline: true }`(가득 찼을 때만). 열린 선택이 없거나 늦었거나 이미 골랐으면 `ignored` |
+| C→S | `skill:use` | `{ gameId, slot, targetUserId? }` — 보유 스킬 사용. 대상 지정 스킬만 `targetUserId`를 보낸다. 선택 중이면 `ignored` |
 | C→S | `game:sync` | `{}` — 이 소켓에 현재 전체 상태 재전송(스킬 상태 포함) |
 | C→S | `game:return` | `{}` — 종료·정산 확인 후 이 소켓에 `game:state: null` |
 | S→C | `game:state` | `GameStateEvent \| null` — 스냅샷 + 보낸 순간의 서버 시각 `serverTime`(클라이언트 시계 차이 계산용) |

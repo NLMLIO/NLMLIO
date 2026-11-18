@@ -1,4 +1,4 @@
-import type { Fruit } from '@nlmlio/shared';
+import type { Fruit, SkillId } from '@nlmlio/shared';
 import type { SkillsView } from './skill/skill-view';
 
 /**
@@ -12,6 +12,8 @@ export type PlayerColor = 'strawberry' | 'banana' | 'lime' | 'plum' | 'white' | 
 export interface CardFace {
   fruit: Fruit;
   count: 1 | 2 | 3 | 4 | 5;
+  /** 반짝반짝한 카드(꾸미기). 판정으로 옮겨지면 사라진다 */
+  gilded?: boolean;
 }
 
 /**
@@ -108,6 +110,26 @@ export interface GameView {
   log: LogEntry[];
   /** 스킬 슬롯과 선택 창(FUNC-009). 스킬이 없는 화면은 비워 둔다 */
   skills?: SkillsView;
+  /** 방금 쓴 스킬 알림(화면 위쪽, 1.6초) */
+  skillCast?: SkillCastView;
+  /** 대상 지정 중: 누를 수 있는 좌석 */
+  targeting?: SkillTargeting;
+}
+
+export interface SkillCastView {
+  /** 새 알림마다 달라지는 값. 바뀌면 알림 애니메이션을 다시 튼다 */
+  key: number;
+  caster: string;
+  skillId: SkillId;
+  /** 대상 한 명을 지정했으면 그 닉네임, 아니면 null(전원·나에게) */
+  target: string | null;
+}
+
+export interface SkillTargeting {
+  slot: number;
+  skillId: SkillId;
+  /** 대상으로 고를 수 있는 플레이어 id(PlayerView.id) */
+  targetIds: string[];
 }
 
 export interface RankingEntry {

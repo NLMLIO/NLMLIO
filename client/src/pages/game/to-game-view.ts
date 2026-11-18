@@ -4,8 +4,11 @@ import {
   GamePlayerStatus,
   GameStatus,
   RoomRole,
+  SKILL_CAST_MS,
   SKILL_PICK_TIME_MS,
   SKILL_SLOT_COUNT,
+  SkillTiming,
+  SkillUser,
   TURN_TIME_MS,
   skillById,
 } from '@nlmlio/shared';
@@ -14,9 +17,10 @@ import type {
   Fruit,
   GameSnapshot,
   RoomResponse,
+  SkillId,
   SkillStateEvent,
 } from '@nlmlio/shared';
-import type { BellEvent, CardEvent } from '../../stores/game-store';
+import type { BellEvent, CardEvent, SkillCastEvent } from '../../stores/game-store';
 import type { LogEntry as RoomLogEntry } from '../../stores/room-store';
 import { colorOf } from '../room/member-color';
 import { noticeText } from '../room/RoomChat';
@@ -28,6 +32,8 @@ import {
   type PlayerColor,
   type PlayerView,
   type RankingEntry,
+  type SkillCastView,
+  type SkillTargeting,
   type Verdict,
 } from './game-view';
 import type { SkillsView } from './skill/skill-view';
@@ -49,6 +55,10 @@ export interface GameViewInput {
   offlineSince: Record<number, number>;
   /** 서버가 본인에게 보낸 보유 스킬·선택 후보 */
   skills: SkillStateEvent | null;
+  /** 방금 서버가 알린 스킬 사용 */
+  skillCast: SkillCastEvent | null;
+  /** 대상 지정 중인 슬롯. 아니면 null */
+  targetingSlot: number | null;
   /** 서버 시각으로 맞춘 지금 */
   serverNow: number;
   /** 이 브라우저 시각 */
@@ -225,15 +235,69 @@ function bannerOf(input: GameViewInput, seated: boolean): Banner | undefined {
   return undefined;
 }
 
+const nicknameOf = (input: GameViewInput, userId: number): string =>
+  input.snapshot.players.find((player) => player.userId === userId)?.nickname ??
+  input.room?.members.find((member) => member.userId === userId)?.nickname ??
+  '';
+
+/** 방금 쓴 스킬 알림. 1.6초가 지나면 사라진다(Figma Skill Cast Banner) */
+function skillCastOf(input: GameViewInput): SkillCastView | undefined {
+  const cast = input.skillCast;
+  if (!cast || input.now - cast.castAt >= SKILL_CAST_MS) return undefined;
+  const { action } = cast;
+  return {
+    key: cast.id,
+    caster: nicknameOf(input, action.userId),
+    skillId: action.skillId,
+    target: action.targetUserId === null ? null : nicknameOf(input, action.targetUserId),
+  };
+}
+
+/** 대상 지정 스킬을 골랐으면 누를 수 있는 좌석(나를 뺀 플레이 중인 사람) */
+function targetingOf(
+  input: GameViewInput,
+  skills: ReturnType<typeof skillsOf>,
+): SkillTargeting | undefined {
+  const slot = input.targetingSlot;
+  const entry = slot === null ? undefined : skills?.slots[slot];
+  if (slot === null || !entry?.skillId || !entry.usable) return undefined;
+  if (skillById(entry.skillId).target !== 'one') return undefined;
+  return {
+    slot,
+    skillId: entry.skillId,
+    targetIds: input.snapshot.players
+      .filter(
+        (player) => player.status === GamePlayerStatus.ACTIVE && player.userId !== input.userId,
+      )
+      .map((player) => String(player.userId)),
+  };
+}
+
+/**
+ * 지금 이 스킬을 쓸 수 있어 보이는가. 진짜 판단은 서버가 하고(`SKILL_UNAVAILABLE`),
+ * 화면은 흐리게 보일지·누르게 할지를 같은 기준으로 미리 정한다.
+ */
+export function skillUsable(snapshot: GameSnapshot, userId: number, skillId: SkillId): boolean {
+  if (snapshot.status !== GameStatus.PLAYING || snapshot.skillPick !== null) return false;
+  const skill = skillById(skillId);
+  const me = snapshot.players.find((player) => player.userId === userId);
+  const role = me?.status === GamePlayerStatus.ACTIVE ? SkillUser.PLAYER : SkillUser.SPECTATOR;
+  return (
+    skill.available &&
+    skill.timing === SkillTiming.ANYTIME &&
+    (skill.user === SkillUser.BOTH || skill.user === role)
+  );
+}
+
 /** 서버가 보낸 내 스킬 상태 → 슬롯과 선택 창. 아직 못 받았거나 다른 게임의 것이면 만들지 않는다 */
 function skillsOf(input: GameViewInput): SkillsView | undefined {
   const { snapshot, skills } = input;
   if (snapshot.status !== GameStatus.PLAYING || !skills || skills.gameId !== snapshot.gameId)
     return undefined;
-  const slots = Array.from({ length: SKILL_SLOT_COUNT }, (_, index) => ({
-    skillId: skills.slots[index] ?? null,
-    usable: true,
-  }));
+  const slots = Array.from({ length: SKILL_SLOT_COUNT }, (_, index) => {
+    const skillId = skills.slots[index] ?? null;
+    return { skillId, usable: skillId === null || skillUsable(snapshot, input.userId, skillId) };
+  });
   const open = snapshot.skillPick;
   const pick = skills.pick;
   if (!open || !pick) return { slots };
@@ -328,6 +392,7 @@ export function toGameView(input: GameViewInput): GameView {
           ? 'turn'
           : 'waiting';
   const turnPlayer = snapshot.players.find((player) => player.userId === snapshot.turnUserId);
+  const skills = skillsOf(input);
   return {
     roomName: snapshot.roomName,
     players,
@@ -360,7 +425,9 @@ export function toGameView(input: GameViewInput): GameView {
     banner: bannerOf(input, seated),
     verdict: bell ? verdictOf(input, bell) : undefined,
     log: logOf(input),
-    skills: skillsOf(input),
+    skills,
+    skillCast: skillCastOf(input),
+    targeting: targetingOf(input, skills),
   };
 }
 
