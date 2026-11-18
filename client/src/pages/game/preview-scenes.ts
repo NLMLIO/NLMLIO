@@ -1,4 +1,6 @@
+import { SkillId } from '@nlmlio/shared';
 import type { CardFace, GameView, PlayerView, RankingEntry } from './game-view';
+import type { SkillSlotView } from './skill/skill-view';
 
 /**
  * 게임 엔진·소켓이 붙기 전까지 화면을 확인하는 미리보기 데이터.
@@ -19,6 +21,57 @@ function player(
 }
 
 const ROOM_NAME = '점심 내기 한판';
+
+const slot = (skillId: SkillSlotView['skillId']): SkillSlotView => ({ skillId, usable: true });
+const EMPTY_SLOT: SkillSlotView = { skillId: null, usable: true };
+
+const MY_TURN: GameView = {
+  roomName: ROOM_NAME,
+  players: [
+    player('me', '과일왕', 'lime', 14, card('STRAWBERRY', 3), { isTurn: true }),
+    player('p1', '딸기러버', 'strawberry', 18, card('LIME', 2)),
+    player('p2', '바나나킥', 'banana', 9, card('STRAWBERRY', 4)),
+    player('p3', '자두씨', 'plum', 15, card('PLUM', 1)),
+  ],
+  myPhase: 'turn',
+  pileCount: 0,
+  bell: { kind: 'idle' },
+  log: [
+    {
+      kind: 'chat',
+      id: 'l1',
+      nickname: '딸기러버',
+      color: 'strawberry',
+      text: '방금 그거 5개 아니었어?',
+    },
+    { kind: 'event', id: 'l2', tone: 'success', nickname: '딸기러버', text: '종 성공 · +6장' },
+    { kind: 'chat', id: 'l3', nickname: '바나나킥', color: 'banana', text: '손 빠르네' },
+    { kind: 'system', id: 'l4', text: '자두씨 차례 → 과일왕 차례' },
+    { kind: 'chat', id: 'l5', nickname: '자두씨', color: 'plum', text: 'ㅠㅠ' },
+  ],
+};
+
+const SPECTATING: GameView = {
+  roomName: ROOM_NAME,
+  players: [
+    player('me', '과일왕', 'lime', 0, null, { state: 'out' }),
+    player('p1', '딸기러버', 'strawberry', 27, card('STRAWBERRY', 1), { isTurn: true }),
+    player('p2', '바나나킥', 'banana', 0, null, { state: 'out' }),
+    player('p3', '자두씨', 'plum', 29, card('LIME', 4), { emote: 'ㅠㅠ' }),
+  ],
+  myPhase: 'spectating',
+  pileCount: 1,
+  bell: { kind: 'idle' },
+  banner: {
+    tone: 'danger',
+    messages: ['카드를 모두 잃어 탈락했어요 · 4위로 기록됩니다', '끝날 때까지 관전할 수 있어요'],
+  },
+  log: [
+    { kind: 'event', id: 'l1', tone: 'danger', nickname: '과일왕', text: '카드 0장 · 탈락' },
+    { kind: 'chat', id: 'l2', nickname: '자두씨', color: 'plum', text: 'ㅠㅠ' },
+    { kind: 'system', id: 'l3', text: '딸기러버 차례' },
+  ],
+};
 
 export const PREVIEW_SCENES = {
   /** 05B · 게임 시작 · 카드 분배 */
@@ -45,31 +98,7 @@ export const PREVIEW_SCENES = {
     ],
   },
   /** 06 · 게임 · 내 차례 */
-  'my-turn': {
-    roomName: ROOM_NAME,
-    players: [
-      player('me', '과일왕', 'lime', 14, card('STRAWBERRY', 3), { isTurn: true }),
-      player('p1', '딸기러버', 'strawberry', 18, card('LIME', 2)),
-      player('p2', '바나나킥', 'banana', 9, card('STRAWBERRY', 4)),
-      player('p3', '자두씨', 'plum', 15, card('PLUM', 1)),
-    ],
-    myPhase: 'turn',
-    pileCount: 0,
-    bell: { kind: 'idle' },
-    log: [
-      {
-        kind: 'chat',
-        id: 'l1',
-        nickname: '딸기러버',
-        color: 'strawberry',
-        text: '방금 그거 5개 아니었어?',
-      },
-      { kind: 'event', id: 'l2', tone: 'success', nickname: '딸기러버', text: '종 성공 · +6장' },
-      { kind: 'chat', id: 'l3', nickname: '바나나킥', color: 'banana', text: '손 빠르네' },
-      { kind: 'system', id: 'l4', text: '자두씨 차례 → 과일왕 차례' },
-      { kind: 'chat', id: 'l5', nickname: '자두씨', color: 'plum', text: 'ㅠㅠ' },
-    ],
-  },
+  'my-turn': MY_TURN,
   /** 15 · 게임 · 다른 사람 차례 · 이모티콘 · 연결 끊김 */
   'others-turn': {
     roomName: ROOM_NAME,
@@ -192,26 +221,65 @@ export const PREVIEW_SCENES = {
     ],
   },
   /** 16 · 게임 · 탈락 후 관전 */
-  spectating: {
-    roomName: ROOM_NAME,
-    players: [
-      player('me', '과일왕', 'lime', 0, null, { state: 'out' }),
-      player('p1', '딸기러버', 'strawberry', 27, card('STRAWBERRY', 1), { isTurn: true }),
-      player('p2', '바나나킥', 'banana', 0, null, { state: 'out' }),
-      player('p3', '자두씨', 'plum', 29, card('LIME', 4), { emote: 'ㅠㅠ' }),
-    ],
-    myPhase: 'spectating',
-    pileCount: 1,
-    bell: { kind: 'idle' },
-    banner: {
-      tone: 'danger',
-      messages: ['카드를 모두 잃어 탈락했어요 · 4위로 기록됩니다', '끝날 때까지 관전할 수 있어요'],
+  spectating: SPECTATING,
+  /** 21 · 게임 · 스킬 선택 (종 성공 5번마다) */
+  'skill-pick': {
+    ...MY_TURN,
+    skills: {
+      slots: [slot(SkillId.TIME_STOP), EMPTY_SLOT, EMPTY_SLOT],
+      pick: {
+        role: 'player',
+        successCount: 10,
+        pickNo: 2,
+        candidates: [SkillId.SPIT, SkillId.DORMAMMU, SkillId.RAT],
+        chosenCandidate: 2,
+        placedSlot: 1,
+        declined: false,
+        secondsLeft: 7,
+        progress: { done: 2, total: 3 },
+      },
     },
-    log: [
-      { kind: 'event', id: 'l1', tone: 'danger', nickname: '과일왕', text: '카드 0장 · 탈락' },
-      { kind: 'chat', id: 'l2', nickname: '자두씨', color: 'plum', text: 'ㅠㅠ' },
-      { kind: 'system', id: 'l3', text: '딸기러버 차례' },
-    ],
+  },
+  /** 21-1 · 게임 · 스킬 선택 · 관전자 */
+  'skill-pick-spectator': {
+    ...SPECTATING,
+    skills: {
+      slots: [EMPTY_SLOT, EMPTY_SLOT, EMPTY_SLOT],
+      pick: {
+        role: 'spectator',
+        successCount: 5,
+        pickNo: 1,
+        candidates: [SkillId.SPIT, SkillId.RUSSIAN_ROULETTE, SkillId.SPIT],
+        chosenCandidate: 1,
+        placedSlot: 0,
+        declined: false,
+        secondsLeft: 7,
+        progress: { done: 1, total: 2 },
+      },
+    },
+  },
+  /** (시안 없음) 스킬 선택 · 보유 칸이 가득 찬 상태: 바꿀 칸을 고르거나 받지 않는다(009-03) */
+  'skill-pick-full': {
+    ...MY_TURN,
+    skills: {
+      slots: [slot(SkillId.TIME_STOP), slot(SkillId.SPIT), slot(SkillId.RAT)],
+      pick: {
+        role: 'player',
+        successCount: 20,
+        pickNo: 4,
+        candidates: [SkillId.HACK, SkillId.RESET, SkillId.MINE],
+        chosenCandidate: null,
+        placedSlot: null,
+        declined: false,
+        secondsLeft: 9,
+        progress: { done: 0, total: 3 },
+      },
+    },
+  },
+  /** 22 · 게임 · 스킬 슬롯 */
+  'skill-slots': {
+    ...MY_TURN,
+    skills: { slots: [slot(SkillId.TIME_STOP), slot(SkillId.SPIT), slot(SkillId.RAT)] },
   },
 } satisfies Record<string, GameView>;
 

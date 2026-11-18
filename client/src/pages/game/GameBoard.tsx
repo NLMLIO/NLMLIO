@@ -8,6 +8,9 @@ import { EmptyCardSlot, FruitCard } from './FruitCard';
 import { GameChat } from './GameChat';
 import { seatPlacements, type GameView } from './game-view';
 import { PlayerSeat, playerColorStyle } from './PlayerSeat';
+import { SkillPick } from './skill/SkillPick';
+import { SkillDock } from './skill/SkillSlot';
+import type { SkillPickHandler } from './skill/skill-view';
 import { VerdictOverlay } from './VerdictOverlay';
 
 export interface GameActions {
@@ -16,9 +19,11 @@ export interface GameActions {
   onLeave: () => void;
   onSendChat: (text: string) => Promise<string | null> | void;
   onSendEmote: (emote: ChatEmojiCode) => Promise<string | null> | void;
+  /** 스킬 후보 선택(FUNC-009-03). 없으면 선택 창은 보기만 한다 */
+  onPickSkill?: SkillPickHandler;
 }
 
-/** 게임 화면(06·15·18·19·05B·07A·07B·16): 테이블·자리·종·내 상태 바와 채팅 패널 */
+/** 게임 화면(06·15·18·19·05B·07A·07B·16·21·22): 테이블·자리·종·내 상태 바와 채팅 패널 */
 export function GameBoard({
   view,
   actions,
@@ -169,10 +174,19 @@ export function GameBoard({
           onPlayCard={actions.onPlayCard}
           onLeave={actions.onLeave}
         />
+        {view.skills && <SkillDock slots={view.skills.slots} />}
         {view.verdict && <VerdictOverlay verdict={view.verdict} />}
         {children}
       </main>
       <GameChat log={view.log} onSendChat={actions.onSendChat} onSendEmote={actions.onSendEmote} />
+      {view.skills?.pick && (
+        <SkillPick
+          key={view.skills.pick.successCount}
+          pick={view.skills.pick}
+          slots={view.skills.slots}
+          onChoose={(choice) => actions.onPickSkill?.(choice)}
+        />
+      )}
     </div>
   );
 }

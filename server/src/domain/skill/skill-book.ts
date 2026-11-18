@@ -5,6 +5,7 @@ import {
   SKILL_PICK_TIME_MS,
   SKILL_SLOT_COUNT,
 } from '@nlmlio/shared';
+import type { SkillChoice } from '@nlmlio/shared';
 import { SkillInventory } from './skill-inventory';
 import type { SkillHolding } from './skill-inventory';
 import { SkillSelection } from './skill-selection';
@@ -17,9 +18,6 @@ export class SkillRuleError extends Error {
     super(code);
   }
 }
-
-/** 후보 칸 하나를 고르거나(`slot`), 보유 칸이 가득 찼을 때 바꿀 칸(`replace`)을 함께 고르거나, 받지 않는다. */
-export type SkillChoice = { slot: number; replace?: number } | { decline: true };
 
 const invalid = (): SkillRuleError => new SkillRuleError(ErrorCode.VALIDATION_FAILED);
 const validSlot = (value: unknown): value is number =>

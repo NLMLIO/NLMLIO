@@ -1,4 +1,5 @@
 import type { Fruit } from '@nlmlio/shared';
+import type { SkillsView } from './skill/skill-view';
 
 /**
  * 게임 화면이 그리는 상태. 서버가 확정해 보낸 값을 그대로 담는 그릇이고, 여기서 규칙을 계산하지 않는다.
@@ -105,6 +106,8 @@ export interface GameView {
   banner?: Banner;
   verdict?: Verdict;
   log: LogEntry[];
+  /** 스킬 슬롯과 선택 창(FUNC-009). 스킬이 없는 화면은 비워 둔다 */
+  skills?: SkillsView;
 }
 
 export interface RankingEntry {

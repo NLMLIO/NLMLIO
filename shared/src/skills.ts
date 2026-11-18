@@ -219,3 +219,9 @@ export interface SkillCandidateView {
   slot: number;
   skillId: SkillId;
 }
+
+/**
+ * 스킬 선택 입력(009-03). 후보 칸을 고르거나(`slot`), 보유 칸이 가득 찼을 때 바꿀 칸(`replace`)을 함께 고르거나,
+ * 받지 않는다(`decline`, 가득 찼을 때만).
+ */
+export type SkillChoice = { slot: number; replace?: number } | { decline: true };
