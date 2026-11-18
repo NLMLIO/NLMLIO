@@ -19,6 +19,7 @@ export class GameStateRepository {
       turnSeq: state.turnSeq,
       turnId: state.turnId,
       lastPlayAt: state.lastPlayAt ?? '',
+      roundResumeAt: state.roundResumeAt ?? '',
       startedAt: state.startedAt,
     });
     for (const [suffix, values] of [

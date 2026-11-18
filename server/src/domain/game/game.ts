@@ -1,4 +1,10 @@
-import { ErrorCode, GamePlayerStatus, GameStatus, TURN_TIME_MS } from '@nlmlio/shared';
+import {
+  ErrorCode,
+  GamePlayerStatus,
+  GameStatus,
+  ROUND_RESULT_MS,
+  TURN_TIME_MS,
+} from '@nlmlio/shared';
 import type { GameAction, GameSnapshot, SettleGameInput } from '@nlmlio/shared';
 import { Card, Deck } from '../card/deck';
 import { GamePlayer } from '../player/game-player';
@@ -27,6 +33,7 @@ export interface GameCheckpoint {
   turnSeq: number;
   turnId: number;
   lastPlayAt: number | null;
+  roundResumeAt: number | null;
   startedAt: number;
   order: number[];
   out: number[];
@@ -57,6 +64,7 @@ export class Game {
   private revision = 1;
   private current: number | null;
   private deadline: number | null;
+  private resumeAt: number | null = null;
   private playedAt: number | null = null;
   private endedAt: number | null = null;
   private resolvedSequence = -1;
@@ -148,6 +156,8 @@ export class Game {
     if (turnId !== this.turnToken) throw new GameRuleError(ErrorCode.VALIDATION_FAILED);
     if (userId !== this.current) throw new GameRuleError(ErrorCode.NOT_YOUR_TURN);
     now = this.time(now);
+    if (this.resumeAt !== null && now < this.resumeAt) return null;
+    this.resumeAt = null;
     const card = player.draw(automatic);
     this.table.play(userId, card);
     this.sequence++;
@@ -181,15 +191,17 @@ export class Game {
       const penalty = player.penalty();
       // 벌칙으로 덱이 떨어진 사람은 마지막에 카드를 «낸» 사람이 아니므로 가장 앞(낮은 순위)에 둔다.
       if (penalty.length && player.handCount === 0) this.emptied.unshift(userId);
-      const cards = [...penalty, ...this.table.collect()];
-      this.pile.push(...cards);
-      movedCards = cards.length;
+      // 오발은 본인 카드 1장만 보관한다. 다른 플레이어의 공개 카드는 유지한다.
+      this.pile.push(...penalty);
+      movedCards = penalty.length;
     }
     this.eliminateEmpty();
     if (this.current === null || !this.canPlay(this.current))
       this.current = this.nextAfter(this.current ?? userId);
     this.roundNumber++;
     this.newTurn(now);
+    this.resumeAt = now + ROUND_RESULT_MS;
+    this.deadline = this.resumeAt + TURN_TIME_MS;
     this.finishIfNeeded(now);
     this.revision++;
     return { kind: 'bell', userId, success, movedCards, totals };
@@ -288,6 +300,7 @@ export class Game {
       turnSeq: this.sequence,
       turnUserId: this.current,
       turnDeadline: this.deadline,
+      roundResumeAt: this.resumeAt,
       lastPlayAt: this.playedAt,
       startedAt: this.input.now,
       endedAt: this.endedAt,
@@ -319,6 +332,7 @@ export class Game {
       turnSeq: this.sequence,
       turnId: this.turnToken,
       lastPlayAt: this.playedAt,
+      roundResumeAt: this.resumeAt,
       startedAt: this.input.now,
       order: this.players.filter((player) => player.active).map((player) => player.userId),
       out: [...this.out],
@@ -379,7 +393,7 @@ export class Game {
   }
   private newTurn(now: number): void {
     this.turnToken++;
-    this.deadline = now + TURN_TIME_MS;
+    this.deadline = Math.max(now, this.resumeAt ?? now) + TURN_TIME_MS;
   }
   private finishIfNeeded(now: number): void {
     if (this.players.filter((player) => player.active).length > 1) return;
@@ -387,6 +401,7 @@ export class Game {
     this.endedAt = now;
     this.current = null;
     this.deadline = null;
+    this.resumeAt = null;
   }
   private time(now: number): number {
     if (!Number.isSafeInteger(now) || now < 0) throw new Error('Invalid server time');

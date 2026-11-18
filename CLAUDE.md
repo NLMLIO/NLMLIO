@@ -195,14 +195,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `server/src/common/security/`: Argon2id, JWT, HTTP Guard, Redis Refresh 세션. Refresh는 HttpOnly 쿠키에 저장하고 Redis에는 기기 세션마다(`refresh:{userId}:{sid}`) 토큰의 SHA-256 지문을 저장한다.
 - `server/src/domain/user/`: 인프라와 독립적인 계정 타입, 누적 통계 계산 객체.
 - `server/src/domain/game/game-settlement.ts`: 저장 전 확정 순위·기록 검증.
-- `server/src/domain/card/deck.ts`, `domain/player/game-player.ts`, `domain/game/game.ts`, `table.ts`: 카드·셔플·분배, 보유 카드, 테이블, 턴·종·벌칙·탈락·순위를 캡슐화한 순수 TS 객체.
+- `server/src/domain/card/deck.ts`, `domain/player/game-player.ts`, `domain/game/game.ts`, `table.ts`: 카드·셔플·분배, 보유 카드, 테이블, 턴·종·벌칙·탈락·순위를 캡슐화한 순수 TS 객체. 종 판정 후 1.8초 동안 서버도 카드 내기를 막고 `roundResumeAt`을 공개한다.
 - `server/src/modules/game/`: 게임 Gateway, 서비스, 서버 셔플 팩토리, 타이머, 브로드캐스트, 결과 저장. `infra/game-state/room-queue.ts`가 인증·타이머·이탈·정산을 방별 접수 순서로 직렬화한다.
 - `server/src/infra/redis/game-state.repository.ts`: 첨부 Redis 명세의 미러, 종 예약과 정산 후 삭제. `shared/src/game-events.ts`는 공개 스냅샷과 소켓 계약이다.
 - `server/src/modules/room/room-game.lifecycle.ts`: Room→Game 모듈 순환 참조 없이 시작·이탈·방 종료를 게임 큐에 연결한다.
 - `server/src/modules/auth`, `user`, `ranking`: 인증, 프로필·대시보드, 개인 전적·리더보드.
 - `server/src/modules/game/game-result.service.ts`: 게임 엔진이 최종 결과를 전달할 서버 내부 진입점. 결과 제출용 HTTP 엔드포인트는 없다.
-- `server/src/domain/room/room.ts`: 방 규칙(입장 순서, 참가자 6·관전자 10 칸, 자리 이동, 추방, 방장 위임·승계, 게임 시작). 규칙 위반은 `RoomRuleError(앱 에러 코드)`로 던지고 서비스가 HTTP·소켓 응답으로 바꾼다.
-- `server/src/modules/room`: HTTP `POST /api/rooms`, `POST /api/rooms/join`, `GET /api/rooms/me`, `POST /api/rooms/me/leave`와 `RoomGateway`(소켓 인증 미들웨어, 방 의도 이벤트). `RoomEvents`가 소켓 채널 `user:{id}`·`room:{code}`로 상태를 내보낸다. 방은 서버 메모리(`infra/game-state/room.store.ts`), 코드 예약은 Redis `room-code:{code}`(SET NX, TTL 24시간). 모든 방은 비공개다(2026-10-22 결정).
+- `server/src/domain/room/room.ts`: 방 규칙(입장 순서, 참가자 6·관전자 10 칸, 자리 이동, 추방, 방장 위임·승계, 게임 시작). 진행 중 입장은 항상 관전자로 받고 탈락 참가자를 제외한 새 관전 10석·전체 16명 정원을 지킨다. 규칙 위반은 `RoomRuleError(앱 에러 코드)`로 던지고 서비스가 HTTP·소켓 응답으로 바꾼다.
+- `server/src/modules/room`: HTTP `POST /api/rooms`, `POST /api/rooms/join`(게임 중이면 관전 입장·현재 상태 전송), `GET /api/rooms/me`, `POST /api/rooms/me/leave`와 `RoomGateway`(소켓 인증 미들웨어, 방 의도 이벤트). `RoomEvents`가 소켓 채널 `user:{id}`·`room:{code}`로 상태를 내보낸다. 방은 서버 메모리(`infra/game-state/room.store.ts`), 코드 예약은 Redis `room-code:{code}`(SET NX, TTL 24시간). 모든 방은 비공개다(2026-10-22 결정).
 - `server/src/common/ws-ack.filter.ts`, `ws-validation.pipe.ts`, `socket-user.ts`: 소켓 이벤트 예외를 ack `{ ok: false, code }`로 돌려주고, 페이로드를 HTTP와 같은 규칙으로 검증한다.
 - `client/src/socket/socket.ts`, `stores/room-store.ts`: 로그인한 동안 소켓 하나를 유지하고(토큰 만료 시 재발급 후 재연결), 서버 이벤트로만 방 스토어를 갱신한다. 의도는 `sendIntent`로 보내고 ack를 기다린다. 연결 중 토큰이 만료돼 ack가 `TOKEN_EXPIRED`·`TOKEN_INVALID`면 재발급 → 새 토큰으로 재연결 → 한 번 다시 보낸다.
 - `client/src/pages/lobby/LobbyPage.tsx`, `CreateRoomPage.tsx`, `pages/room/WaitingRoomPage.tsx`, `RoomChat.tsx`(채팅·이모티콘·방 안내): 로비(`#lobby`, 기본 화면), 방 만들기(`#create-room`), 대기실(`#room`, 상단 메뉴 없이 전체 화면).
@@ -240,7 +240,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | 보관 스택 | 종 아래에 모아 두는 카드(분배 후 남은 카드, 탈락·이탈자의 카드). 다음에 정당하게 종을 친 승자가 가져간다 |
 | 종 누르기 | 테이블 위 같은 과일 합이 **정확히 5개**일 때 누르는 행동 |
 | 선착순 판정 | 여러 명이 거의 동시에 종을 쳤을 때 **서버 도착 시각 기준 1명**만 인정 |
-| 오발 벌칙 | 오발자 카드 1장과 테이블 전체 카드를 종 아래 보관 스택으로 옮김(2026-11-04 첨부 명세) |
+| 오발 벌칙 | 오발자 카드 1장만 종 아래 보관 스택으로 옮기고 테이블은 유지(2026-11-12 피드백) |
 | 탈락 / 이탈 | 덱 0장인 채로 종 판정이 끝나 빠짐(순위 정상) / 나가기·연결 끊김 5초·턴 시간 초과 3회로 빠짐(맨 아래, 패배). 둘 다 관전자가 된다 |
 | 턴 제한 시간 | 차례마다 10초. 넘기면 서버가 대신 카드를 낸다 |
 | 라운드 | 카드를 차례로 내다가 종 판정이 나거나 탈락자가 생기면 끝나는 단위 |

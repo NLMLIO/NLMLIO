@@ -18,8 +18,6 @@ import { GameFrame } from './GameFrame';
 import { GameResult } from './GameResult';
 import { toGameView, toRanking } from './to-game-view';
 
-/** 종 판정 결과를 보드 위에 띄워 두는 시간 */
-const VERDICT_MS = 1800;
 /** 의도 실패 안내를 띄워 두는 시간 */
 const ERROR_MS = 2500;
 
@@ -47,29 +45,30 @@ export function GamePage({
   const emojis = useRoomStore((state) => state.emojis);
 
   const [now, setNow] = useState(() => Date.now());
-  const [shownBellId, setShownBellId] = useState<number | null>(null);
+  const [strike, setStrike] = useState<{ id: number; playerId: string }>();
+  const strikeId = useRef(0);
   const [error, setError] = useState('');
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [returning, setReturning] = useState(false);
   const rungSeq = useRef<string | null>(null);
+  const playInFlight = useRef(false);
   const cancelLeave = useCallback(() => setConfirmLeave(false), []);
 
   // 남은 턴·유예 시간을 줄여 보이게 하는 화면 시계. 판정은 서버 마감 시각으로만 한다.
   const live = snapshot?.status === GameStatus.PLAYING;
   useEffect(() => {
     if (!live) return;
-    const timer = setInterval(() => setNow(Date.now()), 250);
+    const timer = setInterval(() => setNow(Date.now()), 100);
     return () => clearInterval(timer);
   }, [live]);
 
   useEffect(() => {
     if (!lastBell) return;
-    setShownBellId(lastBell.id);
-    const timer = setTimeout(() => setShownBellId(null), VERDICT_MS);
-    return () => clearTimeout(timer);
-  }, [lastBell]);
+    if (lastBell.action.userId !== user.id || rungSeq.current === null)
+      setStrike({ id: ++strikeId.current, playerId: String(lastBell.action.userId) });
+  }, [lastBell, user.id]);
 
   useEffect(() => {
     if (!error) return;
@@ -88,23 +87,32 @@ export function GamePage({
   const me = snapshot?.players.find((player) => player.userId === user.id);
   const canAct = live && me?.status === GamePlayerStatus.ACTIVE;
   const myTurn = canAct && snapshot?.turnUserId === user.id;
+  const judging = live && (snapshot?.roundResumeAt ?? 0) > now + clockOffset;
+
+  function isPaused() {
+    const current = useGameStore.getState();
+    return (current.snapshot?.roundResumeAt ?? 0) > Date.now() + current.clockOffset;
+  }
 
   async function playCard() {
-    if (!snapshot || !myTurn || playing) return;
+    if (!snapshot || !myTurn || playInFlight.current || isPaused()) return;
+    playInFlight.current = true;
     setPlaying(true);
     const failure = await sendGameIntent(GameClientEvent.PLAY, {
       gameId: snapshot.gameId,
       turnId: snapshot.turnId,
     });
     setPlaying(false);
+    playInFlight.current = false;
     if (failure) setError(failure);
   }
 
   function ringBell() {
-    if (!snapshot || !canAct) return;
+    if (!snapshot || !canAct || isPaused()) return;
     // 같은 공개 테이블에 대한 종은 서버가 한 번만 판정하므로 다시 보내지 않는다.
     const key = `${snapshot.gameId}:${snapshot.turnSeq}`;
     playSound('bell');
+    setStrike({ id: ++strikeId.current, playerId: String(user.id) });
     if (rungSeq.current === key) return;
     rungSeq.current = key;
     void sendGameIntent(GameClientEvent.BELL, {
@@ -145,7 +153,7 @@ export function GamePage({
   const actions: GameActions = {
     onPlayCard: () => void playCard(),
     onRingBell: ringBell,
-    // 플레이 중에 나가면 이탈(0점)이라 확인을 받고, 관전 중이면 바로 나간다(003-06).
+    // 플레이 중에 나가면 이탈(패배)이라 확인을 받고, 관전 중이면 바로 나간다(003-06).
     onLeave: () => (canAct ? setConfirmLeave(true) : void leaveRoom()),
     onSendChat: (text) => sendChat('message', text),
     onSendEmote: (emoji) => sendChat('emoji', emoji),
@@ -154,14 +162,14 @@ export function GamePage({
   const ended = snapshot?.status === GameStatus.ENDED;
   useGameShortcuts({
     j:
-      confirmLeave || ended
+      confirmLeave || ended || judging
         ? undefined
         : myTurn
           ? actions.onPlayCard
           : !canAct && !leaving
             ? actions.onLeave
             : undefined,
-    space: canAct && !confirmLeave ? ringBell : undefined,
+    space: canAct && !confirmLeave && !judging ? ringBell : undefined,
   });
 
   if (!snapshot)
@@ -194,7 +202,7 @@ export function GamePage({
     room,
     log,
     emojis,
-    bell: lastBell && lastBell.id === shownBellId ? lastBell : null,
+    bell: judging ? lastBell : null,
     lastCards,
     offlineSince,
     serverNow: now + clockOffset,
@@ -203,7 +211,7 @@ export function GamePage({
   });
   return (
     <GameFrame>
-      <GameBoard view={view} actions={actions} leaving={leaving} playing={playing}>
+      <GameBoard view={view} actions={actions} leaving={leaving} playing={playing} strike={strike}>
         {confirmLeave && (
           <LeaveConfirm
             leaving={leaving}
@@ -249,8 +257,8 @@ function LeaveConfirm({
       >
         <h2 id="leave-title">게임을 나갈까요?</h2>
         <p>
-          지금 나가면 이탈로 처리돼 0점이고, 남은 카드는 종 아래 보관 스택으로 옮겨져요. 나간 뒤에는
-          이번 게임에 돌아올 수 없어요.
+          지금 나가면 이탈로 처리돼 패배로 기록되고, 남은 카드는 종 아래 보관 스택으로 옮겨져요.
+          나간 뒤에는 이번 게임에 돌아올 수 없어요.
         </p>
         <div className="game-confirm-actions">
           <button type="button" className="button outline" onClick={onCancel}>

@@ -15,7 +15,15 @@ export function useGameShortcuts(shortcuts: GameShortcuts) {
   });
   useEffect(() => {
     function keydown(event: KeyboardEvent) {
-      if (event.repeat || event.ctrlKey || event.metaKey || event.altKey || isTyping(event.target))
+      if (
+        event.repeat ||
+        event.isComposing ||
+        event.keyCode === 229 ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey ||
+        isTyping(event.target)
+      )
         return;
       const handler =
         event.code === 'Space'

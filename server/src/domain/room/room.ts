@@ -1,6 +1,7 @@
 import {
   ErrorCode,
   MAX_PLAYERS,
+  MAX_ROOM_SIZE,
   MAX_SPECTATORS,
   MIN_PLAYERS,
   ROOM_CODE_PATTERN,
@@ -75,12 +76,15 @@ export class Room {
     return this.member(userId).role;
   }
 
-  /** 코드로 들어온다. 참가자 자리가 있으면 참가자로, 없으면 관전자로 앉는다. */
+  /** 진행 중에는 관전자로만, 대기 중에는 빈 참가석을 우선 배정한다. */
   join(user: RoomUser): RoomRole {
-    this.requireWaiting();
     if (this.has(user.userId)) throw new RoomRuleError(ErrorCode.ALREADY_IN_ROOM);
-    const role = this.hasSeat(RoomRole.PLAYER) ? RoomRole.PLAYER : RoomRole.SPECTATOR;
-    if (!this.hasSeat(role)) throw new RoomRuleError(ErrorCode.ROOM_FULL);
+    const role =
+      this.status === RoomStatus.PLAYING || !this.hasSeat(RoomRole.PLAYER)
+        ? RoomRole.SPECTATOR
+        : RoomRole.PLAYER;
+    if (this.members.size >= MAX_ROOM_SIZE || !this.hasSeat(role))
+      throw new RoomRuleError(ErrorCode.ROOM_FULL);
     this.members.set(user.userId, { nickname: user.nickname, role });
     return role;
   }
@@ -174,6 +178,11 @@ export class Room {
   }
 
   private hasSeat(role: RoomRole): boolean {
+    // 탈락한 원래 참가자는 다음 판의 참가석을 유지한다. 관전 입장 정원을 소모하지 않는다.
+    if (role === RoomRole.SPECTATOR && this.status === RoomStatus.PLAYING)
+      return (
+        [...this.members.keys()].filter((id) => !this.gamePlayers.has(id)).length < MAX_SPECTATORS
+      );
     return this.count(role) < (role === RoomRole.PLAYER ? MAX_PLAYERS : MAX_SPECTATORS);
   }
 

@@ -31,7 +31,7 @@ export interface GameViewInput {
   nickname: string;
   room: RoomResponse | null;
   log: RoomLogEntry[];
-  emojis: Record<number, { emoji: ChatEmojiCode }>;
+  emojis: Record<number, { emoji: ChatEmojiCode; id?: number }>;
   /** 화면에 보여 주는 중인 종 판정. 표시 시간이 지나면 null */
   bell: BellEvent | null;
   lastCards: Record<number, CardEvent>;
@@ -86,7 +86,7 @@ function verdictOf(input: GameViewInput, bell: BellEvent): Verdict {
     formula: visible.length
       ? visible.map((name) => `${FRUIT_NAMES[name]} ${action.totals[name]}`).join(' · ')
       : '테이블이 비어 있어요',
-    detail: `5개인 과일이 없어요 · 덱 1장과 테이블 카드, 모두 ${action.movedCards}장이 종 아래로`,
+    detail: `5개인 과일이 없어요 · 내 덱 ${action.movedCards}장만 종 아래로 · 테이블은 유지돼요`,
   };
 }
 
@@ -155,7 +155,7 @@ function bannerOf(input: GameViewInput, seated: boolean): Banner | undefined {
   if (me?.status === GamePlayerStatus.DEPARTED)
     return {
       tone: 'danger',
-      messages: ['이탈 처리됐어요 · 0점으로 기록돼요', '끝날 때까지 관전할 수 있어요'],
+      messages: ['이탈 처리됐어요 · 패배로 기록돼요', '끝날 때까지 관전할 수 있어요'],
     };
   if (snapshot.status === GameStatus.PLAYING && snapshot.turnUserId === null) {
     const seconds =
@@ -226,6 +226,7 @@ export function toGameView(input: GameViewInput): GameView {
       color: playerColor(snapshot, input.room, player.userId),
       deckCount: player.handCount,
       topCard: player.topCard,
+      tableCount: player.tableCount,
       state: !active ? 'out' : offline ? 'offline' : 'active',
       offlineSeconds:
         offline && since !== undefined
@@ -236,6 +237,7 @@ export function toGameView(input: GameViewInput): GameView {
       cardKey: card?.id,
       autoPlayed: card?.automatic ?? false,
       emote: emoji ? ChatEmoji[emoji.emoji] : undefined,
+      emoteKey: emoji?.id,
       outcome:
         bell && ringer
           ? bell.action.success
@@ -254,6 +256,7 @@ export function toGameView(input: GameViewInput): GameView {
       state: 'out',
       isTurn: false,
       emote: input.emojis[userId] ? ChatEmoji[input.emojis[userId].emoji] : undefined,
+      emoteKey: input.emojis[userId]?.id,
     });
 
   const me = snapshot.players[seat];
@@ -270,11 +273,31 @@ export function toGameView(input: GameViewInput): GameView {
     roomName: snapshot.roomName,
     players,
     selfSeated: seated,
+    spectators: input.room?.members
+      .filter(
+        (member) =>
+          !snapshot.players.some(
+            (player) =>
+              player.userId === member.userId && player.status === GamePlayerStatus.ACTIVE,
+          ),
+      )
+      .map((member) => ({
+        id: String(member.userId),
+        nickname: member.nickname,
+        emote: input.emojis[member.userId]
+          ? ChatEmoji[input.emojis[member.userId].emoji]
+          : undefined,
+        emoteKey: input.emojis[member.userId]?.id,
+      })),
     myPhase,
     turnNickname: turnPlayer?.nickname,
     myTurnSeconds: myPhase === 'turn' ? turnSeconds : undefined,
     pileCount: snapshot.pileCount,
-    bell: bell ? { kind: bell.action.success ? 'success' : 'misfire' } : { kind: 'idle' },
+    bell: bell
+      ? { kind: bell.action.success ? 'success' : 'misfire' }
+      : playing && snapshot.turnUserId === null
+        ? { kind: 'last-chance', value: turnSeconds ?? 0 }
+        : { kind: 'idle' },
     banner: bannerOf(input, seated),
     verdict: bell ? verdictOf(input, bell) : undefined,
     log: logOf(input),

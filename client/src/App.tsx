@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { GameStatus } from '@nlmlio/shared';
+import { GameStatus, RoomStatus } from '@nlmlio/shared';
 import type { AuthResponse, PublicUser } from '@nlmlio/shared';
 import { api, refreshSession, setAccessToken } from './api/http';
 import { connectSocket, disconnectSocket } from './socket/socket';
@@ -50,9 +50,10 @@ export function App() {
     state.snapshot?.status === GameStatus.PLAYING ? state.snapshot.gameId : null,
   );
   const loggedIn = user !== null;
+  const roomPlaying = useRoomStore((state) => state.room?.status === RoomStatus.PLAYING);
   useEffect(() => {
-    if (liveGameId && page !== 'game' && page !== 'game-preview') navigate('game');
-  }, [liveGameId, page]);
+    if ((liveGameId || roomPlaying) && page !== 'game' && page !== 'game-preview') navigate('game');
+  }, [liveGameId, roomPlaying, page]);
   useEffect(() => {
     if (!loggedIn) return;
     connectSocket();

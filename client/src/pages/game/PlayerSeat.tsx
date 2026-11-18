@@ -64,7 +64,7 @@ export function PlayerSeat({
       <div className="player-seat-avatar">
         <PlayerAvatar nickname={player.nickname} color={player.color} />
         {player.emote && (
-          <span key={player.emote} className="player-emote">
+          <span key={player.emoteKey ?? player.emote} className="player-emote">
             {player.emote}
           </span>
         )}

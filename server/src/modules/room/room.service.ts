@@ -54,6 +54,7 @@ export class RoomService {
     this.events.subscribe(account.id, code);
     this.events.notice(code, { type: 'joined', nickname: account.nickname });
     this.events.state(room);
+    this.game.joined(account.id);
     return room.snapshot();
   }
 
