@@ -327,6 +327,49 @@ export const PREVIEW_SCENES = {
     skills: { slots: [slot(SkillId.SIX_FRUIT_CARD), EMPTY_SLOT, EMPTY_SLOT] },
     skillCast: { key: 4, caster: '과일왕', skillId: SkillId.SIX_FRUIT_CARD, target: null },
   },
+  /** M02 · 시간 정지: 다른 사람이 쓴 동안 내 화면 */
+  'skill-time-stop': {
+    ...MY_TURN,
+    myPhase: 'waiting',
+    skills: { slots: [slot(SkillId.TIME_STOP), EMPTY_SLOT, EMPTY_SLOT] },
+    skillCast: { key: 5, caster: '자두씨', skillId: SkillId.TIME_STOP, target: null },
+    timeStop: { caster: '자두씨', byMe: false, seconds: 2 },
+    frozen: 'time-stop',
+  },
+  /** M02 · 시간 정지: 내가 쓴 동안 내 화면(나만 움직일 수 있다) */
+  'skill-time-stop-mine': {
+    ...MY_TURN,
+    skills: { slots: [EMPTY_SLOT, EMPTY_SLOT, EMPTY_SLOT] },
+    skillCast: { key: 6, caster: '과일왕', skillId: SkillId.TIME_STOP, target: null },
+    timeStop: { caster: '과일왕', byMe: true, seconds: 3 },
+  },
+  /** 24 · 침 뱉기 · 맞은 사람 화면 */
+  'skill-spit-hit': {
+    ...MY_TURN,
+    skills: { slots: [slot(SkillId.TIME_STOP), slot(SkillId.SPIT), slot(SkillId.RAT)] },
+    skillCast: { key: 7, caster: '자두씨', skillId: SkillId.SPIT, target: '과일왕' },
+    spit: { key: 7 },
+  },
+  /** M05 · 아마테라스: 대상 좌석이 검은 불꽃에 휩싸인 모두의 화면 */
+  'skill-amaterasu': {
+    ...MY_TURN,
+    players: MY_TURN.players.map((entry) =>
+      entry.id === 'p1' ? { ...entry, burning: true } : entry,
+    ),
+    skills: { slots: [slot(SkillId.AMATERASU), EMPTY_SLOT, EMPTY_SLOT] },
+    skillCast: { key: 8, caster: '과일왕', skillId: SkillId.AMATERASU, target: '딸기러버' },
+  },
+  /** M05 · 아마테라스: 내가 걸렸을 때 내 화면(카드도 종도 못 한다) */
+  'skill-burned': {
+    ...MY_TURN,
+    myPhase: 'waiting',
+    players: MY_TURN.players.map((entry) =>
+      entry.id === 'me' ? { ...entry, burning: true } : entry,
+    ),
+    skills: { slots: [EMPTY_SLOT, EMPTY_SLOT, EMPTY_SLOT] },
+    skillCast: { key: 9, caster: '자두씨', skillId: SkillId.AMATERASU, target: '과일왕' },
+    frozen: 'amaterasu',
+  },
   /** 22 · 게임 · 스킬 슬롯 */
   'skill-slots': {
     ...MY_TURN,

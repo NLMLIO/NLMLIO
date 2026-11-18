@@ -42,6 +42,8 @@ export interface PlayerView {
   /** offline일 때 화면에 보여 줄 남은 유예 시간(초). 모르면 비워 둔다 */
   offlineSeconds?: number;
   isTurn: boolean;
+  /** 아마테라스: 검은 불꽃에 휩싸여 다음 판정까지 카드·종이 불가 */
+  burning?: boolean;
   /** 차례인 사람의 남은 턴 시간(초, FUNC-005-15) */
   turnSeconds?: number;
   /** 맨 위 카드가 바뀔 때마다 달라지는 값. 바뀌면 카드 뒤집기 애니메이션을 다시 튼다 */
@@ -119,6 +121,20 @@ export interface GameView {
   targeting?: SkillTargeting;
   /** 종 옮기기가 진행 중이면 옮겨진 종의 자리와 새 키 */
   bellMove?: BellMoveView;
+  /** 시간 정지 중 */
+  timeStop?: TimeStopView;
+  /** 내가 지금 카드·종을 못 한다(시간 정지 중 쓴 사람이 아님, 또는 아마테라스) */
+  frozen?: 'time-stop' | 'amaterasu';
+  /** 침 뱉기를 맞았다: 내 화면이 가려졌다가 흘러내린다 */
+  spit?: { key: number };
+}
+
+export interface TimeStopView {
+  caster: string;
+  /** 내가 쓴 사람이다(나만 움직일 수 있다) */
+  byMe: boolean;
+  /** 남은 시간(초) */
+  seconds: number;
 }
 
 export interface BellMoveView {

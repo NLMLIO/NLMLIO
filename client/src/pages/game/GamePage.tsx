@@ -17,7 +17,7 @@ import { useRoomStore } from '../../stores/room-store';
 import { GameBoard, type GameActions } from './GameBoard';
 import { GameFrame } from './GameFrame';
 import { GameResult } from './GameResult';
-import { bellMoveAt, skillUsable, toGameView, toRanking } from './to-game-view';
+import { bellMoveAt, skillUsable, timeStopAt, toGameView, toRanking } from './to-game-view';
 
 /** 의도 실패 안내를 띄워 두는 시간 */
 const ERROR_MS = 2500;
@@ -96,6 +96,12 @@ export function GamePage({
   // 스킬 선택 중에는 게임이 멈춘다(FUNC-009-01). 카드 내기·종은 서버도 무시한다.
   const picking = live && !!snapshot?.skillPick;
   const bellMoved = snapshot ? bellMoveAt(snapshot, now + clockOffset) : undefined;
+  // 시간 정지 중에는 쓴 사람만 카드를 내고(차례와 무관), 아마테라스에 걸린 사람은 카드·종이 모두 불가다.
+  const timeStop = snapshot ? timeStopAt(snapshot, now + clockOffset) : undefined;
+  const stopByMe = timeStop?.userId === user.id;
+  const burnedSelf = !!snapshot?.burning.includes(user.id);
+  const frozen = canAct && (burnedSelf || (!!timeStop && !stopByMe));
+  const canPlayNow = canAct && !burnedSelf && (timeStop ? stopByMe : myTurn);
 
   function isPaused() {
     const current = useGameStore.getState();
@@ -106,7 +112,7 @@ export function GamePage({
   }
 
   async function playCard() {
-    if (!snapshot || !myTurn || playInFlight.current || isPaused()) return;
+    if (!snapshot || !canPlayNow || playInFlight.current || isPaused()) return;
     playInFlight.current = true;
     setPlaying(true);
     const failure = await sendGameIntent(GameClientEvent.PLAY, {
@@ -119,7 +125,7 @@ export function GamePage({
   }
 
   function ringBell() {
-    if (!snapshot || !canAct || isPaused()) return;
+    if (!snapshot || !canAct || frozen || isPaused()) return;
     // 종이 옮겨지는 중(처음 300ms)에는 종 입력을 무시한다(종 옮기기).
     const current = useGameStore.getState();
     if (bellMoveAt(snapshot, Date.now() + current.clockOffset)?.locked) return;
@@ -239,15 +245,18 @@ export function GamePage({
     j:
       confirmLeave || ended || judging || picking
         ? undefined
-        : myTurn
+        : canPlayNow
           ? actions.onPlayCard
           : !canAct && !leaving
             ? actions.onLeave
             : undefined,
     // 종 옮기기 중에는 Space 대신 새 키로만 종을 친다.
-    space: canAct && !confirmLeave && !judging && !picking && !bellMoved ? ringBell : undefined,
+    space:
+      canAct && !confirmLeave && !judging && !picking && !frozen && !bellMoved
+        ? ringBell
+        : undefined,
     bell:
-      canAct && !confirmLeave && !judging && !picking && bellMoved
+      canAct && !confirmLeave && !judging && !picking && !frozen && bellMoved
         ? { code: `Key${bellMoved.key}`, run: ringBell }
         : undefined,
   });

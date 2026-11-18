@@ -10,6 +10,7 @@ import { seatPlacements, type GameView } from './game-view';
 import { PlayerSeat, playerColorStyle } from './PlayerSeat';
 import { SkillPick } from './skill/SkillPick';
 import { SkillCast, SkillTargetHint } from './skill/SkillCast';
+import { SkillBurnedHint, SkillSpit, SkillTimeStop } from './skill/SkillEffects';
 import { SkillDock } from './skill/SkillSlot';
 import type { SkillPickHandler } from './skill/skill-view';
 import { VerdictOverlay } from './VerdictOverlay';
@@ -130,7 +131,8 @@ export function GameBoard({
             view.myPhase === 'judging' ||
             view.bell.kind === 'countdown' ||
             !!view.skills?.pick ||
-            !!view.bellMove?.locked
+            !!view.bellMove?.locked ||
+            !!view.frozen
           }
           onRing={actions.onRingBell}
           moved={view.bellMove}
@@ -201,11 +203,14 @@ export function GameBoard({
           />
         )}
         {view.skillCast && <SkillCast cast={view.skillCast} />}
+        {view.spit && <SkillSpit key={view.spit.key} />}
+        {view.frozen === 'amaterasu' && <SkillBurnedHint />}
         {view.targeting && <SkillTargetHint targeting={view.targeting} />}
         {view.verdict && <VerdictOverlay verdict={view.verdict} />}
         {children}
       </main>
       <GameChat log={view.log} onSendChat={actions.onSendChat} onSendEmote={actions.onSendEmote} />
+      {view.timeStop && <SkillTimeStop stop={view.timeStop} />}
       {view.skills?.pick && (
         <SkillPick
           key={view.skills.pick.successCount}

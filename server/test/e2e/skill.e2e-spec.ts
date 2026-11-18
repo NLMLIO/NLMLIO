@@ -252,17 +252,42 @@ describe('스킬 선택 Socket.io 통합 (FUNC-009)', () => {
       ok: false,
       code: 'SKILL_UNAVAILABLE',
     });
-    // 효과를 구현하지 않은 스킬(관전자의 침 뱉기)은 쓸 수 없다.
+    // 관전자도 침 뱉기를 쓸 수 있다(플레이어를 대상으로). 대상이 아닌 사람·관전자는 대상이 될 수 없다.
+    expect(await emit(c, GameClientEvent.SKILL_USE, { gameId, slot: 0 })).toEqual({
+      ok: false,
+      code: 'VALIDATION_FAILED',
+    });
     expect(
-      await emit(c, GameClientEvent.SKILL_USE, { gameId, slot: 0, targetUserId: users[0].user.id }),
-    ).toEqual({ ok: false, code: 'SKILL_UNAVAILABLE' });
+      await emit(c, GameClientEvent.SKILL_USE, { gameId, slot: 0, targetUserId: users[2].user.id }),
+    ).toEqual({ ok: false, code: 'VALIDATION_FAILED' });
     expect(skills.get(c)!.slots).toHaveLength(1);
+    expect(
+      await emit(c, GameClientEvent.SKILL_USE, { gameId, slot: 0, targetUserId: users[1].user.id }),
+    ).toEqual({ ok: true });
+    await until(() =>
+      (actions.get(a) ?? []).some((action) => action.kind === 'skill' && action.skillId === 'SPIT'),
+    );
+    const spit = (actions.get(a) ?? []).find(
+      (action) => action.kind === 'skill' && action.skillId === 'SPIT',
+    )!;
+    expect(spit).toMatchObject({ userId: users[2].user.id, targetUserId: users[1].user.id });
+    await until(() => skills.get(c)?.slots.length === 0);
 
     // 반짝반짝한 카드: 쓰면 모두에게 알리고 내 슬롯에서 사라진다.
     expect(await emit(a, GameClientEvent.SKILL_USE, { gameId, slot: 0 })).toEqual({ ok: true });
-    await until(() => (actions.get(b) ?? []).some((action) => action.kind === 'skill'));
-    await until(() => (actions.get(c) ?? []).some((action) => action.kind === 'skill'));
-    const cast = (actions.get(b) ?? []).find((action) => action.kind === 'skill')!;
+    await until(() =>
+      (actions.get(b) ?? []).some(
+        (action) => action.kind === 'skill' && action.skillId === 'SPARKLE_CARD',
+      ),
+    );
+    await until(() =>
+      (actions.get(c) ?? []).some(
+        (action) => action.kind === 'skill' && action.skillId === 'SPARKLE_CARD',
+      ),
+    );
+    const cast = (actions.get(b) ?? []).find(
+      (action) => action.kind === 'skill' && action.skillId === 'SPARKLE_CARD',
+    )!;
     expect(cast).toMatchObject({
       kind: 'skill',
       userId: users[0].user.id,

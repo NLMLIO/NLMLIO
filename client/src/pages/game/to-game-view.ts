@@ -9,6 +9,9 @@ import {
   SKILL_CAST_MS,
   SKILL_PICK_TIME_MS,
   SKILL_SLOT_COUNT,
+  SkillId,
+  SPIT_COVER_MS,
+  SPIT_DRIP_MS,
   SkillTiming,
   SkillUser,
   TURN_TIME_MS,
@@ -19,7 +22,6 @@ import type {
   Fruit,
   GameSnapshot,
   RoomResponse,
-  SkillId,
   SkillStateEvent,
 } from '@nlmlio/shared';
 import type { BellEvent, CardEvent, SkillCastEvent } from '../../stores/game-store';
@@ -292,6 +294,17 @@ export function skillUsable(snapshot: GameSnapshot, userId: number, skillId: Ski
   );
 }
 
+/** 시간 정지 중이면 쓴 사람과 끝나는 시각. 아니면 undefined */
+export function timeStopAt(
+  snapshot: GameSnapshot,
+  serverNow: number,
+): { userId: number; endsAt: number } | undefined {
+  const stop = snapshot.timeStop;
+  return stop && snapshot.status === GameStatus.PLAYING && serverNow < stop.endsAt
+    ? stop
+    : undefined;
+}
+
 /** 종 옮기기가 진행 중이면 옮겨진 자리·새 키. 끝나는 시각은 서버가 정하고 화면은 서버 시각으로 센다 */
 export function bellMoveAt(snapshot: GameSnapshot, serverNow: number): BellMoveView | undefined {
   const move = snapshot.bellMove;
@@ -371,6 +384,7 @@ export function toGameView(input: GameViewInput): GameView {
           ? secondsLeft(since + GAME_RECONNECT_GRACE_MS, input.now, GAME_RECONNECT_GRACE_MS / 1000)
           : undefined,
       isTurn,
+      burning: snapshot.burning.includes(player.userId),
       turnSeconds: isTurn ? turnSeconds : undefined,
       cardKey: card?.id,
       autoPlayed: card?.automatic ?? false,
@@ -398,7 +412,10 @@ export function toGameView(input: GameViewInput): GameView {
     });
 
   const me = snapshot.players[seat];
-  const myPhase =
+  const stop = timeStopAt(snapshot, input.serverNow);
+  const stopByMe = stop?.userId === userId;
+  const burnedSelf = snapshot.burning.includes(userId);
+  const basePhase =
     !me || me.status !== GamePlayerStatus.ACTIVE
       ? 'spectating'
       : bell
@@ -406,6 +423,30 @@ export function toGameView(input: GameViewInput): GameView {
         : snapshot.turnUserId === userId
           ? 'turn'
           : 'waiting';
+  // 시간 정지 중에는 쓴 사람만 카드를 낼 수 있고(차례와 무관), 아마테라스에 걸리면 못 낸다.
+  const myPhase =
+    basePhase === 'spectating' || basePhase === 'judging'
+      ? basePhase
+      : burnedSelf
+        ? 'waiting'
+        : stop
+          ? stopByMe
+            ? 'turn'
+            : 'waiting'
+          : basePhase;
+  const frozen =
+    basePhase === 'spectating'
+      ? undefined
+      : burnedSelf
+        ? 'amaterasu'
+        : stop && !stopByMe
+          ? 'time-stop'
+          : undefined;
+  const cast = input.skillCast;
+  const spitHit =
+    cast?.action.skillId === SkillId.SPIT &&
+    cast.action.targetUserId === userId &&
+    input.now - cast.castAt < SPIT_COVER_MS + SPIT_DRIP_MS;
   const turnPlayer = snapshot.players.find((player) => player.userId === snapshot.turnUserId);
   const skills = skillsOf(input);
   return {
@@ -444,6 +485,13 @@ export function toGameView(input: GameViewInput): GameView {
     skillCast: skillCastOf(input),
     targeting: targetingOf(input, skills),
     bellMove: bellMoveAt(snapshot, input.serverNow),
+    timeStop: stop && {
+      caster: nicknameOf(input, stop.userId),
+      byMe: stopByMe,
+      seconds: secondsLeft(stop.endsAt, input.serverNow, 99),
+    },
+    frozen,
+    spit: spitHit && cast ? { key: cast.id } : undefined,
   };
 }
 

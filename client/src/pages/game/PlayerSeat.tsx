@@ -61,7 +61,7 @@ export function PlayerSeat({
   const badge = seatBadge(player);
   return (
     <div
-      className={`player-seat ${player.state}${player.isTurn ? ' is-turn' : ''}${growsUp ? ' grows-up' : ''}${onSelect ? ' is-targetable' : ''}`}
+      className={`player-seat ${player.state}${player.isTurn ? ' is-turn' : ''}${growsUp ? ' grows-up' : ''}${onSelect ? ' is-targetable' : ''}${player.burning ? ' is-burning' : ''}`}
       style={style}
       {...(onSelect
         ? {
@@ -77,6 +77,11 @@ export function PlayerSeat({
     >
       <div className="player-seat-avatar">
         <PlayerAvatar nickname={player.nickname} color={player.color} />
+        {player.burning && (
+          <span className="seat-flame" role="img" aria-label="아마테라스: 검은 불꽃">
+            🔥
+          </span>
+        )}
         {player.emote && (
           <span key={player.emoteKey ?? player.emote} className="player-emote">
             {player.emote}
