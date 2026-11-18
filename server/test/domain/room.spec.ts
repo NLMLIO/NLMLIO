@@ -84,10 +84,37 @@ describe('Room', () => {
       expect(ruleError(() => roomWith(2).join(user(2)))).toBe('ALREADY_IN_ROOM');
     });
 
-    it('게임 중인 방에는 관전자로도 들어올 수 없다', () => {
+    it('게임 중에는 참가석이 비어 있어도 관전자로만 들어온다', () => {
       const room = roomWith(2);
       room.start(1);
-      expect(ruleError(() => room.join(user(3)))).toBe('ROOM_IN_GAME');
+      expect(room.join(user(3))).toBe('SPECTATOR');
+      expect(room.snapshot().status).toBe('PLAYING');
+      expect(roles(room)).toBe('PPS');
+      expect(ruleError(() => room.move(3, 3, 'PLAYER'))).toBe('ROOM_IN_GAME');
+      room.finish();
+      expect(roles(room)).toBe('PPS');
+      expect(room.move(3, 3, 'PLAYER')).toBe(true);
+    });
+
+    it('진행 중 관전 입장은 최대 10석이며 중복 가입은 거부한다', () => {
+      const room = roomWith(2);
+      room.start(1);
+      for (let id = 3; id <= 12; id++) expect(room.join(user(id))).toBe('SPECTATOR');
+      expect(ruleError(() => room.join(user(13)))).toBe('ROOM_FULL');
+      expect(ruleError(() => room.join(user(3)))).toBe('ALREADY_IN_ROOM');
+      room.leave(3);
+      expect(room.join(user(13))).toBe('SPECTATOR');
+    });
+
+    it('탈락한 참가자가 있어도 관전 10석과 전체 16명 제한을 유지하고 다음 판 자리를 복구한다', () => {
+      const room = roomWith(6);
+      room.start(1);
+      for (let id = 2; id <= 6; id++) room.markSpectator(id);
+      for (let id = 7; id <= 16; id++) room.join(user(id));
+      expect(room.snapshot().members).toHaveLength(16);
+      expect(ruleError(() => room.join(user(17)))).toBe('ROOM_FULL');
+      room.finish();
+      expect(roles(room)).toBe('P'.repeat(6) + 'S'.repeat(10));
     });
   });
 

@@ -3,6 +3,8 @@ import type { ErrorCode } from './errors';
 
 /** 차례마다 카드를 낼 수 있는 시간(FUNC-005-15). 넘기면 서버가 대신 낸다. */
 export const TURN_TIME_MS = 10_000;
+/** 종 판정 결과를 함께 확인하는 동안 카드 내기를 멈춘다. */
+export const ROUND_RESULT_MS = 1800;
 /** 게임 중 연결이 끊긴 뒤 이탈 처리까지 기다리는 시간(FUNC-003-07) */
 export const GAME_RECONNECT_GRACE_MS = 5_000;
 
@@ -65,6 +67,8 @@ export interface GameSnapshot {
   /** 카드를 낼 때마다 변경. 같은 공개 테이블에 대한 종 중복 요청 방지용. */
   turnSeq: number;
   turnDeadline: number | null;
+  /** 이 서버 시각까지 종 판정 결과 표시 중. null이면 바로 카드 내기가 가능하다. */
+  roundResumeAt: number | null;
   lastPlayAt: number | null;
   startedAt: number;
   endedAt: number | null;

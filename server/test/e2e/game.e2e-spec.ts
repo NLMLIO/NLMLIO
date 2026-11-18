@@ -5,8 +5,21 @@ import Redis from 'ioredis';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { io, type Socket } from 'socket.io-client';
-import { Fruit, GameClientEvent, GameServerEvent, RoomClientEvent, RoomRole } from '@nlmlio/shared';
-import type { AuthResponse, GameAck, GameSnapshot } from '@nlmlio/shared';
+import {
+  ChatEvent,
+  Fruit,
+  GameClientEvent,
+  GameServerEvent,
+  RoomClientEvent,
+  RoomRole,
+} from '@nlmlio/shared';
+import type {
+  AuthResponse,
+  ChatMessageEvent,
+  EmojiMessageEvent,
+  GameAck,
+  GameSnapshot,
+} from '@nlmlio/shared';
 import { AppModule } from '../../src/app.module';
 import { configureApp } from '../../src/common/configure-app';
 import { SessionService } from '../../src/common/security/session.service';
@@ -81,6 +94,19 @@ describe('게임 서버 Socket.io / Redis / PostgreSQL (FUNC-005)', () => {
   const emit = (socket: Socket, event: string, payload: object = {}): Promise<GameAck> =>
     socket.timeout(3000).emitWithAck(event, payload);
   const snapshot = () => app.get(GameService).sync(host.user.id)!;
+  function receive<T>(socket: Socket, event: string): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const listener = (message: T) => {
+        clearTimeout(timer);
+        resolve(message);
+      };
+      const timer = setTimeout(() => {
+        socket.off(event, listener);
+        reject(new Error(`Missing ${event}`));
+      }, 3000);
+      socket.once(event, listener);
+    });
+  }
   async function waitState(
     socket: Socket,
     predicate: (state: GameSnapshot) => boolean,
@@ -211,6 +237,62 @@ describe('게임 서버 Socket.io / Redis / PostgreSQL (FUNC-005)', () => {
     ]);
     expect(await redis.ttl(`game:${gameId}`)).toBe(-1);
   });
+  it('게임 중 코드로 들어온 회원은 즉시 관전 상태를 받고 채팅·이모티콘만 쓸 수 있다', async () => {
+    const before = snapshot();
+    const room = (
+      await request(app.getHttpServer())
+        .post('/api/rooms/join')
+        .auth(outsider.accessToken, { type: 'bearer' })
+        .send({ code })
+        .expect(200)
+    ).body;
+    expect(room.status).toBe('PLAYING');
+    expect(
+      room.members.find((member: { userId: number }) => member.userId === outsider.user.id).role,
+    ).toBe('SPECTATOR');
+    // 재접속·game:sync 요청 없이 입장 시 서버가 보내는 스냅샷이다.
+    const joined = await waitState(
+      d,
+      (value) => value.gameId === gameId && value.turnSeq === before.turnSeq,
+    );
+    expect(joined.players).toEqual(before.players);
+    expect(joined.turnUserId).toBe(before.turnUserId);
+    expect(joined.players.some((player) => player.userId === outsider.user.id)).toBe(false);
+    expect(snapshot()).toEqual(before);
+    expect(await emit(d, GameClientEvent.PLAY, { gameId, turnId: before.turnId })).toEqual({
+      ok: false,
+      code: 'SPECTATOR_FORBIDDEN',
+    });
+    expect(await emit(d, GameClientEvent.BELL, { gameId, turnSeq: before.turnSeq })).toEqual({
+      ok: false,
+      code: 'SPECTATOR_FORBIDDEN',
+    });
+    expect(
+      await emit(d, RoomClientEvent.MOVE, { userId: outsider.user.id, role: RoomRole.PLAYER }),
+    ).toEqual({ ok: false, code: 'ROOM_IN_GAME' });
+    expect(await emit(a, ChatEvent.JOIN, { code })).toEqual({ ok: true });
+    expect(await emit(d, ChatEvent.JOIN, { code })).toEqual({ ok: true });
+    const message = receive<ChatMessageEvent>(a, ChatEvent.MESSAGE);
+    expect(await emit(d, ChatEvent.SEND, { message: '도중 관전 채팅' })).toEqual({ ok: true });
+    expect(await message).toMatchObject({
+      userId: outsider.user.id,
+      message: '도중 관전 채팅',
+      isSpectator: true,
+    });
+    const emoji = receive<EmojiMessageEvent>(a, ChatEvent.EMOJI);
+    expect(await emit(d, ChatEvent.EMOJI_SEND, { emoji: 'TEASE' })).toEqual({ ok: true });
+    expect(await emoji).toMatchObject({
+      userId: outsider.user.id,
+      emoji: 'TEASE',
+      isSpectator: true,
+    });
+    d.disconnect();
+    d = await connect(outsider);
+    expect((await waitState(d, (value) => value.gameId === gameId)).players).toEqual(
+      before.players,
+    );
+  });
+
   it('거의 동시에 온 종 두 개 중 하나만 성공하고 뒤 요청은 무시한다', async () => {
     expect(await emit(b, GameClientEvent.PLAY, { gameId, turnId: snapshot().turnId })).toEqual({
       ok: true,
@@ -230,7 +312,16 @@ describe('게임 서버 Socket.io / Redis / PostgreSQL (FUNC-005)', () => {
     expect(snapshot().players.reduce((sum, player) => sum + player.handCount, 0)).toBe(56);
     expect(snapshot().fruitTotals.STRAWBERRY).toBe(0);
   });
-  it('오발은 1장과 테이블 전체를 보관하고 모든 관전자에게도 동기화한다', async () => {
+  it('결과 표시 중 카드를 막고 이후 오발은 1장만 보관하며 관전자에게 동기화한다', async () => {
+    const pause = snapshot();
+    const actorDuringPause = pause.turnUserId === host.user.id ? a : b;
+    expect(
+      await emit(actorDuringPause, GameClientEvent.PLAY, { gameId, turnId: pause.turnId }),
+    ).toEqual({ ok: true, ignored: true });
+    expect(snapshot().turnSeq).toBe(pause.turnSeq);
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.max(0, pause.roundResumeAt! - Date.now()) + 10),
+    );
     const actor = snapshot().turnUserId === host.user.id ? a : b;
     expect(await emit(actor, GameClientEvent.PLAY, { gameId, turnId: snapshot().turnId })).toEqual({
       ok: true,
@@ -238,9 +329,10 @@ describe('게임 서버 Socket.io / Redis / PostgreSQL (FUNC-005)', () => {
     expect(
       await emit(actor, GameClientEvent.BELL, { gameId, turnSeq: snapshot().turnSeq }),
     ).toEqual({ ok: true });
-    expect(snapshot().pileCount).toBe(2);
-    expect(await redis.llen(`game:${gameId}:pile`)).toBe(2);
-    expect((await waitState(c, (state) => state.pileCount === 2)).gameId).toBe(gameId);
+    expect(snapshot().pileCount).toBe(1);
+    expect(snapshot().players.reduce((sum, player) => sum + player.tableCount, 0)).toBe(1);
+    expect(await redis.llen(`game:${gameId}:pile`)).toBe(1);
+    expect((await waitState(c, (state) => state.pileCount === 1)).gameId).toBe(gameId);
   });
   it('새 소켓이 재접속하면 같은 게임 전체 상태를 받는다', async () => {
     const before = snapshot();
@@ -270,6 +362,13 @@ describe('게임 서버 Socket.io / Redis / PostgreSQL (FUNC-005)', () => {
     expect(await redis.exists(`game:${gameId}`, `game:${gameId}:keys`)).toBe(0);
     expect(await redis.exists(`settled:${gameId}`)).toBe(1);
     expect(app.get(RoomService).memberRoom(host.user.id)?.status).toBe('WAITING');
+    expect(
+      app
+        .get(RoomService)
+        .memberRoom(outsider.user.id)
+        ?.members.find((member) => member.userId === outsider.user.id)?.role,
+    ).toBe(RoomRole.SPECTATOR);
+    expect(await emit(d, GameClientEvent.RETURN)).toEqual({ ok: true });
     expect(await emit(a, GameClientEvent.RETURN)).toEqual({ ok: true });
     expect(await prisma.gameResult.count({ where: { gameId } })).toBe(2);
   });

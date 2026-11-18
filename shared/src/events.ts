@@ -17,6 +17,7 @@ export const ChatEmoji = {
   WOW: '😮',
   CLAP: '👏',
   LIKE: '👍',
+  TEASE: '😜',
 } as const;
 
 export type ChatEmojiCode = keyof typeof ChatEmoji;

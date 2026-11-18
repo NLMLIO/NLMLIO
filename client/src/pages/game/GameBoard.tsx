@@ -7,7 +7,7 @@ import { Bell } from './Bell';
 import { EmptyCardSlot, FruitCard } from './FruitCard';
 import { GameChat } from './GameChat';
 import { seatPlacements, type GameView } from './game-view';
-import { PlayerSeat } from './PlayerSeat';
+import { PlayerSeat, playerColorStyle } from './PlayerSeat';
 import { VerdictOverlay } from './VerdictOverlay';
 
 export interface GameActions {
@@ -24,6 +24,7 @@ export function GameBoard({
   actions,
   leaving = false,
   playing = false,
+  strike,
   children,
 }: {
   view: GameView;
@@ -32,10 +33,12 @@ export function GameBoard({
   leaving?: boolean;
   /** 카드 내기 요청을 보내는 중이면 카드 내기 버튼을 잠근다 */
   playing?: boolean;
+  strike?: { id: number; playerId: string };
   /** 보드 위에 띄우는 확인 창 등 */
   children?: ReactNode;
 }) {
-  const placements = seatPlacements(view.players.length);
+  const seatedPlayers = view.selfSeated === false ? view.players.slice(1) : view.players;
+  const placements = seatPlacements(seatedPlayers.length, view.selfSeated === false);
   const [me, ...others] = view.players;
   const spectating = view.myPhase === 'spectating';
   const muted = useMuted();
@@ -60,22 +63,38 @@ export function GameBoard({
             나가기
           </button>
         </header>
+        {!!view.spectators?.length && (
+          <div className="game-spectators" aria-label="관전자">
+            <span>관전 {view.spectators.length}</span>
+            {view.spectators.map((spectator) => (
+              <span key={spectator.id} className="spectator-label">
+                {spectator.nickname}
+                {spectator.emote && (
+                  <span key={spectator.emoteKey} className="player-emote">
+                    {spectator.emote}
+                  </span>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
         <img className="game-table" src={tableImage} width={600} height={530} alt="" />
-        {view.players.map((player, index) => {
-          // 처음부터 관전한 나에게는 테이블 카드 자리가 없다.
-          if (index === 0 && view.selfSeated === false) return null;
-          const { card, rotation, shadow } = placements[index];
+        {seatedPlayers.map((player, index) => {
+          const { card, rotation } = placements[index];
           return (
             <div
               key={player.id}
               className="table-card"
+              data-stacked={(player.tableCount ?? 0) > 1 || undefined}
               style={
                 {
                   left: card.x,
                   top: card.y,
                   transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
-                  '--shadow-x': shadow.x,
-                  '--shadow-y': shadow.y,
+                  '--stack-depth': Math.min(
+                    2,
+                    Math.max(0, (player.tableCount ?? (player.topCard ? 1 : 0)) - 1),
+                  ),
                 } as CSSProperties
               }
             >
@@ -84,6 +103,11 @@ export function GameBoard({
               ) : (
                 <EmptyCardSlot />
               )}
+              {player.topCard && (
+                <span className="table-count" style={{ transform: `rotate(${-rotation}deg)` }}>
+                  {player.tableCount ?? 1}장
+                </span>
+              )}
               {player.topCard && player.autoPlayed && <span className="auto-tag">자동</span>}
             </div>
           );
@@ -91,11 +115,31 @@ export function GameBoard({
         <Bell
           state={view.bell}
           pileCount={view.pileCount}
-          disabled={spectating || view.bell.kind === 'countdown'}
+          disabled={spectating || view.myPhase === 'judging' || view.bell.kind === 'countdown'}
           onRing={actions.onRingBell}
         />
+        {seatedPlayers.map((player, index) => (
+          <div
+            key={`${player.id}:${strike?.playerId === player.id ? strike.id : 'rest'}`}
+            className={`player-hand-track${strike?.playerId === player.id ? ' is-striking' : ''}`}
+            style={
+              {
+                left: 550,
+                top: 440,
+                '--hand-angle': `${placements[index].rotation}deg`,
+                ...playerColorStyle(player.color),
+              } as CSSProperties
+            }
+            aria-hidden="true"
+          >
+            <svg className="player-hand" viewBox="0 0 80 110">
+              <path d="M22 104V81C13 74 7 62 9 57c2-5 7-4 11 0l5 6V20c0-8 11-8 11 0v29-37c0-8 11-8 11 0v37-30c0-8 11-8 11 0v33-21c0-8 11-8 11 0v35c0 12-5 20-10 27v11Z" />
+              <path className="hand-cuff" d="M20 94h42v14H20z" />
+            </svg>
+          </div>
+        ))}
         {others.map((player, index) => {
-          const { seat, seatGrowsUp } = placements[index + 1];
+          const { seat, seatGrowsUp } = placements[index + (view.selfSeated === false ? 0 : 1)];
           return (
             <PlayerSeat
               key={player.id}
@@ -119,6 +163,7 @@ export function GameBoard({
           turnNickname={view.turnNickname}
           turnSeconds={view.myTurnSeconds}
           emote={me.emote}
+          emoteKey={me.emoteKey}
           playing={playing}
           leaving={leaving}
           onPlayCard={actions.onPlayCard}

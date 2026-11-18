@@ -7,6 +7,7 @@ export class RoomGameLifecycle {
     start: (userId: number) => Promise<void>;
     leaving: (userId: number, remove: () => Promise<void>) => Promise<void>;
     closed: (code: string) => void;
+    joined?: (userId: number) => void;
   };
   register(hooks: NonNullable<RoomGameLifecycle['hooks']>): void {
     this.hooks = hooks;
@@ -21,5 +22,8 @@ export class RoomGameLifecycle {
   }
   closed(code: string): void {
     this.hooks?.closed(code);
+  }
+  joined(userId: number): void {
+    this.hooks?.joined?.(userId);
   }
 }

@@ -20,18 +20,53 @@ export function GameChat({ log, onSendChat, onSendEmote }: GameChatProps) {
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
   const listRef = useRef<HTMLOListElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const pending = useRef(false);
+  useEffect(() => {
+    const focusChat = (event: KeyboardEvent) => {
+      if (
+        event.key !== 'Enter' ||
+        event.repeat ||
+        event.isComposing ||
+        event.keyCode === 229 ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey
+      )
+        return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+      )
+        return;
+      event.preventDefault();
+      inputRef.current?.focus();
+    };
+    window.addEventListener('keydown', focusChat);
+    return () => window.removeEventListener('keydown', focusChat);
+  }, []);
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [log]);
   async function submit(event: FormEvent) {
     event.preventDefault();
     const text = draft.trim();
-    if (!text || sending) return;
+    if (!text) {
+      inputRef.current?.blur();
+      return;
+    }
+    if (pending.current) return;
+    pending.current = true;
+    // 전송을 기다리는 동안 작성한 다음 메시지가 지워지지 않게 먼저 비운다.
+    setDraft('');
+    inputRef.current?.blur();
     setSending(true);
     const failure = (await onSendChat(text)) ?? null;
     setSending(false);
+    pending.current = false;
     setError(failure ?? '');
-    if (!failure) setDraft('');
+    if (failure) setDraft((current) => current || text);
   }
   async function emote(code: ChatEmojiCode) {
     setError((await onSendEmote(code)) ?? '');
@@ -80,14 +115,25 @@ export function GameChat({ log, onSendChat, onSendEmote }: GameChatProps) {
         )}
         <form className="chat-form" onSubmit={(event) => void submit(event)}>
           <input
+            ref={inputRef}
             aria-label="메시지"
-            placeholder="메시지 입력"
+            placeholder="Enter로 채팅 시작"
             maxLength={CHAT_MAX_LENGTH}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+              if (event.key === 'Escape' || (event.key === 'Enter' && !draft.trim())) {
+                event.preventDefault();
+                inputRef.current?.blur();
+              }
+            }}
           />
-          <button type="submit">전송</button>
+          <button type="submit" disabled={sending || !draft.trim()}>
+            전송
+          </button>
         </form>
+        <p className="chat-key-hint">Enter 채팅 · 전송 후 게임 복귀 · Esc 닫기</p>
       </div>
     </aside>
   );

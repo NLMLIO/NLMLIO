@@ -8,6 +8,7 @@ import {
   GameStatus,
   RoomClientEvent,
   RoomServerEvent,
+  RoomStatus,
 } from '@nlmlio/shared';
 import type {
   ChatAck,
@@ -76,6 +77,12 @@ export function connectSocket(): void {
     syncChat(room);
     // 방에 없으면 볼 게임도 없다(직접 나가기·추방·방 삭제).
     if (!room) gameActions.state(null);
+    // 참가자 목록에 없는 관전자도 게임 상태를 요청한다. 시작 시 상태 수신을 놓쳐도 복구한다.
+    else if (
+      room.status === RoomStatus.PLAYING &&
+      useGameStore.getState().snapshot?.status !== GameStatus.PLAYING
+    )
+      raw(current).emit(GameClientEvent.SYNC, {});
   });
   raw(current).on(GameServerEvent.STATE, receiveGameState);
   raw(current).on(GameServerEvent.ACTION, receiveGameAction);
