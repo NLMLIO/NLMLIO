@@ -14,6 +14,7 @@ export class ApiError extends Error {
 
 export function setAccessToken(token: string): void {
   accessToken = token;
+  window.dispatchEvent(new Event('nlmlio:access-token'));
 }
 
 export function getAccessToken(): string {
@@ -27,35 +28,64 @@ async function parse<T>(response: Response): Promise<T> {
   return body as T;
 }
 
-export async function refreshSession(): Promise<AuthResponse> {
-  refreshing ??= fetch('/api/auth/refresh', {
-    method: 'POST',
-    credentials: 'same-origin',
-  })
-    .then(parse<AuthResponse>)
-    .then((session) => {
-      accessToken = session.accessToken;
+async function sessionLock<T>(action: () => Promise<T>): Promise<T> {
+  return navigator.locks ? navigator.locks.request('nlmlio:session-cookie', action) : action();
+}
+
+export function accessExpiresAt(): number {
+  try {
+    const encoded = accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const { exp } = JSON.parse(atob(encoded));
+    return typeof exp === 'number' ? exp * 1000 : 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function requestRefresh(): Promise<AuthResponse> {
+  // Web Locks가 없는 LAN HTTP 환경에서도 회전된 공용 쿠키로 재시도한다.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const session = await parse<AuthResponse>(
+        await fetch('/api/auth/refresh', {
+          method: 'POST',
+          credentials: 'same-origin',
+        }),
+      );
+      setAccessToken(session.accessToken);
       return session;
-    })
-    .finally(() => {
-      refreshing = null;
-    });
+    } catch (error) {
+      if (navigator.locks || !(error instanceof ApiError) || error.status !== 401 || attempt >= 2)
+        throw error;
+      await new Promise((resolve) => setTimeout(resolve, (attempt + 1) * 500));
+    }
+  }
+}
+
+export async function refreshSession(): Promise<AuthResponse> {
+  refreshing ??= sessionLock(requestRefresh).finally(() => {
+    refreshing = null;
+  });
   return refreshing;
 }
 
 export async function api<T>(path: string, options: RequestInit = {}, retry = true): Promise<T> {
   try {
-    return await parse<T>(
-      await fetch(`/api${path}`, {
-        ...options,
-        credentials: 'same-origin',
-        headers: {
-          ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-          ...options.headers,
-        },
-      }),
-    );
+    const execute = async () =>
+      parse<T>(
+        await fetch(`/api${path}`, {
+          ...options,
+          credentials: 'same-origin',
+          headers: {
+            ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+            ...options.headers,
+          },
+        }),
+      );
+    return await (['/auth/login', '/auth/logout'].includes(path)
+      ? sessionLock(execute)
+      : execute());
   } catch (error) {
     if (
       retry &&
@@ -66,8 +96,10 @@ export async function api<T>(path: string, options: RequestInit = {}, retry = tr
       try {
         await refreshSession();
       } catch (refreshError) {
-        accessToken = '';
-        window.dispatchEvent(new Event('nlmlio:session-expired'));
+        if (refreshError instanceof ApiError && refreshError.status === 401) {
+          setAccessToken('');
+          window.dispatchEvent(new Event('nlmlio:session-expired'));
+        }
         throw refreshError;
       }
       return api<T>(path, options, false);

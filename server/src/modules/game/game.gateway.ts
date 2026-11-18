@@ -96,7 +96,7 @@ export class GameGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     return { ok: true };
   }
   private async authorize(socket: Socket): Promise<void> {
-    const token: unknown = socket.handshake.auth?.token;
+    const token: unknown = socket.data.accessToken ?? socket.handshake.auth?.token;
     const claims = await this.tokens.verify(typeof token === 'string' ? token : '', 'access');
     const account = await this.users.findById(claims.sub);
     if (

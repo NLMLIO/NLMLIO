@@ -8,7 +8,7 @@ import {
   WebSocketGateway,
 } from '@nestjs/websockets';
 import type { Socket } from 'socket.io';
-import { ErrorCode, RoomClientEvent, RoomServerEvent } from '@nlmlio/shared';
+import { ErrorCode, RoomClientEvent, RoomServerEvent, SocketAuthEvent } from '@nlmlio/shared';
 import type { RoomAck } from '@nlmlio/shared';
 import { appError } from '../../common/app-error';
 import { TokenService } from '../../common/security/token.service';
@@ -17,7 +17,7 @@ import type { SocketUser } from '../../common/socket-user';
 import { WsAckFilter } from '../../common/ws-ack.filter';
 import { wsValidationPipe } from '../../common/ws-validation.pipe';
 import { UserRepository } from '../../infra/database/user.repository';
-import { RoomMoveDto, RoomTargetDto } from './dto/room.dto';
+import { RoomMoveDto, RoomTargetDto, SocketAuthDto } from './dto/room.dto';
 import { RoomEvents, roomChannel, userChannel } from './room.events';
 import type { RoomServer } from './room.events';
 import { RoomService } from './room.service';
@@ -63,8 +63,21 @@ export class RoomGateway implements OnGatewayInit, OnGatewayConnection {
     socket.emit(RoomServerEvent.STATE, room);
   }
 
+  @SubscribeMessage(SocketAuthEvent.REFRESH)
+  async refresh(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() input: SocketAuthDto,
+  ): Promise<RoomAck> {
+    await this.authenticate(socket, input.token);
+    return OK;
+  }
+
   @SubscribeMessage(RoomClientEvent.MOVE)
-  move(@ConnectedSocket() socket: Socket, @MessageBody() input: RoomMoveDto): RoomAck {
+  async move(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() input: RoomMoveDto,
+  ): Promise<RoomAck> {
+    await this.authenticate(socket);
     this.rooms.move(socketUser(socket).userId, input.userId, input.role);
     return OK;
   }
@@ -74,21 +87,32 @@ export class RoomGateway implements OnGatewayInit, OnGatewayConnection {
     @ConnectedSocket() socket: Socket,
     @MessageBody() input: RoomTargetDto,
   ): Promise<RoomAck> {
+    await this.authenticate(socket);
     await this.rooms.kick(socketUser(socket).userId, input.userId);
     return OK;
   }
 
   @SubscribeMessage(RoomClientEvent.DELEGATE)
-  delegate(@ConnectedSocket() socket: Socket, @MessageBody() input: RoomTargetDto): RoomAck {
+  async delegate(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() input: RoomTargetDto,
+  ): Promise<RoomAck> {
+    await this.authenticate(socket);
     this.rooms.delegate(socketUser(socket).userId, input.userId);
     return OK;
   }
 
-  private async authenticate(socket: Socket): Promise<void> {
-    const token: unknown = socket.handshake.auth?.token;
+  private async authenticate(socket: Socket, replacement?: string): Promise<void> {
+    const token: unknown = replacement ?? socket.data.accessToken ?? socket.handshake.auth?.token;
     const claims = await this.tokens.verify(typeof token === 'string' ? token : '', 'access');
     const account = await this.users.findById(claims.sub);
-    if (!account || account.authVersion !== claims.version) throw appError(ErrorCode.TOKEN_INVALID);
+    if (
+      !account ||
+      account.authVersion !== claims.version ||
+      (socket.data.userId !== undefined && socket.data.userId !== account.id)
+    )
+      throw appError(ErrorCode.TOKEN_INVALID);
     (socket.data as SocketUser).userId = account.id;
+    socket.data.accessToken = token;
   }
 }

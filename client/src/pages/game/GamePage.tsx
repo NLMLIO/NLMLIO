@@ -5,6 +5,7 @@ import {
   GamePlayerStatus,
   GameStatus,
   RoomStatus,
+  ROUND_RESULT_MS,
 } from '@nlmlio/shared';
 import type { PublicUser } from '@nlmlio/shared';
 import { ApiError, api, errorMessage } from '../../api/http';
@@ -58,16 +59,21 @@ export function GamePage({
 
   // 남은 턴·유예 시간을 줄여 보이게 하는 화면 시계. 판정은 서버 마감 시각으로만 한다.
   const live = snapshot?.status === GameStatus.PLAYING;
+  const showingFinalBell =
+    snapshot?.status === GameStatus.ENDED &&
+    lastBell !== null &&
+    now < lastBell.receivedAt + ROUND_RESULT_MS;
   useEffect(() => {
-    if (!live) return;
+    if (!live && !showingFinalBell) return;
     const timer = setInterval(() => setNow(Date.now()), 100);
     return () => clearInterval(timer);
-  }, [live]);
+  }, [live, showingFinalBell]);
 
   useEffect(() => {
     if (!lastBell) return;
     if (lastBell.action.userId !== user.id || rungSeq.current === null)
       setStrike({ id: ++strikeId.current, playerId: String(lastBell.action.userId) });
+    setNow(Date.now());
   }, [lastBell, user.id]);
 
   useEffect(() => {
@@ -87,7 +93,7 @@ export function GamePage({
   const me = snapshot?.players.find((player) => player.userId === user.id);
   const canAct = live && me?.status === GamePlayerStatus.ACTIVE;
   const myTurn = canAct && snapshot?.turnUserId === user.id;
-  const judging = live && (snapshot?.roundResumeAt ?? 0) > now + clockOffset;
+  const judging = showingFinalBell || (live && (snapshot?.roundResumeAt ?? 0) > now + clockOffset);
 
   function isPaused() {
     const current = useGameStore.getState();
@@ -113,7 +119,10 @@ export function GamePage({
     const key = `${snapshot.gameId}:${snapshot.turnSeq}`;
     playSound('bell');
     setStrike({ id: ++strikeId.current, playerId: String(user.id) });
-    if (rungSeq.current === key) return;
+    if (rungSeq.current === key) {
+      setError('이미 보낸 종이에요. 다음 카드가 공개되면 다시 눌러주세요.');
+      return;
+    }
     rungSeq.current = key;
     void sendGameIntent(GameClientEvent.BELL, {
       gameId: snapshot.gameId,
@@ -182,7 +191,7 @@ export function GamePage({
       </GameFrame>
     );
 
-  if (ended)
+  if (ended && !showingFinalBell)
     return (
       <GameFrame>
         <GameResult

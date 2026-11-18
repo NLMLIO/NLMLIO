@@ -62,6 +62,14 @@ export class RoomService {
     return { room: this.memberRoom(account.id) };
   }
 
+  async rename(userId: number, nickname: string): Promise<void> {
+    const room = this.rooms.findByMember(userId);
+    if (!room) return;
+    room.rename(userId, nickname);
+    this.events.state(room);
+    await this.game.renamed(userId, nickname);
+  }
+
   /** 다른 모듈이 방 소속을 확인할 때 사용하는 서버의 단일 진실이다. */
   memberRoom(userId: number): RoomResponse | null {
     return this.rooms.findByMember(userId)?.snapshot() ?? null;

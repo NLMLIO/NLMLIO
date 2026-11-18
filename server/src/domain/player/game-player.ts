@@ -11,10 +11,16 @@ export class GamePlayer {
   private reaction = 0;
   constructor(
     readonly userId: number,
-    readonly nickname: string,
+    private name: string,
     hand: readonly Card[],
   ) {
     this.hand = [...hand];
+  }
+  get nickname(): string {
+    return this.name;
+  }
+  rename(nickname: string): void {
+    this.name = nickname;
   }
   get status(): GamePlayerStatus {
     return this.state;

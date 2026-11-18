@@ -9,6 +9,7 @@ import {
   RoomClientEvent,
   RoomServerEvent,
   RoomStatus,
+  SocketAuthEvent,
 } from '@nlmlio/shared';
 import type {
   ChatAck,
@@ -20,20 +21,34 @@ import type {
   ChatMessageEvent,
   EmojiMessageEvent,
   RoomAck,
+  SocketAuthClientToServerEvents,
+  SocketAuthServerToClientEvents,
   RoomClientToServerEvents,
   RoomResponse,
   RoomServerToClientEvents,
 } from '@nlmlio/shared';
-import { codeMessage, getAccessToken, refreshSession } from '../api/http';
+import {
+  ApiError,
+  accessExpiresAt,
+  codeMessage,
+  getAccessToken,
+  refreshSession,
+} from '../api/http';
 import { playSound } from '../audio/sounds';
 import { gameActions, useGameStore } from '../stores/game-store';
-import { roomActions } from '../stores/room-store';
+import { roomActions, useRoomStore } from '../stores/room-store';
 
-type GameSocket = Socket<RoomServerToClientEvents, RoomClientToServerEvents>;
+type GameSocket = Socket<
+  RoomServerToClientEvents & SocketAuthServerToClientEvents,
+  RoomClientToServerEvents & SocketAuthClientToServerEvents
+>;
 
 let socket: GameSocket | null = null;
 /** 채팅 채널(chat:{code})에 들어가 있는 방. 재연결하면 다시 들어가야 한다. */
 let chatRoom: string | null = null;
+let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+let tokenListener: (() => void) | undefined;
+let focusListener: (() => void) | undefined;
 
 type RawSocket = {
   emit: (event: string, payload?: unknown) => void;
@@ -56,21 +71,34 @@ export function connectSocket(): void {
   if (socket) return;
   const current: GameSocket = io({
     autoConnect: false,
+    transports: ['websocket', 'polling'],
+    tryAllTransports: true,
     auth: (send) => send({ token: getAccessToken() }),
   });
   socket = current;
-  current.on('connect', () => roomActions.connection(true));
+  current.on('connect', () => {
+    roomActions.connection(true);
+    scheduleRefresh(current);
+  });
+  tokenListener = () => {
+    scheduleRefresh(current);
+    if (current.connected) void updateSocketToken(current);
+  };
+  focusListener = () => {
+    if (document.visibilityState === 'visible' && accessExpiresAt() - Date.now() <= 30_000)
+      void reauthenticate(current);
+  };
+  window.addEventListener('nlmlio:access-token', tokenListener);
+  window.addEventListener('focus', focusListener);
+  document.addEventListener('visibilitychange', focusListener);
+  raw(current).on(SocketAuthEvent.REQUIRED, () => void reauthenticate(current));
   current.on('disconnect', () => {
     chatRoom = null;
     roomActions.connection(false);
   });
   current.on('connect_error', (error) => {
     if (!['TOKEN_EXPIRED', 'TOKEN_INVALID'].includes(error.message)) return;
-    refreshSession()
-      .then(() => {
-        if (socket === current) current.connect();
-      })
-      .catch(() => window.dispatchEvent(new Event('nlmlio:session-expired')));
+    void reauthenticate(current);
   });
   current.on(RoomServerEvent.STATE, (room) => {
     roomActions.state(room);
@@ -96,6 +124,12 @@ export function connectSocket(): void {
 }
 
 export function disconnectSocket(): void {
+  clearTimeout(refreshTimer);
+  if (tokenListener) window.removeEventListener('nlmlio:access-token', tokenListener);
+  if (focusListener) {
+    window.removeEventListener('focus', focusListener);
+    document.removeEventListener('visibilitychange', focusListener);
+  }
   socket?.disconnect();
   socket = null;
   chatRoom = null;
@@ -135,7 +169,7 @@ type GameIntent = Exclude<
 
 /**
  * 게임 «의도»(카드 내기·종·결과 확인)를 보낸다. 결과는 ack가 아니라 서버가 방 전체에 보낸 상태로 그린다.
- * 실패하면 안내 문구를, 성공하거나 조용히 무시된 요청이면 null을 돌려준다.
+ * 성공하면 null을, 실패하거나 지난 요청이 무시됐으면 안내 문구를 돌려준다.
  */
 export async function sendGameIntent<E extends GameIntent>(
   event: E,
@@ -144,6 +178,10 @@ export async function sendGameIntent<E extends GameIntent>(
   return emitIntent(event, payload, {
     disconnected: '서버와 연결이 끊겼어요. 다시 연결되면 화면이 맞춰져요.',
     timeout: '서버 응답이 없어요. 현재 상태를 다시 불러올게요.',
+    ignored:
+      event === GameClientEvent.BELL
+        ? '이미 판정된 종이에요. 다음 카드가 공개되면 다시 눌러주세요.'
+        : '차례나 판정 상태가 바뀌어 카드를 내지 못했어요.',
     // ack를 못 받았으면 실제 상태를 다시 받아 맞춘다.
     onTimeout: (target) => raw(target).emit(GameClientEvent.SYNC, {}),
   });
@@ -166,40 +204,71 @@ const ackMessage = (result: RoomAck | ChatAck | GameAck) =>
   result.ok ? null : codeMessage(result.code);
 
 const AUTH_ERRORS: string[] = [ErrorCode.TOKEN_EXPIRED, ErrorCode.TOKEN_INVALID];
-/** 재연결을 기다리는 최대 시간 */
-const RECONNECT_WAIT_MS = 5000;
-let reauthenticating: Promise<boolean> | null = null;
+const reauthentications = new WeakMap<GameSocket, Promise<boolean>>();
+const tokenUpdates = new WeakMap<GameSocket, Promise<boolean>>();
 
-/**
- * 연결을 유지한 채 Access 토큰이 만료돼 이벤트가 거부됐다. 서버는 handshake 토큰으로 매 요청을 검증하므로
- * 재발급한 뒤 새 토큰으로 다시 붙는다. 연결 직후 서버가 보내는 room:state·game:state로 화면이 맞춰진다.
- * 동시에 실패한 요청들은 한 번의 재발급·재연결을 함께 기다린다.
- */
+function scheduleRefresh(target: GameSocket): void {
+  clearTimeout(refreshTimer);
+  if (socket !== target || !getAccessToken()) return;
+  refreshTimer = setTimeout(
+    () => void reauthenticate(target),
+    Math.max(1000, accessExpiresAt() - Date.now() - 30_000),
+  );
+}
+
+/** 인증 정보만 교체하므로 게임 소켓 ID와 방·채팅 구독은 유지한다. */
+function updateSocketToken(target: GameSocket): Promise<boolean> {
+  const pending = tokenUpdates.get(target);
+  if (pending) return pending;
+  const token = getAccessToken();
+  const updatingToken = (async () => {
+    if (socket !== target || !target.connected) return false;
+    try {
+      const result = await raw(target)
+        .timeout(5000)
+        .emitWithAck(SocketAuthEvent.REFRESH, { token });
+      if (!result.ok) return false;
+      chatRoom = null;
+      syncChat(useRoomStore.getState().room);
+      return true;
+    } catch {
+      return false;
+    }
+  })().finally(() => {
+    tokenUpdates.delete(target);
+    if (socket === target && token !== getAccessToken()) void updateSocketToken(target);
+  });
+  tokenUpdates.set(target, updatingToken);
+  return updatingToken;
+}
+
 function reauthenticate(target: GameSocket): Promise<boolean> {
-  reauthenticating ??= refreshSession()
-    .then(
-      () =>
-        new Promise<boolean>((resolve) => {
-          if (socket !== target) return resolve(false);
-          const connected = () => {
-            clearTimeout(timer);
-            resolve(true);
-          };
-          const timer = setTimeout(() => {
-            target.off('connect', connected);
-            resolve(false);
-          }, RECONNECT_WAIT_MS);
-          target.once('connect', connected);
-          target.disconnect().connect();
-        }),
-    )
-    .catch(() => {
-      window.dispatchEvent(new Event('nlmlio:session-expired'));
+  const pending = reauthentications.get(target);
+  if (pending) return pending;
+  const reauthenticating = refreshSession()
+    .then(async () => {
+      if (socket !== target) return false;
+      if (!target.connected) {
+        target.connect();
+        return false;
+      }
+      const updated = await updateSocketToken(target);
+      if (!updated && socket === target)
+        refreshTimer = setTimeout(() => void reauthenticate(target), 5000);
+      return updated;
+    })
+    .catch((error: unknown) => {
+      if (socket !== target) return false;
+      if (error instanceof ApiError && error.status === 401)
+        window.dispatchEvent(new Event('nlmlio:session-expired'));
+      else if (socket === target)
+        refreshTimer = setTimeout(() => void reauthenticate(target), 5000);
       return false;
     })
     .finally(() => {
-      reauthenticating = null;
+      reauthentications.delete(target);
     });
+  reauthentications.set(target, reauthenticating);
   return reauthenticating;
 }
 
@@ -207,7 +276,12 @@ function reauthenticate(target: GameSocket): Promise<boolean> {
 async function emitIntent(
   event: string,
   payload: unknown,
-  messages: { disconnected: string; timeout: string; onTimeout?: (target: GameSocket) => void },
+  messages: {
+    disconnected: string;
+    timeout: string;
+    ignored?: string;
+    onTimeout?: (target: GameSocket) => void;
+  },
 ): Promise<string | null> {
   for (let attempt = 0; ; attempt++) {
     const current = socket;
@@ -221,6 +295,7 @@ async function emitIntent(
     }
     if (!result.ok && attempt === 0 && AUTH_ERRORS.includes(result.code))
       if (await reauthenticate(current)) continue;
+    if (result.ok && 'ignored' in result && result.ignored) return messages.ignored ?? null;
     return ackMessage(result);
   }
 }

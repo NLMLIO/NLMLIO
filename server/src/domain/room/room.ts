@@ -68,6 +68,10 @@ export class Room {
     return this.hostId;
   }
 
+  rename(userId: number, nickname: string): void {
+    this.member(userId).nickname = nickname;
+  }
+
   nicknameOf(userId: number): string {
     return this.member(userId).nickname;
   }

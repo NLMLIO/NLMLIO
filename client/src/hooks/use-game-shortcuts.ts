@@ -43,6 +43,9 @@ export function useGameShortcuts(shortcuts: GameShortcuts) {
 function isTyping(target: EventTarget | null) {
   return (
     target instanceof HTMLElement &&
-    (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+    (target.isContentEditable ||
+      target.closest(
+        'button, a, input, textarea, select, [role="dialog"], [role="alertdialog"]',
+      ) !== null)
   );
 }

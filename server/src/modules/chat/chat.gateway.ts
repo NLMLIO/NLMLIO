@@ -7,7 +7,7 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
-import { ChatEvent, ErrorCode } from '@nlmlio/shared';
+import { ChatEvent, ErrorCode, SocketAuthEvent } from '@nlmlio/shared';
 import type { ChatAck } from '@nlmlio/shared';
 import type { Server, Socket } from 'socket.io';
 import { appError } from '../../common/app-error';
@@ -133,21 +133,30 @@ export class ChatGateway implements OnGatewayInit {
 
   private async deliver(message: ChatBroadcast): Promise<void> {
     const room = `chat:${message.event.roomCode}`;
-    for (const socket of await this.server.in(room).fetchSockets()) {
+    const sockets = await this.server.in(room).fetchSockets();
+    if (!sockets.length) return;
+    const ids = [...new Set(sockets.map((socket) => socket.data.userId as number))].filter(
+      Number.isSafeInteger,
+    );
+    const versions = await this.users.authVersions(ids);
+    for (const socket of sockets) {
       const userId = socket.data.userId as number | undefined;
       let authorized = false;
       try {
         const token = socket.data.accessToken as string | undefined;
         if (token && userId) {
           const claims = await this.tokens.verify(token, 'access');
-          const account = await this.users.findById(claims.sub);
           authorized =
             claims.sub === userId &&
-            account?.authVersion === claims.version &&
+            versions.get(claims.sub) === claims.version &&
             this.chat.roomCode(userId) === message.event.roomCode;
         }
-      } catch {
-        // 만료·폐기된 소켓은 다음 메시지부터 방 수신 대상에서 제외한다.
+      } catch (error) {
+        if (this.errorCode(error) === ErrorCode.TOKEN_EXPIRED) {
+          // 채널을 버리지 않고 기존 연결에서 새 토큰을 받는다. 만료 중인 메시지는 보내지 않는다.
+          socket.emit(SocketAuthEvent.REQUIRED, { code: ErrorCode.TOKEN_EXPIRED });
+          continue;
+        }
       }
       if (!authorized) {
         await socket.leave(room);

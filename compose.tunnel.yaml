@@ -10,7 +10,12 @@ x-app: &app
   environment: &app-env
     NODE_ENV: production
     SERVER_PORT: '3000'
-    DATABASE_URL: postgresql://${POSTGRES_USER:-nlmlio}:${POSTGRES_PASSWORD:-nlmlio}@postgres:5432/${POSTGRES_DB:-nlmlio}
+    DATABASE_URL: ${DATABASE_URL:-}
+    POSTGRES_HOST: postgres
+    POSTGRES_PORT: '5432'
+    POSTGRES_USER: ${POSTGRES_USER:-nlmlio}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nlmlio}
+    POSTGRES_DB: ${POSTGRES_DB:-nlmlio}
     REDIS_URL: redis://redis:6379
     JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?.env에 JWT_ACCESS_SECRET을 설정하세요}
     JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?.env에 JWT_REFRESH_SECRET을 설정하세요}

@@ -15,6 +15,14 @@ export class UserRepository {
     return this.prisma.user.findUnique({ where: { id } });
   }
 
+  async authVersions(ids: number[]): Promise<Map<number, number>> {
+    const rows = await this.prisma.user.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, authVersion: true },
+    });
+    return new Map(rows.map((row) => [row.id, row.authVersion]));
+  }
+
   async findByUsername(username: string): Promise<UserAccount | null> {
     return this.prisma.user.findUnique({ where: { username } });
   }

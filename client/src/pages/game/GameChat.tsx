@@ -37,9 +37,13 @@ export function GameChat({ log, onSendChat, onSendEmote }: GameChatProps) {
       const target = event.target;
       if (
         target instanceof HTMLElement &&
-        (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+        (target.isContentEditable ||
+          target.closest(
+            'button, a, input, textarea, select, [role="dialog"], [role="alertdialog"]',
+          ))
       )
         return;
+      if (document.querySelector('[aria-modal="true"]')) return;
       event.preventDefault();
       inputRef.current?.focus();
     };

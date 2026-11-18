@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { randomUUID } from 'node:crypto';
@@ -16,11 +16,18 @@ interface SessionClaims {
 }
 
 @Injectable()
-export class TokenService {
+export class TokenService implements OnModuleInit {
   constructor(
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
   ) {}
+
+  onModuleInit(): void {
+    this.secret('access');
+    this.secret('refresh');
+    this.ttl(this.config.get('JWT_ACCESS_TTL', '15m'));
+    this.ttl(this.config.get('JWT_REFRESH_TTL', '14d'));
+  }
 
   private secret(kind: 'access' | 'refresh'): string {
     const secret = this.config.getOrThrow<string>(

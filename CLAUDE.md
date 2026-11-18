@@ -204,7 +204,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `server/src/domain/room/room.ts`: 방 규칙(입장 순서, 참가자 6·관전자 10 칸, 자리 이동, 추방, 방장 위임·승계, 게임 시작). 진행 중 입장은 항상 관전자로 받고 탈락 참가자를 제외한 새 관전 10석·전체 16명 정원을 지킨다. 규칙 위반은 `RoomRuleError(앱 에러 코드)`로 던지고 서비스가 HTTP·소켓 응답으로 바꾼다.
 - `server/src/modules/room`: HTTP `POST /api/rooms`, `POST /api/rooms/join`(게임 중이면 관전 입장·현재 상태 전송), `GET /api/rooms/me`, `POST /api/rooms/me/leave`와 `RoomGateway`(소켓 인증 미들웨어, 방 의도 이벤트). `RoomEvents`가 소켓 채널 `user:{id}`·`room:{code}`로 상태를 내보낸다. 방은 서버 메모리(`infra/game-state/room.store.ts`), 코드 예약은 Redis `room-code:{code}`(SET NX, TTL 24시간). 모든 방은 비공개다(2026-10-22 결정).
 - `server/src/common/ws-ack.filter.ts`, `ws-validation.pipe.ts`, `socket-user.ts`: 소켓 이벤트 예외를 ack `{ ok: false, code }`로 돌려주고, 페이로드를 HTTP와 같은 규칙으로 검증한다.
-- `client/src/socket/socket.ts`, `stores/room-store.ts`: 로그인한 동안 소켓 하나를 유지하고(토큰 만료 시 재발급 후 재연결), 서버 이벤트로만 방 스토어를 갱신한다. 의도는 `sendIntent`로 보내고 ack를 기다린다. 연결 중 토큰이 만료돼 ack가 `TOKEN_EXPIRED`·`TOKEN_INVALID`면 재발급 → 새 토큰으로 재연결 → 한 번 다시 보낸다.
+- `client/src/socket/socket.ts`, `stores/room-store.ts`: 로그인한 동안 소켓 하나를 유지하고(토큰 만료 전에 재발급 후 기존 연결에서 인증 갱신), 서버 이벤트로만 방 스토어를 갱신한다. 의도는 `sendIntent`로 보내고 ack를 기다린다. 연결 중 토큰이 만료돼 ack가 `TOKEN_EXPIRED`·`TOKEN_INVALID`면 재발급 → `auth:refresh`로 기존 연결 갱신 → 한 번 다시 보낸다. `shared/src/auth-events.ts`가 갱신 계약이고, 채팅 수신 인증이 만료되면 `auth:required`를 받는다.
 - `client/src/pages/lobby/LobbyPage.tsx`, `CreateRoomPage.tsx`, `pages/room/WaitingRoomPage.tsx`, `RoomChat.tsx`(채팅·이모티콘·방 안내): 로비(`#lobby`, 기본 화면), 방 만들기(`#create-room`), 대기실(`#room`, 상단 메뉴 없이 전체 화면).
 - `server/src/modules/chat/`: Socket.io 인증·방 소속 검증, 텍스트/이모티콘 DTO, Redis Pub/Sub 전달과 사용자별 전송 제한. 방 소속 정보는 `RoomService`만 조회한다.
 - `shared/src/events.ts`: 채팅 Socket.io 이벤트 이름, 페이로드, 허용 이모티콘과 Ack 타입.
@@ -337,6 +337,8 @@ C→S 이벤트는 ack로 `{ ok: true }` 또는 `{ ok: false, code }`를 받는�
 
 | 방향 | 이벤트 | 페이로드 | FUNC |
 |---|---|---|---|
+| C→S | `auth:refresh` | `{ token }` 동일 회원의 Access 토큰으로 소켓 인증 교체 → `SocketAuthAck` | 001-06 |
+| S→C | `auth:required` | `{ code: TOKEN_EXPIRED }` 수신 인증 갱신 요청 | 001-06 |
 | C→S | `room:move` | `{ userId, role }` 본인 또는 (방장) 다른 회원의 자리 이동 | 003-09 |
 | C→S | `room:kick` | `{ userId }` | 003-10 |
 | C→S | `room:delegate` | `{ userId }` | 003-11 |

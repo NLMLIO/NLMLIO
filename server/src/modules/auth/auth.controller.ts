@@ -54,18 +54,14 @@ export class AuthController {
   @Post('refresh')
   @HttpCode(200)
   async refresh(@Req() request: Request, @Res({ passthrough: true }) response: Response) {
-    try {
-      const session = await this.auth.refresh(refreshCookie(request));
-      response.cookie('nlmlio_refresh', session.refreshToken, {
-        ...cookieOptions(),
-        maxAge: session.refreshTtl * 1000,
-      });
-      response.setHeader('Cache-Control', 'no-store');
-      return { accessToken: session.accessToken, user: session.user };
-    } catch (error) {
-      response.clearCookie('nlmlio_refresh', cookieOptions());
-      throw error;
-    }
+    // 실패 응답은 다른 탭이 회전한 공용 쿠키를 지우지 않는다.
+    const session = await this.auth.refresh(refreshCookie(request));
+    response.cookie('nlmlio_refresh', session.refreshToken, {
+      ...cookieOptions(),
+      maxAge: session.refreshTtl * 1000,
+    });
+    response.setHeader('Cache-Control', 'no-store');
+    return { accessToken: session.accessToken, user: session.user };
   }
 
   @Post('logout')
