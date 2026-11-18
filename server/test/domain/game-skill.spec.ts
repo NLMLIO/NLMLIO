@@ -7,6 +7,7 @@ import {
   GameStatus,
   ROUND_RESULT_MS,
   SKILL_PICK_TIME_MS,
+  TIME_STOP_MS,
   TURN_TIME_MS,
 } from '@nlmlio/shared';
 import { SkillId, skillById } from '@nlmlio/shared';
@@ -489,5 +490,138 @@ describe('스킬 효과: 종 옮기기(FUNC-009-05)', () => {
     expect(game.snapshot().bellMove!.endsAt).toBe(at + 2000 + BELL_MOVE_MS);
     game.depart(2, at + 2100);
     expect(game.snapshot().bellMove).toBeNull();
+  });
+});
+
+/** 등급 구간(⭐ 50 / ⭐⭐ 80 / ⭐⭐⭐ 94.5 / ⭐⭐⭐⭐ 99.5 누적)과 그 등급 안의 순번으로 원하는 스킬을 고르는 난수 */
+const pickRandom = (grade: number, skill: number) => {
+  let index = 0;
+  return () => (index++ % 2 === 0 ? grade : skill);
+};
+/** 시간 정지: ⭐⭐⭐⭐ 첫째 */
+const timeStopRandom = () => pickRandom(0.97, 0);
+/** 아마테라스: ⭐⭐⭐ 둘째 */
+const amaterasuRandom = () => pickRandom(0.9, 0.3);
+/** 침 뱉기: ⭐⭐ 둘째(관전자 풀에서는 ⭐⭐의 유일한 스킬) */
+const spitRandom = () => pickRandom(0.6, 0.2);
+
+describe('스킬 효과: 시간 정지(FUNC-009-05)', () => {
+  it('쓴 사람만 차례와 상관없이 카드를 계속 낼 수 있고, 다른 사람은 카드·종이 불가다', () => {
+    const game = start(2, timeStopRandom());
+    const at = holdSkills(game);
+    expect(game.skillState(2).slots).toEqual([SkillId.TIME_STOP]);
+    expect(game.snapshot().turnUserId).toBe(1);
+    const deadline = game.turnDeadline!;
+    game.useSkill(2, 0, undefined, at + 1);
+    expect(game.snapshot().timeStop).toEqual({ userId: 2, endsAt: at + 1 + TIME_STOP_MS });
+    // 시간이 흐르지 않는다: 턴 타이머가 멈춘 시간만큼 뒤로 밀린다
+    expect(game.turnDeadline).toBe(deadline + TIME_STOP_MS);
+    expect(game.timeout(game.turnId, deadline + 1)).toBeNull();
+
+    // 쓴 사람(2번)은 자기 차례가 아니어도 연달아 낼 수 있다
+    expect(game.play(2, game.turnId, at + 10)?.kind).toBe('card');
+    expect(game.play(2, game.turnId, at + 20)?.kind).toBe('card');
+    // 다른 사람은 카드도 종도 못 한다(조용히 무시)
+    expect(game.play(1, game.turnId, at + 30)).toBeNull();
+    expect(game.canRing(1, game.turnSeq, at + 30)).toBe(false);
+    expect(game.ring(1, game.turnSeq, at + 30)).toBeNull();
+    expect(game.canRing(2, game.turnSeq, at + 30)).toBe(true);
+    // 끝나면 평소로 돌아온다
+    const over = at + 1 + TIME_STOP_MS;
+    expect(game.canRing(1, game.turnSeq, over)).toBe(true);
+    expectRule(() => game.play(2, game.turnId, over), ErrorCode.NOT_YOUR_TURN);
+    expect(game.play(1, game.turnId, over)?.kind).toBe('card');
+  });
+
+  it('쓴 사람이 탈락하거나 게임이 끝나면 풀린다', () => {
+    const game = start(2, timeStopRandom());
+    const at = holdSkills(game);
+    game.useSkill(1, 0, undefined, at + 1);
+    game.depart(1, at + 2);
+    expect(game.snapshot().timeStop).toBeNull();
+  });
+});
+
+describe('스킬 효과: 침 뱉기(FUNC-009-05)', () => {
+  it('상태는 바꾸지 않고 사용 알림만 낸다. 플레이어와 관전자 모두 쓴다', () => {
+    const game = start(2, spitRandom());
+    const opensAt = succeed(game, 5) + ROUND_RESULT_MS;
+    game.openSkillPick([9], opensAt);
+    for (const id of [1, 2, 9]) game.chooseSkill(id, { slot: 0 }, opensAt + 10);
+    expect(game.skillState(1).slots).toEqual([SkillId.SPIT]);
+    expect(game.skillState(9).slots).toEqual([SkillId.SPIT]);
+    const at = opensAt + 20;
+    const { revision: _before, ...stateBefore } = game.snapshot();
+    expect(game.useSkill(1, 0, 2, at)).toEqual({
+      kind: 'skill',
+      userId: 1,
+      skillId: SkillId.SPIT,
+      targetUserId: 2,
+    });
+    expect(game.useSkill(9, 0, 1, at + 1)).toEqual({
+      kind: 'skill',
+      userId: 9,
+      skillId: SkillId.SPIT,
+      targetUserId: 1,
+    });
+    const { revision: _after, ...stateAfter } = game.snapshot();
+    expect(stateAfter).toEqual(stateBefore);
+    expectRule(() => game.useSkill(9, 0, 9, at + 2), ErrorCode.SKILL_UNAVAILABLE);
+  });
+});
+
+describe('스킬 효과: 아마테라스(FUNC-009-05)', () => {
+  it('대상은 다음 종 판정까지 카드·종이 불가이고 차례를 건너뛴다', () => {
+    const game = start(2, amaterasuRandom());
+    const at = holdSkills(game);
+    expect(game.skillState(1).slots).toEqual([SkillId.AMATERASU]);
+    game.useSkill(1, 0, 2, at + 1);
+    expect(game.snapshot().burning).toEqual([2]);
+    game.play(1, game.turnId, at + 2);
+    // 대상(2번)의 차례는 건너뛰고 1번이 이어서 낸다
+    expect(game.snapshot().turnUserId).toBe(1);
+    expect(game.ring(2, game.turnSeq, at + 3)).toBeNull();
+    expect(game.canRing(2, game.turnSeq, at + 3)).toBe(false);
+    game.play(1, game.turnId, at + 4);
+    // 판정이 나면(여기서는 오발) 풀린다
+    expect(game.ring(1, game.turnSeq, at + 5)).toMatchObject({ kind: 'bell', success: false });
+    expect(game.snapshot().burning).toEqual([]);
+    game.play(1, game.turnId, at + 10_000);
+    expect(game.snapshot().turnUserId).toBe(2);
+    expect(game.play(2, game.turnId, at + 10_001)?.kind).toBe('card');
+  });
+
+  it('대상의 차례였다면 바로 건너뛴다', () => {
+    const game = start(2, amaterasuRandom());
+    const at = holdSkills(game);
+    game.play(1, game.turnId, at + 1);
+    expect(game.snapshot().turnUserId).toBe(2);
+    const turnId = game.turnId;
+    game.useSkill(1, 0, 2, at + 2);
+    expect(game.snapshot().turnUserId).toBe(1);
+    expect(game.turnId).toBeGreaterThan(turnId);
+    expect(game.snapshot().turnDeadline).toBe(at + 2 + TURN_TIME_MS);
+  });
+
+  it('자신·관전자·없는 사람은 대상이 될 수 없다', () => {
+    const game = start(2, amaterasuRandom());
+    const at = holdSkills(game);
+    expectRule(() => game.useSkill(1, 0, 1, at + 1), ErrorCode.VALIDATION_FAILED);
+    expectRule(() => game.useSkill(1, 0, 99, at + 1), ErrorCode.VALIDATION_FAILED);
+    expectRule(() => game.useSkill(1, 0, undefined, at + 1), ErrorCode.VALIDATION_FAILED);
+    expect(game.skillState(1).slots).toEqual([SkillId.AMATERASU]);
+  });
+
+  it('낼 수 있는 사람이 대상뿐이라 게임이 멈추면 풀고 차례를 돌려준다', () => {
+    const game = start(2, amaterasuRandom());
+    const at = holdSkills(game);
+    game.useSkill(1, 0, 2, at + 1);
+    // 1번이 남은 카드를 모두 내면 대상(2번)만 카드를 가진다
+    let t = at + 2;
+    while (game.checkpoint().players[0].hand.length > 0) game.play(1, game.turnId, (t += 1));
+    expect(game.snapshot().turnUserId).toBeNull();
+    expect(game.timeout(game.turnId, game.turnDeadline!)).toBeNull();
+    expect(game.snapshot().burning).toEqual([]);
+    expect(game.snapshot().turnUserId).toBe(2);
   });
 });

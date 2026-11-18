@@ -12,12 +12,14 @@ import type {
   SettleGameInput,
   SkillChoice,
   SkillStateEvent,
+  TimeStopPublic,
 } from '@nlmlio/shared';
 import {
   BELL_MOVE_KEYS,
   BELL_MOVE_MS,
   BELL_MOVE_POSITIONS,
   RoomRole,
+  TIME_STOP_MS,
   SkillId,
   SkillTiming,
   SkillUser,
@@ -103,6 +105,10 @@ export class Game {
   private readonly sixCard = new Set<number>();
   /** 종 옮기기: 방 전체가 새 자리·새 키로 치는 동안의 상태 */
   private bellMove: BellMovePublic | null = null;
+  /** 시간 정지: 쓴 사람만 차례와 상관없이 카드를 낼 수 있고, 나머지는 카드·종이 모두 불가다 */
+  private timeStop: TimeStopPublic | null = null;
+  /** 아마테라스에 걸린 사람: 다음 종 판정(또는 탈락)까지 카드·종이 불가이고 차례는 건너뛴다 */
+  private readonly burning = new Set<number>();
 
   private constructor(
     private readonly input: StartGameInput,
@@ -178,7 +184,7 @@ export class Game {
   has(userId: number): boolean {
     return this.players.some((player) => player.userId === userId);
   }
-  canRing(userId: number, sequence: number): boolean {
+  canRing(userId: number, sequence: number, now: number = this.clock): boolean {
     if (
       this.phase !== GameStatus.PLAYING ||
       this.skills.selection ||
@@ -188,6 +194,8 @@ export class Game {
       return false;
     if (sequence !== this.sequence) throw new GameRuleError(ErrorCode.VALIDATION_FAILED);
     this.activePlayer(userId);
+    // 아마테라스에 걸렸거나, 시간 정지 중 쓴 사람이 아니면 종을 칠 수 없다(조용히 무시).
+    if (this.burning.has(userId) || this.frozenFor(userId, now)) return false;
     return true;
   }
 
@@ -196,10 +204,16 @@ export class Game {
     if (this.phase !== GameStatus.PLAYING) throw new GameRuleError(ErrorCode.GAME_ENDED);
     const player = this.activePlayer(userId);
     if (turnId !== this.turnToken) throw new GameRuleError(ErrorCode.VALIDATION_FAILED);
-    if (userId !== this.current) throw new GameRuleError(ErrorCode.NOT_YOUR_TURN);
+    now = this.time(now);
+    // 시간 정지 중에는 쓴 사람만, 차례와 상관없이 카드를 낼 수 있다. 다른 사람은 조용히 무시한다.
+    const stopper = this.stopperAt(now);
+    if (stopper !== null) {
+      if (userId !== stopper) return null;
+    } else if (userId !== this.current) throw new GameRuleError(ErrorCode.NOT_YOUR_TURN);
     // 스킬 선택 중이거나 곧 열릴 예정이면 카드 내기를 무시한다(009-01).
     if (this.skills.selection || this.skillDue) return null;
-    now = this.time(now);
+    // 아마테라스에 걸린 사람은 카드를 낼 수 없다.
+    if (this.burning.has(userId)) return null;
     if (this.resumeAt !== null && now < this.resumeAt) return null;
     this.resumeAt = null;
     let card = player.draw(automatic);
@@ -220,8 +234,8 @@ export class Game {
   }
 
   ring(userId: number, sequence: number, now: number): GameAction | null {
-    if (!this.canRing(userId, sequence)) return null;
     now = this.time(now);
+    if (!this.canRing(userId, sequence, now)) return null;
     const player = this.activePlayer(userId);
     const totals = this.table.totals();
     const success = Object.values(totals).some((count) => count === 5);
@@ -245,6 +259,8 @@ export class Game {
     }
     // 판정이 났다: 테이블에 남은 과일 6개 카드는 성공·오발과 상관없이 사라진다.
     this.table.discardSpecial();
+    // 판정이 났으니 라운드가 끝난다: 아마테라스도 풀린다.
+    this.burning.clear();
     this.eliminateEmpty();
     if (this.current === null || !this.canPlay(this.current))
       this.current = this.nextAfter(this.current ?? userId);
@@ -274,6 +290,20 @@ export class Game {
       return null;
     if (this.current !== null) return this.play(this.current, turnId, now, true);
     now = this.time(now);
+    // 낼 수 있는 사람이 아마테라스에 걸린 사람뿐이면 게임이 멈추므로 여기서 풀고 차례를 돌려준다.
+    if (
+      [...this.burning].some((id) => this.canPlay(id)) &&
+      !this.players.some(
+        (player) => this.canPlay(player.userId) && !this.burning.has(player.userId),
+      )
+    ) {
+      const burned = [...this.burning];
+      this.burning.clear();
+      this.current = this.nextAfter(burned[0]);
+      this.newTurn(now);
+      this.revision++;
+      return null;
+    }
     this.eliminateEmpty(true);
     this.finishIfNeeded(now);
     this.revision++;
@@ -403,7 +433,7 @@ export class Game {
     } else if (targetUserId !== undefined) throw new GameRuleError(ErrorCode.VALIDATION_FAILED);
     const at = this.time(now);
     this.skills.consume(userId, slot);
-    this.applySkill(skillId, userId, at);
+    this.applySkill(skillId, userId, at, targetUserId);
     this.revision++;
     return { kind: 'skill', userId, skillId, targetUserId: targetUserId ?? null };
   }
@@ -507,6 +537,8 @@ export class Game {
       settled: this.settlementConfirmed,
       skillSuccesses: this.skills.successCount,
       bellMove: this.bellMove,
+      timeStop: this.timeStop,
+      burning: [...this.burning],
       skillPick: this.skills.selection
         ? {
             deadline: this.skills.selection.deadline,
@@ -550,13 +582,33 @@ export class Game {
     return player?.active ? player : null;
   }
   /** 스킬 효과. `available`이 true인 스킬만 여기까지 온다 */
-  private applySkill(skillId: SkillId, userId: number, now: number): void {
+  private applySkill(skillId: SkillId, userId: number, now: number, targetUserId?: number): void {
     switch (skillId) {
       case SkillId.SPARKLE_CARD:
         this.sparkle.add(userId);
         break;
       case SkillId.SIX_FRUIT_CARD:
         this.sixCard.add(userId);
+        break;
+      case SkillId.TIME_STOP: {
+        // 멈춘 시간만큼 턴 타이머를 뒤로 민다(시간이 흐르지 않는다). 이미 멈춰 있었다면 더해지는 만큼만 민다.
+        const previousEnd =
+          this.timeStop && this.timeStop.endsAt > now ? this.timeStop.endsAt : now;
+        const endsAt = now + TIME_STOP_MS;
+        if (this.deadline !== null) this.deadline += Math.max(0, endsAt - previousEnd);
+        this.timeStop = { userId, endsAt };
+        break;
+      }
+      case SkillId.SPIT:
+        // 대상 화면에만 보이는 연출이라 서버가 바꾸는 상태가 없다(사용 알림만 간다).
+        break;
+      case SkillId.AMATERASU:
+        this.burning.add(targetUserId!);
+        // 대상의 차례였다면 건너뛴다.
+        if (this.current === targetUserId) {
+          this.current = this.nextAfter(targetUserId!);
+          this.newTurn(now);
+        }
         break;
       case SkillId.BELL_MOVE:
         // 모두 같은 자리·같은 키. 다시 쓰면 새로 정해 시간을 다시 센다.
@@ -582,7 +634,12 @@ export class Game {
     this.sparkle.delete(player.userId);
     this.sixCard.delete(player.userId);
     this.emptied = this.emptied.filter((id) => id !== player.userId);
-    if (advanceRound) this.roundNumber++;
+    this.burning.delete(player.userId);
+    if (this.timeStop?.userId === player.userId) this.timeStop = null;
+    if (advanceRound) {
+      this.roundNumber++;
+      this.burning.clear();
+    }
   }
   private markEmptied(userId: number): void {
     this.emptied = [...this.emptied.filter((id) => id !== userId), userId];
@@ -609,11 +666,21 @@ export class Game {
     for (const player of ordered) if (player.userId !== survivor) this.remove(player, false, false);
     if (exhausted) this.current = null;
   }
+  /** 지금 시간 정지를 쓴 사람. 정지 중이 아니면 null */
+  private stopperAt(now: number): number | null {
+    return this.timeStop && now < this.timeStop.endsAt ? this.timeStop.userId : null;
+  }
+  /** 시간 정지 중이라 이 사람은 움직일 수 없나(쓴 사람은 움직일 수 있다) */
+  private frozenFor(userId: number, now: number): boolean {
+    const stopper = this.stopperAt(now);
+    return stopper !== null && stopper !== userId;
+  }
   private nextAfter(userId: number): number | null {
     const index = this.players.findIndex((player) => player.userId === userId);
     for (let step = 1; step <= this.players.length; step++) {
       const player = this.players[(index + step) % this.players.length];
-      if (player.active && player.handCount > 0) return player.userId;
+      if (player.active && player.handCount > 0 && !this.burning.has(player.userId))
+        return player.userId;
     }
     return null;
   }
@@ -626,6 +693,8 @@ export class Game {
     this.phase = GameStatus.ENDED;
     this.skills.cancelSelection();
     this.bellMove = null;
+    this.timeStop = null;
+    this.burning.clear();
     this.skillDue = false;
     this.pausedTurnMs = null;
     this.endedAt = now;

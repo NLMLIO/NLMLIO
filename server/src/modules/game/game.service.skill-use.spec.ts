@@ -26,17 +26,17 @@ const sparkleRandom = () => {
   return () => (index++ % 2 === 0 ? 0 : 0.5);
 };
 
+/** 등급 구간 난수와 그 등급 안의 순번 난수를 번갈아 내는 난수 */
+const pickRandom = (grade: number, skill: number) => {
+  let index = 0;
+  return () => (index++ % 2 === 0 ? grade : skill);
+};
+
 describe.each([
-  ['반짝반짝한 카드', sparkleRandom, true],
-  [
-    '숫자 바꾸기(효과 미구현)',
-    () => {
-      let index = 0;
-      return () => (index++ % 2 === 0 ? 0.6 : 0);
-    },
-    false,
-  ],
-])('GameService 스킬 사용 — %s (FUNC-009-04)', (_name, makeRandom, usable) => {
+  ['반짝반짝한 카드', sparkleRandom, true, 'SPARKLE_CARD'],
+  ['시간 정지', () => pickRandom(0.97, 0), true, 'TIME_STOP'],
+  ['숫자 바꾸기(효과 미구현)', () => pickRandom(0.6, 0), false, 'NUMBER_SHIFT'],
+])('GameService 스킬 사용 — %s (FUNC-009-04)', (_name, makeRandom, usable, skillId) => {
   let service: GameService;
   let timers: GameTimers;
   let events: { state: jest.Mock; action: jest.Mock; sync: jest.Mock; skills: jest.Mock };
@@ -132,7 +132,7 @@ describe.each([
         expect.objectContaining({
           kind: 'skill',
           userId: 1,
-          skillId: 'SPARKLE_CARD',
+          skillId,
           targetUserId: null,
         }),
       );
@@ -149,4 +149,19 @@ describe.each([
       response: { code: 'GAME_NOT_FOUND' },
     });
   });
+
+  if (skillId === 'TIME_STOP')
+    it('시간 정지 중에는 쓴 사람만 카드를 내고 다른 사람의 카드·종은 서비스에서 무시한다', async () => {
+      const gameId = await hold();
+      // 2번(차례가 아닌 사람)이 시간을 멈춘다
+      expect(await service.useSkill(2, { gameId, slot: 0 })).toBe(true);
+      expect(state().timeStop).toMatchObject({ userId: 2 });
+      expect(await service.play(1, { gameId, turnId: state().turnId })).toBe(false);
+      expect(await service.bell(1, { gameId, turnSeq: state().turnSeq })).toBe(false);
+      expect(await service.play(2, { gameId, turnId: state().turnId })).toBe(true);
+      expect(await service.play(2, { gameId, turnId: state().turnId })).toBe(true);
+      // 3초가 지나면 평소로 돌아온다
+      await jest.advanceTimersByTimeAsync(3000);
+      expect(await service.play(1, { gameId, turnId: state().turnId })).toBe(true);
+    });
 });

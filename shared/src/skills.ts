@@ -20,6 +20,11 @@ export const BELL_MOVE_INPUT_LOCK_MS = 300;
 export const BELL_MOVE_KEYS = ['A', 'S', 'D', 'F', 'G', 'H', 'K', 'L'] as const;
 /** 종이 옮겨 갈 자리 수(테이블 위 대각선 4곳) */
 export const BELL_MOVE_POSITIONS = 4;
+/** 시간 정지(009-05): 쓴 사람만 카드를 낼 수 있는 시간 */
+export const TIME_STOP_MS = 3_000;
+/** 침 뱉기(009-05): 대상 화면이 3초 가려지고 3초 흘러내린다 */
+export const SPIT_COVER_MS = 3_000;
+export const SPIT_DRIP_MS = 3_000;
 /** 후보 칸 수와 보유 칸 수(009-02, 009-03) */
 export const SKILL_CANDIDATE_COUNT = 3;
 export const SKILL_SLOT_COUNT = 3;
@@ -137,7 +142,7 @@ export const SKILLS: readonly SkillDefinition[] = [
     timing: SkillTiming.ANYTIME,
     user: SkillUser.BOTH,
     target: 'one',
-    available: false,
+    available: true,
     description: '대상 한 명의 화면을 3초 동안 침으로 덮고, 3초 동안 흘러내린다.',
   },
   {
@@ -199,7 +204,7 @@ export const SKILLS: readonly SkillDefinition[] = [
     timing: SkillTiming.ANYTIME,
     user: SkillUser.PLAYER,
     target: 'one',
-    available: false,
+    available: true,
     description: '대상 한 명을 정해 1라운드 동안 아무것도 못 하게 만든다.',
   },
   {
@@ -229,7 +234,7 @@ export const SKILLS: readonly SkillDefinition[] = [
     timing: SkillTiming.ANYTIME,
     user: SkillUser.PLAYER,
     target: 'none',
-    available: false,
+    available: true,
     description: '3초 동안 시간이 멈춘다. 나만 카드를 낼 수 있다.',
   },
   {
@@ -328,5 +333,11 @@ export interface SkillUseRequest {
 export interface BellMovePublic {
   position: number;
   key: string;
+  endsAt: number;
+}
+
+/** 시간 정지 중: 쓴 사람과 끝나는 서버 시각 */
+export interface TimeStopPublic {
+  userId: number;
   endsAt: number;
 }

@@ -7,6 +7,7 @@ import type {
   SkillPickRequest,
   SkillStateEvent,
   SkillUseRequest,
+  TimeStopPublic,
 } from './skills';
 
 /** 차례마다 카드를 낼 수 있는 시간(FUNC-005-15). 넘기면 서버가 대신 낸다. */
@@ -102,6 +103,10 @@ export interface GameSnapshot {
   skillPick: SkillPickPublic | null;
   /** 종 옮기기가 진행 중이면 새 자리·새 키(끝났어도 다음 변경까지 남을 수 있어 `endsAt`으로 판단한다) */
   bellMove: BellMovePublic | null;
+  /** 시간 정지 중이면 쓴 사람과 끝나는 시각. 쓴 사람만 카드를 낼 수 있고 나머지는 카드·종이 모두 불가다 */
+  timeStop: TimeStopPublic | null;
+  /** 아마테라스에 걸린 사람들. 다음 종 판정(또는 탈락)까지 카드 내기·종 치기가 불가다 */
+  burning: number[];
 }
 /** `game:state` 페이로드. 보낼 때의 서버 시각을 붙여 클라이언트가 시계 차이를 잰다. */
 export type GameStateEvent = GameSnapshot & { serverTime: number };
