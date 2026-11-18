@@ -17,7 +17,7 @@ import { socketUser } from '../../common/socket-user';
 import { WsAckFilter } from '../../common/ws-ack.filter';
 import { wsValidationPipe } from '../../common/ws-validation.pipe';
 import { UserRepository } from '../../infra/database/user.repository';
-import { CardPlayDto, BellRingDto, EmptyGameDto, SkillPickDto } from './dto/game.dto';
+import { CardPlayDto, BellRingDto, EmptyGameDto, SkillPickDto, SkillUseDto } from './dto/game.dto';
 import { GameEvents, stamped } from './game.events';
 import { GameService } from './game.service';
 
@@ -95,6 +95,16 @@ export class GameGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     @MessageBody() input: SkillPickDto,
   ): Promise<GameAck> {
     const accepted = await this.games.pickSkill(socketUser(socket).userId, input, Date.now(), () =>
+      this.authorize(socket),
+    );
+    return { ok: true, ...(!accepted ? { ignored: true } : {}) };
+  }
+  @SubscribeMessage(GameClientEvent.SKILL_USE)
+  async skillUse(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() input: SkillUseDto,
+  ): Promise<GameAck> {
+    const accepted = await this.games.useSkill(socketUser(socket).userId, input, Date.now(), () =>
       this.authorize(socket),
     );
     return { ok: true, ...(!accepted ? { ignored: true } : {}) };

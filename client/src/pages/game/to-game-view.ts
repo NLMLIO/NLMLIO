@@ -7,6 +7,7 @@ import {
   SKILL_PICK_TIME_MS,
   SKILL_SLOT_COUNT,
   TURN_TIME_MS,
+  skillById,
 } from '@nlmlio/shared';
 import type {
   ChatEmojiCode,
@@ -146,6 +147,19 @@ function logOf(input: GameViewInput): LogEntry[] {
         };
       case 'card':
         return { kind: 'system', id, text: `${nickname}님이 카드를 냈어요` };
+      case 'skill': {
+        const target =
+          action.targetUserId === null
+            ? null
+            : snapshot.players.find((player) => player.userId === action.targetUserId)?.nickname;
+        return {
+          kind: 'event',
+          id,
+          tone: 'success',
+          nickname,
+          text: `${skillById(action.skillId).name} 사용${target ? ` → ${target}` : ''}`,
+        };
+      }
     }
   });
 }

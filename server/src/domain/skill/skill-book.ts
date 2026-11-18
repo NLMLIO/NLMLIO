@@ -10,6 +10,7 @@ import { SkillInventory } from './skill-inventory';
 import type { SkillHolding } from './skill-inventory';
 import { SkillSelection } from './skill-selection';
 import type { SkillOutcome, SkillParticipant } from './skill-selection';
+import type { SkillId } from '@nlmlio/shared';
 import { pickIndex, rollCandidates } from './skill-roll';
 import type { Random } from './skill-roll';
 
@@ -158,6 +159,11 @@ export class SkillBook {
     if (!selection) return;
     selection.remove(userId);
     if (selection.complete) this.current = null;
+  }
+
+  /** 보유 칸 `slot`의 스킬을 쓴다(한 번 쓰면 사라진다). 그 칸이 비어 있으면 null */
+  consume(userId: number, slot: number): SkillId | null {
+    return this.inventories.get(userId)?.useSlot(slot) ?? null;
   }
 
   /** 게임이 끝나는 등 선택을 더 이어갈 수 없다. 보유 스킬은 그대로 둔다 */

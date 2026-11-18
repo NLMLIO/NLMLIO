@@ -37,6 +37,11 @@ export class SkillInventory implements SkillHolding {
     this.skills.splice(slot, 1);
     return true;
   }
+  /** 칸 번호로 꺼내 쓴다. 그 칸이 비어 있으면 null */
+  useSlot(slot: number): SkillId | null {
+    if (!Number.isInteger(slot) || slot < 0 || slot >= this.skills.length) return null;
+    return this.skills.splice(slot, 1)[0];
+  }
   clear(): void {
     this.skills = [];
   }

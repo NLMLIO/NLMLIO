@@ -15,6 +15,8 @@ export class Table {
   remove(userId: number): Card[] {
     const cards = this.stacks.get(userId) ?? [];
     this.stacks.set(userId, []);
+    // 판정으로 옮겨지는 카드의 금칠은 사라진다.
+    for (const card of cards) card.ungild();
     return cards;
   }
   collect(): Card[] {

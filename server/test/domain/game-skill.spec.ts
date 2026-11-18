@@ -6,7 +6,7 @@ import {
   SKILL_PICK_TIME_MS,
   TURN_TIME_MS,
 } from '@nlmlio/shared';
-import type { SkillId } from '@nlmlio/shared';
+import { SkillId, skillById } from '@nlmlio/shared';
 import { Card, Deck } from '../../src/domain/card/deck';
 import { Game, GameRuleError } from '../../src/domain/game/game';
 
@@ -236,5 +236,127 @@ describe('Game 스킬 선택 연결(FUNC-009-01)', () => {
     expect(game.skillPickOpensAt).not.toBeNull();
     game.openSkillPick([], game.skillPickOpensAt!);
     expect(game.snapshot().skillPick).toMatchObject({ pickNo: 2 });
+  });
+});
+
+/** 후보 3칸이 모두 반짝반짝한 카드가 되도록 등급(⭐)·스킬(둘째)을 고르는 난수 */
+const sparkleRandom = () => {
+  let index = 0;
+  return () => (index++ % 2 === 0 ? 0 : 0.5);
+};
+/** 두 플레이어 모두 첫 칸에 스킬을 고르게 하고, 선택이 끝난 시각을 돌려준다 */
+const holdSkills = (game: Game): number => {
+  const opensAt = succeed(game, 5) + ROUND_RESULT_MS;
+  game.openSkillPick([], opensAt);
+  game.chooseSkill(1, { slot: 0 }, opensAt + 10);
+  game.chooseSkill(2, { slot: 0 }, opensAt + 10);
+  return opensAt + 10;
+};
+
+describe('Game 스킬 사용 틀(FUNC-009-04)', () => {
+  it('쓰면 슬롯에서 사라지고 사용 알림 액션을 돌려준다', () => {
+    const game = start(2, sparkleRandom());
+    const at = holdSkills(game);
+    expect(game.skillState(1).slots).toEqual([SkillId.SPARKLE_CARD]);
+    const revision = game.version;
+    expect(game.useSkill(1, 0, undefined, at + 1)).toEqual({
+      kind: 'skill',
+      userId: 1,
+      skillId: SkillId.SPARKLE_CARD,
+      targetUserId: null,
+    });
+    expect(game.skillState(1).slots).toEqual([]);
+    expect(game.skillState(2).slots).toEqual([SkillId.SPARKLE_CARD]);
+    expect(game.version).toBe(revision + 1);
+    expectRule(() => game.useSkill(1, 0, undefined, at + 2), ErrorCode.SKILL_UNAVAILABLE);
+  });
+
+  it('반짝반짝한 카드: 다음에 내는 카드만 금칠이 되고 판정으로 옮겨지면 사라진다', () => {
+    const game = start(2, sparkleRandom());
+    const at = holdSkills(game);
+    game.useSkill(1, 0, undefined, at + 1);
+    game.play(1, game.turnId, at + 2);
+    expect(game.snapshot().players[0].topCard).toMatchObject({ fruit: 'STRAWBERRY', gilded: true });
+    game.play(2, game.turnId, at + 3);
+    expect(game.snapshot().players[1].topCard).not.toHaveProperty('gilded');
+    // 판정에 영향이 없다: 딸기 2 + 3 = 5 로 종 성공
+    expect(game.ring(1, game.turnSeq, at + 4)).toMatchObject({ kind: 'bell', success: true });
+    expect(game.snapshot().players[0].topCard).toBeNull();
+    // 가져온 카드를 다시 내도 금칠은 없다
+    game.play(1, game.turnId, at + 10_000);
+    expect(game.snapshot().players[0].topCard).not.toHaveProperty('gilded');
+  });
+
+  it('금칠 예약은 한 번만 쓰인다', () => {
+    const game = start(2, sparkleRandom());
+    const at = holdSkills(game);
+    game.useSkill(1, 0, undefined, at + 1);
+    game.play(1, game.turnId, at + 2);
+    game.play(2, game.turnId, at + 3);
+    game.ring(1, game.turnSeq, at + 4);
+    game.play(1, game.turnId, at + 10_000);
+    game.play(2, game.turnId, at + 10_001);
+    expect(game.snapshot().players.map((player) => player.topCard)).not.toContainEqual(
+      expect.objectContaining({ gilded: true }),
+    );
+  });
+
+  it('효과를 아직 구현하지 않은 스킬은 쓸 수 없고 칸에서 사라지지도 않는다', () => {
+    const game = start(2, () => 0);
+    const at = holdSkills(game);
+    expect(game.skillState(1).slots).toEqual([SkillId.BELL_MOVE]);
+    expectRule(() => game.useSkill(1, 0, undefined, at + 1), ErrorCode.SKILL_UNAVAILABLE);
+    expect(game.skillState(1).slots).toEqual([SkillId.BELL_MOVE]);
+  });
+
+  it('빈 칸·잘못된 칸 번호·필요 없는 대상은 거부한다', () => {
+    const game = start(2, sparkleRandom());
+    const at = holdSkills(game);
+    expectRule(() => game.useSkill(1, 1, undefined, at + 1), ErrorCode.SKILL_UNAVAILABLE);
+    expectRule(() => game.useSkill(1, -1, undefined, at + 1), ErrorCode.VALIDATION_FAILED);
+    expectRule(() => game.useSkill(1, 0.5, undefined, at + 1), ErrorCode.VALIDATION_FAILED);
+    expectRule(() => game.useSkill(1, 0, 2, at + 1), ErrorCode.VALIDATION_FAILED);
+    expectRule(() => game.useSkill(9, 0, undefined, at + 1), ErrorCode.SKILL_UNAVAILABLE);
+    expect(game.skillState(1).slots).toEqual([SkillId.SPARKLE_CARD]);
+  });
+
+  it('대상 지정 스킬은 자신·관전자·없는 사람을 대상으로 지정할 수 없다', () => {
+    const hack = skillById(SkillId.HACK);
+    // 효과 구현 전이라 임시로 켜서 대상 검증만 확인한다(효과 적용 전에 거부되므로 상태는 바뀌지 않는다).
+    // 난수 0.7 → 등급 ⭐⭐(50~80%), 그 등급의 다섯 번째(해킹)가 후보 3칸 모두에 나온다.
+    const game = start(3, () => 0.7);
+    hack.available = true;
+    try {
+      succeed(game, 5);
+      const opensAt = game.skillPickOpensAt!;
+      game.openSkillPick([], opensAt);
+      expect(game.skillState(1).pick!.candidates).toEqual([
+        SkillId.HACK,
+        SkillId.HACK,
+        SkillId.HACK,
+      ]);
+      for (const id of [1, 2, 3]) game.chooseSkill(id, { slot: 0 }, opensAt + 10);
+      const at = opensAt + 20;
+      expectRule(() => game.useSkill(1, 0, undefined, at), ErrorCode.VALIDATION_FAILED);
+      expectRule(() => game.useSkill(1, 0, 1, at), ErrorCode.VALIDATION_FAILED);
+      expectRule(() => game.useSkill(1, 0, 99, at), ErrorCode.VALIDATION_FAILED);
+    } finally {
+      hack.available = false;
+    }
+  });
+
+  it('스킬 선택 중에는 쓸 수 없고(무시), 게임이 끝났으면 거부한다', () => {
+    const game = start(2, sparkleRandom());
+    const at = holdSkills(game);
+    const ended = start(2);
+    ended.depart(2, 5);
+    expectRule(() => ended.useSkill(1, 0, undefined, 6), ErrorCode.GAME_ENDED);
+    // 두 번째 선택이 열린 동안
+    let t = at + 20_000;
+    for (let round = 0; round < 5; round++) t = winRound(game, t) + 10_000;
+    game.openSkillPick([], game.skillPickOpensAt!);
+    expect(game.skillPicking).toBe(true);
+    expect(game.useSkill(1, 0, undefined, t)).toBeNull();
+    expect(game.skillState(1).slots).toEqual([SkillId.SPARKLE_CARD]);
   });
 });

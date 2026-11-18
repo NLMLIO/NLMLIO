@@ -9,6 +9,8 @@ const INITIALS: Record<Fruit, string> = {
 };
 
 export class Card {
+  /** 반짝반짝한 카드: 꾸미기 표시일 뿐 판정에 영향이 없다. 테이블을 떠나면 사라진다 */
+  private gold = false;
   constructor(
     readonly fruit: Fruit,
     readonly count: GameCard['count'],
@@ -16,8 +18,21 @@ export class Card {
     if (!Object.values(Fruit).includes(fruit) || !Number.isInteger(count) || count < 1 || count > 5)
       throw new Error('Invalid card');
   }
+  get gilded(): boolean {
+    return this.gold;
+  }
+  gild(): void {
+    this.gold = true;
+  }
+  ungild(): void {
+    this.gold = false;
+  }
   face(): GameCard {
-    return { fruit: this.fruit, count: this.count };
+    return {
+      fruit: this.fruit,
+      count: this.count,
+      ...(this.gold ? { gilded: true as const } : {}),
+    };
   }
   code(): string {
     return `${INITIALS[this.fruit]}${this.count}`;

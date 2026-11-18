@@ -1,6 +1,12 @@
 import type { Fruit } from './domain';
 import type { ErrorCode } from './errors';
-import type { SkillPickPublic, SkillPickRequest, SkillStateEvent } from './skills';
+import type {
+  SkillId,
+  SkillPickPublic,
+  SkillPickRequest,
+  SkillStateEvent,
+  SkillUseRequest,
+} from './skills';
 
 /** 차례마다 카드를 낼 수 있는 시간(FUNC-005-15). 넘기면 서버가 대신 낸다. */
 export const TURN_TIME_MS = 10_000;
@@ -20,6 +26,8 @@ export type GamePlayerStatus = (typeof GamePlayerStatus)[keyof typeof GamePlayer
 export interface GameCard {
   fruit: Fruit;
   count: 1 | 2 | 3 | 4 | 5;
+  /** 반짝반짝한 카드(꾸미기, 판정에 영향 없음). 판정으로 옮겨지면 사라진다 */
+  gilded?: true;
 }
 export const GameClientEvent = {
   SYNC: 'game:sync',
@@ -27,6 +35,7 @@ export const GameClientEvent = {
   BELL: 'bell:ring',
   RETURN: 'game:return',
   SKILL_PICK: 'skill:pick',
+  SKILL_USE: 'skill:use',
 } as const;
 export const GameServerEvent = {
   STATE: 'game:state',
@@ -100,6 +109,8 @@ export type GameAction =
       totals: Record<Fruit, number>;
     }
   | { kind: 'departed'; userId: number }
+  /** 스킬 사용 알림. `targetUserId`가 null이면 대상 없음(전원·나에게) */
+  | { kind: 'skill'; userId: number; skillId: SkillId; targetUserId: number | null }
   | { kind: 'connection'; userId: number; connected: boolean };
 export type GameActionEvent = GameAction & { gameId: string; revision: number };
 export type GameAck = { ok: true; ignored?: boolean } | { ok: false; code: ErrorCode };
@@ -109,6 +120,7 @@ export interface GameClientToServerEvents {
   'bell:ring': (payload: BellRingRequest, ack: (result: GameAck) => void) => void;
   'game:return': (payload: Record<string, never>, ack: (result: GameAck) => void) => void;
   'skill:pick': (payload: SkillPickRequest, ack: (result: GameAck) => void) => void;
+  'skill:use': (payload: SkillUseRequest, ack: (result: GameAck) => void) => void;
 }
 export interface GameServerToClientEvents {
   'game:state': (state: GameStateEvent | null) => void;

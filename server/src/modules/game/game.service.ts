@@ -14,6 +14,7 @@ import type {
   GameSnapshot,
   SkillPickRequest,
   SkillStateEvent,
+  SkillUseRequest,
 } from '@nlmlio/shared';
 import { appError } from '../../common/app-error';
 import { GameRuleError } from '../../domain/game/game';
@@ -153,6 +154,21 @@ export class GameService implements OnModuleInit {
       if (accepted) await this.changed(session);
       return accepted;
     });
+  }
+
+  /**
+   * 스킬 사용(FUNC-009-04). 쓰면 칸에서 사라지고 방 전체에 사용 알림(`game:action`)이 간다.
+   * 스킬 선택 중이면 조용히 무시하고 false, 쓸 수 없으면 `SKILL_UNAVAILABLE`.
+   */
+  useSkill(
+    userId: number,
+    input: SkillUseRequest,
+    receivedAt = Date.now(),
+    authorize: Authorize = trusted,
+  ): Promise<boolean> {
+    return this.command(userId, input.gameId, authorize, (game) =>
+      game.useSkill(userId, input.slot, input.targetUserId, receivedAt),
+    );
   }
 
   /** 본인의 스킬 상태. 진행 중인 게임이 없으면 null */

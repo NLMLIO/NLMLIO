@@ -12,7 +12,7 @@ import type {
   SkillChoice,
   SkillStateEvent,
 } from '@nlmlio/shared';
-import { RoomRole } from '@nlmlio/shared';
+import { RoomRole, SkillId, SkillTiming, SkillUser, skillById } from '@nlmlio/shared';
 import { Card, Deck } from '../card/deck';
 import { GamePlayer } from '../player/game-player';
 import { SkillBook, SkillRuleError } from '../skill/skill-book';
@@ -85,6 +85,8 @@ export class Game {
   private skillDue = false;
   /** 스킬 선택 중 멈춘 턴의 남은 시간. 선택이 끝나면 여기서부터 이어 간다 */
   private pausedTurnMs: number | null = null;
+  /** 반짝반짝한 카드를 쓴 사람. 다음에 내는 카드가 금칠이 된다 */
+  private readonly sparkle = new Set<number>();
 
   private constructor(
     private readonly input: StartGameInput,
@@ -184,6 +186,7 @@ export class Game {
     if (this.resumeAt !== null && now < this.resumeAt) return null;
     this.resumeAt = null;
     const card = player.draw(automatic);
+    if (this.sparkle.delete(userId)) card.gild();
     this.table.play(userId, card);
     this.sequence++;
     this.playedAt = now;
@@ -345,6 +348,45 @@ export class Game {
     return true;
   }
 
+  /**
+   * 스킬 사용(FUNC-009-04). 보유 칸 `slot`의 스킬을 쓰고 사라지게 한 뒤 사용 알림 액션을 돌려준다.
+   * 스킬 선택 중이면 조용히 무시(null). 쓸 수 없는 스킬·시점·역할은 `SKILL_UNAVAILABLE`,
+   * 칸 번호·대상이 잘못되면 `VALIDATION_FAILED`다. 플레이 중인 사람은 플레이어로, 아니면 관전자로 본다.
+   */
+  useSkill(
+    userId: number,
+    slot: number,
+    targetUserId: number | undefined,
+    now: number,
+  ): GameAction | null {
+    if (this.phase !== GameStatus.PLAYING) throw new GameRuleError(ErrorCode.GAME_ENDED);
+    if (this.skills.selection) return null;
+    if (!Number.isInteger(slot) || slot < 0) throw new GameRuleError(ErrorCode.VALIDATION_FAILED);
+    const skillId = this.skills.inventory(userId).list()[slot];
+    if (!skillId) throw new GameRuleError(ErrorCode.SKILL_UNAVAILABLE);
+    const skill = skillById(skillId);
+    const role = this.activePlayerOrNull(userId) ? RoomRole.PLAYER : RoomRole.SPECTATOR;
+    const allowed =
+      skill.user === SkillUser.BOTH ||
+      skill.user === (role === RoomRole.PLAYER ? SkillUser.PLAYER : SkillUser.SPECTATOR);
+    // 아직 구현하지 않은 효과, 사용자 역할이 안 맞는 스킬, 사용 시점이 아닌 스킬은 쓸 수 없다.
+    if (!skill.available || !allowed || skill.timing !== SkillTiming.ANYTIME)
+      throw new GameRuleError(ErrorCode.SKILL_UNAVAILABLE);
+    if (skill.target === 'one') {
+      if (
+        targetUserId === undefined ||
+        targetUserId === userId ||
+        !this.activePlayerOrNull(targetUserId)
+      )
+        throw new GameRuleError(ErrorCode.VALIDATION_FAILED);
+    } else if (targetUserId !== undefined) throw new GameRuleError(ErrorCode.VALIDATION_FAILED);
+    this.time(now);
+    this.skills.consume(userId, slot);
+    this.applySkill(skillId, userId);
+    this.revision++;
+    return { kind: 'skill', userId, skillId, targetUserId: targetUserId ?? null };
+  }
+
   /** 본인에게만 보내는 스킬 상태: 보유 스킬과(선택 중이면) 후보·내 선택 */
   skillState(userId: number): SkillStateEvent {
     const selection = this.skills.selection;
@@ -481,6 +523,20 @@ export class Game {
     };
   }
 
+  private activePlayerOrNull(userId: number): GamePlayer | null {
+    const player = this.players.find((entry) => entry.userId === userId);
+    return player?.active ? player : null;
+  }
+  /** 스킬 효과. `available`이 true인 스킬만 여기까지 온다 */
+  private applySkill(skillId: SkillId, userId: number): void {
+    switch (skillId) {
+      case SkillId.SPARKLE_CARD:
+        this.sparkle.add(userId);
+        break;
+      default:
+        throw new Error(`Skill effect not implemented: ${skillId}`);
+    }
+  }
   private activePlayer(userId: number): GamePlayer {
     const player = this.players.find((entry) => entry.userId === userId);
     if (!player?.active) throw new GameRuleError(ErrorCode.SPECTATOR_FORBIDDEN);
@@ -490,6 +546,7 @@ export class Game {
     this.pile.push(...player.eliminate(departed), ...this.table.remove(player.userId));
     this.out.push(player.userId);
     this.skills.clear(player.userId);
+    this.sparkle.delete(player.userId);
     this.emptied = this.emptied.filter((id) => id !== player.userId);
     if (advanceRound) this.roundNumber++;
   }

@@ -11,7 +11,7 @@ import {
   ROUND_RESULT_MS,
   RoomClientEvent,
 } from '@nlmlio/shared';
-import type { AuthResponse, GameAck, SkillStateEvent } from '@nlmlio/shared';
+import type { AuthResponse, GameAck, GameActionEvent, SkillStateEvent } from '@nlmlio/shared';
 import { AppModule } from '../../src/app.module';
 import { configureApp } from '../../src/common/configure-app';
 import { SessionService } from '../../src/common/security/session.service';
@@ -36,6 +36,12 @@ const alternating = () =>
     ),
   );
 
+/** 후보 3칸이 모두 반짝반짝한 카드(플레이어)·침 뱉기(관전자)가 되는 난수 */
+const sparkleRandom = () => {
+  let index = 0;
+  return () => (index++ % 2 === 0 ? 0 : 0.5);
+};
+
 describe('스킬 선택 Socket.io 통합 (FUNC-009)', () => {
   let app: INestApplication<App>;
   let redis: Redis;
@@ -46,6 +52,7 @@ describe('스킬 선택 Socket.io 통합 (FUNC-009)', () => {
   let sockets: Socket[] = [];
   const gameIds: string[] = [];
   const skills = new Map<Socket, SkillStateEvent | null>();
+  const actions = new Map<Socket, GameActionEvent[]>();
   const suffix = Date.now().toString(36);
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -79,6 +86,9 @@ describe('스킬 선택 Socket.io 통합 (FUNC-009)', () => {
       reconnection: false,
     });
     sockets.push(socket);
+    socket.on(GameServerEvent.ACTION, (action: GameActionEvent) =>
+      actions.set(socket, [...(actions.get(socket) ?? []), action]),
+    );
     socket.on(GameServerEvent.SKILLS, (state: SkillStateEvent | null) => skills.set(socket, state));
     await new Promise<void>((resolve, reject) => {
       socket.once('connect', resolve);
@@ -111,7 +121,7 @@ describe('스킬 선택 Socket.io 통합 (FUNC-009)', () => {
       .useValue({
         create(input: StartGameInput) {
           gameIds.push(input.gameId);
-          return Game.create(input, alternating());
+          return Game.create(input, alternating(), sparkleRandom());
         },
       })
       .compile();
@@ -229,9 +239,56 @@ describe('스킬 선택 Socket.io 통합 (FUNC-009)', () => {
     expect(skills.get(b)!.slots).toHaveLength(1);
     expect(skills.get(c)!.slots).toHaveLength(1);
     expect(snapshot().turnDeadline).toBeGreaterThan(Date.now());
-    // 게임이 이어진다.
+    // ---- 스킬 사용(FUNC-009-04) ----
+    // 틀린 입력은 거부한다.
+    expect(await emit(a, GameClientEvent.SKILL_USE, { gameId, slot: 3 })).toEqual({
+      ok: false,
+      code: 'VALIDATION_FAILED',
+    });
+    expect(
+      await emit(a, GameClientEvent.SKILL_USE, { gameId, slot: 0, targetUserId: users[1].user.id }),
+    ).toEqual({ ok: false, code: 'VALIDATION_FAILED' });
+    expect(await emit(a, GameClientEvent.SKILL_USE, { gameId, slot: 1 })).toEqual({
+      ok: false,
+      code: 'SKILL_UNAVAILABLE',
+    });
+    // 효과를 구현하지 않은 스킬(관전자의 침 뱉기)은 쓸 수 없다.
+    expect(
+      await emit(c, GameClientEvent.SKILL_USE, { gameId, slot: 0, targetUserId: users[0].user.id }),
+    ).toEqual({ ok: false, code: 'SKILL_UNAVAILABLE' });
+    expect(skills.get(c)!.slots).toHaveLength(1);
+
+    // 반짝반짝한 카드: 쓰면 모두에게 알리고 내 슬롯에서 사라진다.
+    expect(await emit(a, GameClientEvent.SKILL_USE, { gameId, slot: 0 })).toEqual({ ok: true });
+    await until(() => (actions.get(b) ?? []).some((action) => action.kind === 'skill'));
+    await until(() => (actions.get(c) ?? []).some((action) => action.kind === 'skill'));
+    const cast = (actions.get(b) ?? []).find((action) => action.kind === 'skill')!;
+    expect(cast).toMatchObject({
+      kind: 'skill',
+      userId: users[0].user.id,
+      skillId: 'SPARKLE_CARD',
+      targetUserId: null,
+    });
+    await until(() => skills.get(a)?.slots.length === 0);
+    expect(skills.get(b)!.slots).toHaveLength(1);
+    // 다시 쓰면 빈 칸이라 거부한다.
+    expect(await emit(a, GameClientEvent.SKILL_USE, { gameId, slot: 0 })).toEqual({
+      ok: false,
+      code: 'SKILL_UNAVAILABLE',
+    });
+
+    // 게임이 이어진다: 다음에 내는 카드가 금칠이 되고 판정에는 영향이 없다.
     expect(await emit(a, GameClientEvent.PLAY, { gameId, turnId: snapshot().turnId })).toEqual({
       ok: true,
     });
+    expect(snapshot().players[0].topCard).toMatchObject({ gilded: true });
+    expect(await emit(b, GameClientEvent.PLAY, { gameId, turnId: snapshot().turnId })).toEqual({
+      ok: true,
+    });
+    expect(snapshot().players[1].topCard).not.toHaveProperty('gilded');
+    expect(await emit(a, GameClientEvent.BELL, { gameId, turnSeq: snapshot().turnSeq })).toEqual({
+      ok: true,
+    });
+    expect(snapshot().players[0].topCard).toBeNull();
   }, 60000);
 });

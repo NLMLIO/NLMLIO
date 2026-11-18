@@ -9,6 +9,8 @@ import type { RoomRole } from './domain';
 export const SKILL_PICK_EVERY = 5;
 /** 선택 시간(009-01) */
 export const SKILL_PICK_TIME_MS = 10_000;
+/** 스킬을 쓰면 모두의 화면 위쪽에 사용 알림이 뜨는 시간(009-04) */
+export const SKILL_CAST_MS = 1_600;
 /** 후보 칸 수와 보유 칸 수(009-02, 009-03) */
 export const SKILL_CANDIDATE_COUNT = 3;
 export const SKILL_SLOT_COUNT = 3;
@@ -60,12 +62,21 @@ export type SkillTiming = (typeof SkillTiming)[keyof typeof SkillTiming];
 export const SkillUser = { PLAYER: 'PLAYER', SPECTATOR: 'SPECTATOR', BOTH: 'BOTH' } as const;
 export type SkillUser = (typeof SkillUser)[keyof typeof SkillUser];
 
+/** 대상 지정: 없음(전원·나에게) 또는 플레이어 한 명(사용 뒤 좌석을 눌러 고른다) */
+export type SkillTarget = 'none' | 'one';
+
 export interface SkillDefinition {
   id: SkillId;
   name: string;
   grade: SkillGrade;
   timing: SkillTiming;
   user: SkillUser;
+  target: SkillTarget;
+  /**
+   * 사용 효과를 구현했나. false면 선택해서 보유할 수는 있지만 쓸 수 없다(FUNC-009-05 효과 구현 중).
+   * 서버가 이 값으로 사용을 거부하고 화면은 흐리게 보인다.
+   */
+  available: boolean;
   description: string;
 }
 
@@ -76,6 +87,8 @@ export const SKILLS: readonly SkillDefinition[] = [
     grade: 1,
     timing: SkillTiming.ANYTIME,
     user: SkillUser.PLAYER,
+    target: 'none',
+    available: false,
     description: '3초 동안 종 위치와 종 단축키가 바뀐다.',
   },
   {
@@ -84,6 +97,8 @@ export const SKILLS: readonly SkillDefinition[] = [
     grade: 1,
     timing: SkillTiming.ANYTIME,
     user: SkillUser.PLAYER,
+    target: 'none',
+    available: true,
     description: '다음에 내는 카드가 금칠이 된다.',
   },
   {
@@ -92,6 +107,8 @@ export const SKILLS: readonly SkillDefinition[] = [
     grade: 1,
     timing: SkillTiming.ANYTIME,
     user: SkillUser.PLAYER,
+    target: 'none',
+    available: false,
     description: '과일이 6개인 카드를 낸다. 종 판정이 나면 바로 사라진다.',
   },
   {
@@ -100,6 +117,8 @@ export const SKILLS: readonly SkillDefinition[] = [
     grade: 2,
     timing: SkillTiming.ANYTIME,
     user: SkillUser.PLAYER,
+    target: 'none',
+    available: false,
     description: '자신의 과일 개수를 +1 한다.',
   },
   {
@@ -108,6 +127,8 @@ export const SKILLS: readonly SkillDefinition[] = [
     grade: 2,
     timing: SkillTiming.ANYTIME,
     user: SkillUser.BOTH,
+    target: 'one',
+    available: false,
     description: '대상 한 명의 화면을 3초 동안 침으로 덮고, 3초 동안 흘러내린다.',
   },
   {
@@ -116,6 +137,8 @@ export const SKILLS: readonly SkillDefinition[] = [
     grade: 2,
     timing: SkillTiming.ANYTIME,
     user: SkillUser.PLAYER,
+    target: 'none',
+    available: false,
     description: '10~30초 동안 종을 부순다. 종이 돌아올 때까지 아무도 종을 못 친다.',
   },
   {
@@ -124,6 +147,8 @@ export const SKILLS: readonly SkillDefinition[] = [
     grade: 2,
     timing: SkillTiming.ANYTIME,
     user: SkillUser.PLAYER,
+    target: 'none',
+    available: false,
     description: '10초 동안 종이 3~5개로 늘어난다. 종마다 단축키가 있고 진짜는 하나뿐이다.',
   },
   {
@@ -132,6 +157,8 @@ export const SKILLS: readonly SkillDefinition[] = [
     grade: 2,
     timing: SkillTiming.ANYTIME,
     user: SkillUser.PLAYER,
+    target: 'one',
+    available: false,
     description: '상대방의 종 누르기 키를 바꾼다.',
   },
   {
@@ -140,6 +167,8 @@ export const SKILLS: readonly SkillDefinition[] = [
     grade: 2,
     timing: SkillTiming.ANYTIME,
     user: SkillUser.PLAYER,
+    target: 'none',
+    available: false,
     description:
       '이번 라운드에 지뢰를 깐다. 5개를 맞춰 종을 눌러도 카드가 종 밑에 쌓인다. 잘 보이지 않는다.',
   },
@@ -149,6 +178,8 @@ export const SKILLS: readonly SkillDefinition[] = [
     grade: 3,
     timing: SkillTiming.ON_BELL,
     user: SkillUser.PLAYER,
+    target: 'one',
+    available: false,
     description:
       '누군가 종을 쳤을 때 2초 안에 쓰면, 나보다 먼저 친 사람의 손이 부서져 다음 라운드에 종을 못 친다.',
   },
@@ -158,6 +189,8 @@ export const SKILLS: readonly SkillDefinition[] = [
     grade: 3,
     timing: SkillTiming.ANYTIME,
     user: SkillUser.PLAYER,
+    target: 'one',
+    available: false,
     description: '대상 한 명을 정해 1라운드 동안 아무것도 못 하게 만든다.',
   },
   {
@@ -166,6 +199,8 @@ export const SKILLS: readonly SkillDefinition[] = [
     grade: 3,
     timing: SkillTiming.AUTOMATIC,
     user: SkillUser.PLAYER,
+    target: 'none',
+    available: false,
     description: '나를 노린 단일 지정 스킬을 자동으로 반사해, 쓴 사람이 대신 맞는다.',
   },
   {
@@ -174,6 +209,8 @@ export const SKILLS: readonly SkillDefinition[] = [
     grade: 3,
     timing: SkillTiming.ANYTIME,
     user: SkillUser.PLAYER,
+    target: 'none',
+    available: false,
     description: '쥐를 보내 종 밑에 깔린 카드를 몰래 가져온다.',
   },
   {
@@ -182,6 +219,8 @@ export const SKILLS: readonly SkillDefinition[] = [
     grade: 4,
     timing: SkillTiming.ANYTIME,
     user: SkillUser.PLAYER,
+    target: 'none',
+    available: false,
     description: '3초 동안 시간이 멈춘다. 나만 카드를 낼 수 있다.',
   },
   {
@@ -190,6 +229,8 @@ export const SKILLS: readonly SkillDefinition[] = [
     grade: 4,
     timing: SkillTiming.ON_ROUND_END,
     user: SkillUser.PLAYER,
+    target: 'none',
+    available: false,
     description: '종을 치기 전 라운드의 카드 상태로 되돌린다.',
   },
   {
@@ -198,6 +239,8 @@ export const SKILLS: readonly SkillDefinition[] = [
     grade: 4,
     timing: SkillTiming.ANYTIME,
     user: SkillUser.SPECTATOR,
+    target: 'one',
+    available: false,
     description: '총을 맞은 유저는 자신이 낸 카드의 맨 위부터 5장을 종 밑에 넣는다.',
   },
   {
@@ -206,6 +249,8 @@ export const SKILLS: readonly SkillDefinition[] = [
     grade: 5,
     timing: SkillTiming.ANYTIME,
     user: SkillUser.PLAYER,
+    target: 'none',
+    available: false,
     description: '게임을 처음부터 다시 시작한다.',
   },
 ];
@@ -261,4 +306,11 @@ export interface SkillStateEvent {
 export interface SkillPickRequest {
   gameId: string;
   choice: SkillChoice;
+}
+
+/** 스킬 사용(009-04). `slot`은 보유 칸 번호(0~2), 대상 지정 스킬이면 `targetUserId`를 함께 보낸다 */
+export interface SkillUseRequest {
+  gameId: string;
+  slot: number;
+  targetUserId?: number;
 }
