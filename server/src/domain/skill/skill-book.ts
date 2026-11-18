@@ -9,7 +9,7 @@ import type { SkillChoice } from '@nlmlio/shared';
 import { SkillInventory } from './skill-inventory';
 import type { SkillHolding } from './skill-inventory';
 import { SkillSelection } from './skill-selection';
-import type { SkillParticipant } from './skill-selection';
+import type { SkillOutcome, SkillParticipant } from './skill-selection';
 import { pickIndex, rollCandidates } from './skill-roll';
 import type { Random } from './skill-roll';
 
@@ -48,15 +48,24 @@ export class SkillBook {
     return this.holding(userId);
   }
 
-  /**
-   * 종 성공(오발 제외)이 한 번 났다. 누적 횟수가 5의 배수면 `participants` 모두에게 선택을 열고 true를 돌려준다.
-   * 게임을 시작할 때는 스킬을 주지 않으므로 호출하지 않는다.
-   */
-  recordSuccess(participants: SkillParticipant[], now: number): boolean {
-    if (this.current) throw new Error('Skill selection is already open');
+  /** 지금까지 선택을 몇 번 열었나(5·10·15…번째 성공마다 한 번) */
+  get pickNo(): number {
+    return Math.floor(this.successes / SKILL_PICK_EVERY);
+  }
+
+  /** 종 성공(오발 제외)을 센다. 누적 횟수가 5의 배수면 선택을 열 차례이므로 true */
+  countSuccess(): boolean {
     this.successes++;
-    if (this.successes % SKILL_PICK_EVERY !== 0) return false;
-    this.current = new SkillSelection(
+    return this.successes % SKILL_PICK_EVERY === 0;
+  }
+
+  /**
+   * `participants` 모두에게 후보 3칸을 만들어 선택을 연다. 대상이 없으면 열지 않고 false.
+   * 선택 중에 다시 열 수 없다.
+   */
+  open(participants: SkillParticipant[], now: number): boolean {
+    if (this.current) throw new Error('Skill selection is already open');
+    const selection = new SkillSelection(
       new Map(
         participants.map(({ userId, role }) => [
           userId,
@@ -65,8 +74,15 @@ export class SkillBook {
       ),
       now + SKILL_PICK_TIME_MS,
     );
-    if (this.current.complete) this.current = null;
-    return this.current !== null;
+    if (selection.complete) return false;
+    this.current = selection;
+    return true;
+  }
+
+  /** 성공을 세고, 5의 배수면 바로 선택을 연다. 열었으면 true */
+  recordSuccess(participants: SkillParticipant[], now: number): boolean {
+    if (this.current) throw new Error('Skill selection is already open');
+    return this.countSuccess() && this.open(participants, now);
   }
 
   /**
@@ -79,8 +95,10 @@ export class SkillBook {
     if (!selection.has(userId)) throw new SkillRuleError(ErrorCode.NOT_IN_ROOM);
     if (now >= selection.deadline || selection.hasChosen(userId)) return;
     const holding = this.holding(userId);
+    let outcome: SkillOutcome;
     if ('decline' in choice) {
       if (choice.decline !== true || !holding.isFull) throw invalid();
+      outcome = { candidate: null, slot: null, declined: true };
     } else {
       if (!validSlot(choice.slot)) throw invalid();
       if (holding.isFull) {
@@ -88,10 +106,17 @@ export class SkillBook {
           throw invalid();
       } else if (choice.replace !== undefined) throw invalid();
       const skillId = selection.candidates(userId)[choice.slot];
-      if (holding.isFull) holding.replace(choice.replace!, skillId);
-      else holding.add(skillId);
+      let slot: number;
+      if (holding.isFull) {
+        slot = choice.replace!;
+        holding.replace(slot, skillId);
+      } else {
+        holding.add(skillId);
+        slot = holding.list().length - 1;
+      }
+      outcome = { candidate: choice.slot, slot, declined: false };
     }
-    selection.markChosen(userId);
+    selection.markChosen(userId, outcome);
     if (selection.complete) this.current = null;
   }
 
@@ -104,11 +129,18 @@ export class SkillBook {
     if (!selection || now < selection.deadline) return false;
     for (const userId of selection.pending()) {
       const holding = this.holding(userId);
-      if (!holding.isFull) {
-        const candidates = selection.candidates(userId);
-        holding.add(candidates[pickIndex(this.random, candidates.length)]);
+      if (holding.isFull) {
+        selection.markChosen(userId, { candidate: null, slot: null, declined: true });
+        continue;
       }
-      selection.markChosen(userId);
+      const candidates = selection.candidates(userId);
+      const candidate = pickIndex(this.random, candidates.length);
+      holding.add(candidates[candidate]);
+      selection.markChosen(userId, {
+        candidate,
+        slot: holding.list().length - 1,
+        declined: false,
+      });
     }
     this.current = null;
     return true;
@@ -126,6 +158,11 @@ export class SkillBook {
     if (!selection) return;
     selection.remove(userId);
     if (selection.complete) this.current = null;
+  }
+
+  /** 게임이 끝나는 등 선택을 더 이어갈 수 없다. 보유 스킬은 그대로 둔다 */
+  cancelSelection(): void {
+    this.current = null;
   }
 
   /** 안해(009-05): 종 성공 횟수와 모든 보유 스킬, 진행 중인 선택을 처음 상태로 돌린다. */

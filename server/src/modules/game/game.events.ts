@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { GameServerEvent } from '@nlmlio/shared';
-import type { GameActionEvent, GameSnapshot, GameStateEvent } from '@nlmlio/shared';
+import type {
+  GameActionEvent,
+  GameSnapshot,
+  GameStateEvent,
+  SkillStateEvent,
+} from '@nlmlio/shared';
 import type { Server } from 'socket.io';
 import { roomChannel, userChannel } from '../room/room.events';
 
@@ -20,6 +25,10 @@ export class GameEvents {
   /** 이미 연결된 유저가 진행 중인 방에 들어와도 재접속 없이 현재 상태를 받는다. */
   sync(userId: number, state: GameSnapshot): void {
     this.server?.to(userChannel(userId)).emit(GameServerEvent.STATE, stamped(state));
+  }
+  /** 후보·보유 스킬은 본인에게만 보낸다 */
+  skills(userId: number, state: SkillStateEvent | null): void {
+    this.server?.to(userChannel(userId)).emit(GameServerEvent.SKILLS, state);
   }
   action(code: string, action: GameActionEvent): void {
     this.server?.to(roomChannel(code)).emit(GameServerEvent.ACTION, action);

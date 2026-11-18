@@ -5,9 +5,19 @@ import {
   ROUND_RESULT_MS,
   TURN_TIME_MS,
 } from '@nlmlio/shared';
-import type { GameAction, GameSnapshot, SettleGameInput } from '@nlmlio/shared';
+import type {
+  GameAction,
+  GameSnapshot,
+  SettleGameInput,
+  SkillChoice,
+  SkillStateEvent,
+} from '@nlmlio/shared';
+import { RoomRole } from '@nlmlio/shared';
 import { Card, Deck } from '../card/deck';
 import { GamePlayer } from '../player/game-player';
+import { SkillBook, SkillRuleError } from '../skill/skill-book';
+import type { Random } from '../skill/skill-roll';
+import type { SkillParticipant } from '../skill/skill-selection';
 import { GameSettlement } from './game-settlement';
 import { Table } from './table';
 
@@ -70,10 +80,16 @@ export class Game {
   private resolvedSequence = -1;
   private settlementConfirmed = false;
   private clock: number;
+  private readonly skills: SkillBook;
+  /** 종 성공이 5의 배수가 돼 스킬 선택을 열 차례다. 결과 표시가 끝나면 서비스가 연다 */
+  private skillDue = false;
+  /** 스킬 선택 중 멈춘 턴의 남은 시간. 선택이 끝나면 여기서부터 이어 간다 */
+  private pausedTurnMs: number | null = null;
 
   private constructor(
     private readonly input: StartGameInput,
     deck: Deck,
+    random: Random,
   ) {
     const { hands, remainder } = deck.deal(input.players.length);
     this.players = input.players.map(
@@ -84,9 +100,10 @@ export class Game {
     this.current = this.players[0].userId;
     this.deadline = input.now + TURN_TIME_MS;
     this.clock = input.now;
+    this.skills = new SkillBook(random);
   }
 
-  static create(input: StartGameInput, deck: Deck): Game {
+  static create(input: StartGameInput, deck: Deck, random: Random = Math.random): Game {
     if (
       !input.gameId ||
       !/^\d{6}$/.test(input.roomCode) ||
@@ -101,7 +118,11 @@ export class Game {
       input.now < 0
     )
       throw new Error('Invalid game');
-    return new Game({ ...input, players: input.players.map((user) => ({ ...user })) }, deck);
+    return new Game(
+      { ...input, players: input.players.map((user) => ({ ...user })) },
+      deck,
+      random,
+    );
   }
   get id(): string {
     return this.input.gameId;
@@ -118,8 +139,9 @@ export class Game {
   get turnSeq(): number {
     return this.sequence;
   }
+  /** 스킬 선택 중에는 턴 타이머가 멈추므로 null */
   get turnDeadline(): number | null {
-    return this.deadline;
+    return this.skills.selection ? null : this.deadline;
   }
   get turnUserId(): number | null {
     return this.current;
@@ -140,6 +162,7 @@ export class Game {
   canRing(userId: number, sequence: number): boolean {
     if (
       this.phase !== GameStatus.PLAYING ||
+      this.skills.selection ||
       sequence < this.sequence ||
       this.resolvedSequence === sequence
     )
@@ -155,6 +178,8 @@ export class Game {
     const player = this.activePlayer(userId);
     if (turnId !== this.turnToken) throw new GameRuleError(ErrorCode.VALIDATION_FAILED);
     if (userId !== this.current) throw new GameRuleError(ErrorCode.NOT_YOUR_TURN);
+    // 스킬 선택 중이거나 곧 열릴 예정이면 카드 내기를 무시한다(009-01).
+    if (this.skills.selection || this.skillDue) return null;
     now = this.time(now);
     if (this.resumeAt !== null && now < this.resumeAt) return null;
     this.resumeAt = null;
@@ -178,6 +203,7 @@ export class Game {
     const player = this.activePlayer(userId);
     const totals = this.table.totals();
     const success = Object.values(totals).some((count) => count === 5);
+    const pickDue = success && this.skills.countSuccess();
     this.resolvedSequence = sequence;
     player.bell(success, this.playedAt === null ? 0 : now - this.playedAt);
     let movedCards: number;
@@ -203,6 +229,8 @@ export class Game {
     this.resumeAt = now + ROUND_RESULT_MS;
     this.deadline = this.resumeAt + TURN_TIME_MS;
     this.finishIfNeeded(now);
+    // 그 판정으로 게임이 끝나면 선택을 열지 않는다(009-01).
+    if (pickDue && this.phase === GameStatus.PLAYING) this.skillDue = true;
     this.revision++;
     return { kind: 'bell', userId, success, movedCards, totals };
   }
@@ -214,6 +242,7 @@ export class Game {
   timeout(turnId: number, now: number): GameAction | null {
     if (
       this.phase !== GameStatus.PLAYING ||
+      this.skills.selection ||
       turnId !== this.turnToken ||
       this.deadline === null ||
       now < this.deadline
@@ -236,10 +265,105 @@ export class Game {
     if (this.current === userId) {
       this.current = this.nextAfter(userId);
       this.newTurn(now);
+      if (this.skills.selection) this.pausedTurnMs = TURN_TIME_MS;
     }
     this.finishIfNeeded(now);
     this.revision++;
     return { kind: 'departed', userId };
+  }
+
+  /** 스킬 선택을 열 차례가 됐다면 열어야 하는 서버 시각(결과 표시가 끝나는 때). 아니면 null */
+  get skillPickOpensAt(): number | null {
+    return this.skillDue && this.phase === GameStatus.PLAYING
+      ? (this.resumeAt ?? this.clock)
+      : null;
+  }
+  /** 선택 중이면 마감 시각, 아니면 null */
+  get skillPickDeadline(): number | null {
+    return this.skills.selection?.deadline ?? null;
+  }
+  get skillPicking(): boolean {
+    return this.skills.selection !== null;
+  }
+
+  /**
+   * 스킬 선택을 연다. 플레이 중인 사람은 플레이어로, `spectatorIds`(방의 관전자, 방금 탈락한 사람 포함)는 관전자로
+   * 후보를 받는다. 열면 카드 내기·종·턴 타이머가 멈춘다. 아직 열 때가 아니면 false.
+   */
+  openSkillPick(spectatorIds: readonly number[], now: number): boolean {
+    if (!this.skillDue || this.phase !== GameStatus.PLAYING || this.skills.selection) return false;
+    now = this.time(now);
+    if (this.resumeAt !== null && now < this.resumeAt) return false;
+    this.skillDue = false;
+    const active = this.players.filter((player) => player.active).map((player) => player.userId);
+    const participants: SkillParticipant[] = [
+      ...active.map((userId) => ({ userId, role: RoomRole.PLAYER })),
+      ...[...new Set(spectatorIds)]
+        .filter((userId) => !active.includes(userId))
+        .map((userId) => ({ userId, role: RoomRole.SPECTATOR })),
+    ];
+    if (!this.skills.open(participants, now)) return false;
+    this.pausedTurnMs = this.deadline === null ? null : Math.max(0, this.deadline - now);
+    this.revision++;
+    return true;
+  }
+
+  /** 후보 칸 선택(FUNC-009-03). 늦었거나 이미 골랐으면 조용히 무시하고 false */
+  chooseSkill(userId: number, choice: SkillChoice, now: number): boolean {
+    const selection = this.skills.selection;
+    if (!selection) return false;
+    now = this.time(now);
+    const had = selection.hasChosen(userId);
+    try {
+      this.skills.choose(userId, choice, now);
+    } catch (error) {
+      if (error instanceof SkillRuleError) throw new GameRuleError(error.code);
+      throw error;
+    }
+    if (had || !selection.hasChosen(userId)) return false;
+    if (!this.skills.selection) this.resumeAfterSkillPick(now);
+    this.revision++;
+    return true;
+  }
+
+  /** 마감이 지났으면 못 고른 사람을 처리하고 선택을 끝낸 뒤 게임을 다시 진행한다. 끝났으면 true */
+  settleSkillPick(now: number): boolean {
+    now = this.time(now);
+    if (!this.skills.settle(now)) return false;
+    this.resumeAfterSkillPick(now);
+    this.revision++;
+    return true;
+  }
+
+  /** 게임을 떠난 사람의 스킬을 지우고 진행 중인 선택 대상에서 뺀다. 상태가 바뀌었으면 true */
+  releaseSkills(userId: number, now: number): boolean {
+    const before = this.skills.selection;
+    this.skills.drop(userId);
+    if (!before) return false;
+    if (!this.skills.selection) this.resumeAfterSkillPick(this.time(now));
+    this.revision++;
+    return true;
+  }
+
+  /** 본인에게만 보내는 스킬 상태: 보유 스킬과(선택 중이면) 후보·내 선택 */
+  skillState(userId: number): SkillStateEvent {
+    const selection = this.skills.selection;
+    const role = selection?.roleOf(userId);
+    const outcome = selection?.outcome(userId) ?? null;
+    return {
+      gameId: this.id,
+      slots: this.skills.inventory(userId).list(),
+      pick:
+        selection && role
+          ? {
+              role,
+              candidates: selection.candidates(userId),
+              candidate: outcome?.candidate ?? null,
+              slot: outcome?.slot ?? null,
+              declined: outcome?.declined ?? false,
+            }
+          : null,
+    };
   }
 
   connection(userId: number, connected: boolean): GameAction | null {
@@ -299,7 +423,7 @@ export class Game {
       turnId: this.turnToken,
       turnSeq: this.sequence,
       turnUserId: this.current,
-      turnDeadline: this.deadline,
+      turnDeadline: this.turnDeadline,
       roundResumeAt: this.resumeAt,
       lastPlayAt: this.playedAt,
       startedAt: this.input.now,
@@ -318,6 +442,16 @@ export class Game {
       fruitTotals: this.table.totals(),
       results,
       settled: this.settlementConfirmed,
+      skillSuccesses: this.skills.successCount,
+      skillPick: this.skills.selection
+        ? {
+            deadline: this.skills.selection.deadline,
+            successCount: this.skills.successCount,
+            pickNo: this.skills.pickNo,
+            total: this.skills.selection.userIds.length,
+            done: this.skills.selection.userIds.length - this.skills.selection.pending().length,
+          }
+        : null,
     };
   }
 
@@ -355,6 +489,7 @@ export class Game {
   private remove(player: GamePlayer, departed: boolean, advanceRound = true): void {
     this.pile.push(...player.eliminate(departed), ...this.table.remove(player.userId));
     this.out.push(player.userId);
+    this.skills.clear(player.userId);
     this.emptied = this.emptied.filter((id) => id !== player.userId);
     if (advanceRound) this.roundNumber++;
   }
@@ -398,10 +533,18 @@ export class Game {
   private finishIfNeeded(now: number): void {
     if (this.players.filter((player) => player.active).length > 1) return;
     this.phase = GameStatus.ENDED;
+    this.skills.cancelSelection();
+    this.skillDue = false;
+    this.pausedTurnMs = null;
     this.endedAt = now;
     this.current = null;
     this.deadline = null;
     this.resumeAt = null;
+  }
+  private resumeAfterSkillPick(now: number): void {
+    if (this.pausedTurnMs === null) return;
+    this.deadline = now + this.pausedTurnMs;
+    this.pausedTurnMs = null;
   }
   private time(now: number): number {
     if (!Number.isSafeInteger(now) || now < 0) throw new Error('Invalid server time');

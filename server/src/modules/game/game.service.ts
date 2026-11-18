@@ -7,7 +7,14 @@ import {
   RoomRole,
   RoomStatus,
 } from '@nlmlio/shared';
-import type { BellRingRequest, CardPlayRequest, GameAction, GameSnapshot } from '@nlmlio/shared';
+import type {
+  BellRingRequest,
+  CardPlayRequest,
+  GameAction,
+  GameSnapshot,
+  SkillPickRequest,
+  SkillStateEvent,
+} from '@nlmlio/shared';
 import { appError } from '../../common/app-error';
 import { GameRuleError } from '../../domain/game/game';
 import type { Game } from '../../domain/game/game';
@@ -48,7 +55,10 @@ export class GameService implements OnModuleInit {
       closed: (code) => this.closed(code),
       joined: (id) => {
         const state = this.sync(id);
-        if (state?.status === GameStatus.PLAYING) this.events.sync(id, state);
+        if (state?.status === GameStatus.PLAYING) {
+          this.events.sync(id, state);
+          this.events.skills(id, this.skillsFor(id));
+        }
       },
     });
   }
@@ -118,6 +128,38 @@ export class GameService implements OnModuleInit {
     const room = this.rooms.memberRoom(userId);
     const session = room ? this.games.get(room.code) : undefined;
     return session?.game.snapshot() ?? null;
+  }
+
+  /** 스킬 후보 선택(FUNC-009-03). 늦었거나 이미 고른 요청은 조용히 무시하고 false */
+  pickSkill(
+    userId: number,
+    input: SkillPickRequest,
+    receivedAt = Date.now(),
+    authorize: Authorize = trusted,
+  ): Promise<boolean> {
+    const code = this.requireRoomCode(userId);
+    return this.queue.run(code, async () => {
+      await authorize();
+      if (this.requireRoomCode(userId) !== code) throw appError(ErrorCode.NOT_IN_ROOM);
+      const session = this.games.get(code);
+      if (!session || session.game.id !== input.gameId) throw appError(ErrorCode.GAME_NOT_FOUND);
+      let accepted: boolean;
+      try {
+        accepted = session.game.chooseSkill(userId, input.choice, receivedAt);
+      } catch (error) {
+        if (error instanceof GameRuleError) throw appError(error.code);
+        throw error;
+      }
+      if (accepted) await this.changed(session);
+      return accepted;
+    });
+  }
+
+  /** 본인의 스킬 상태. 진행 중인 게임이 없으면 null */
+  skillsFor(userId: number): SkillStateEvent | null {
+    const room = this.rooms.memberRoom(userId);
+    const session = room ? this.games.get(room.code) : undefined;
+    return session?.game.status === GameStatus.PLAYING ? session.game.skillState(userId) : null;
   }
 
   async returnToRoom(userId: number, authorize: Authorize = trusted): Promise<void> {
@@ -196,13 +238,18 @@ export class GameService implements OnModuleInit {
     await this.queue.run(code, async () => {
       const session = this.games.get(code);
       const action = session?.game.depart(userId, Date.now());
-      if (session && action) await this.changed(session, action);
+      // 게임을 떠나는 사람의 스킬을 지우고 진행 중인 선택 대상에서 뺀다.
+      const released = session?.game.releaseSkills(userId, Date.now()) ?? false;
+      session?.skillSent.delete(userId);
+      if (session && (action || released)) await this.changed(session, action ?? undefined);
       await remove();
     });
   }
 
   private closed(code: string): void {
     this.timers.cancel(`turn:${code}`);
+    this.timers.cancel(`skill-open:${code}`);
+    this.timers.cancel(`skill-settle:${code}`);
     const session = this.games.get(code);
     if (!session) return;
     session.closed = true;
@@ -224,6 +271,8 @@ export class GameService implements OnModuleInit {
     }
     if (game.status === GameStatus.ENDED) {
       this.timers.cancel(`turn:${game.roomCode}`);
+      this.timers.cancel(`skill-open:${game.roomCode}`);
+      this.timers.cancel(`skill-settle:${game.roomCode}`);
       for (const id of game.userIds) {
         this.timers.cancel(`connection:${id}`);
         if (!this.connections.get(id)?.size) this.scheduleWaitingDisconnect(id, game.roomCode);
@@ -232,11 +281,15 @@ export class GameService implements OnModuleInit {
         this.rooms.finishGame(game.roomCode);
         session.returnedToRoom = true;
       }
-    } else this.scheduleTurn(session);
+    } else {
+      this.scheduleTurn(session);
+      this.scheduleSkillPick(session);
+    }
     const state = game.snapshot();
     if (action)
       this.events.action(game.roomCode, { ...action, gameId: game.id, revision: state.revision });
     this.events.state(state);
+    this.pushSkills(session);
     await this.persist(session);
   }
 
@@ -288,7 +341,13 @@ export class GameService implements OnModuleInit {
   private scheduleTurn(session: GameSession): void {
     const { game } = session;
     const turnId = game.turnId;
-    this.timers.schedule(`turn:${game.roomCode}`, game.turnDeadline!, () => {
+    const deadline = game.turnDeadline;
+    // 스킬 선택 중에는 턴 타이머가 멈춘다. 선택이 끝나면 changed가 다시 건다.
+    if (deadline === null) {
+      this.timers.cancel(`turn:${game.roomCode}`);
+      return;
+    }
+    this.timers.schedule(`turn:${game.roomCode}`, deadline, () => {
       this.background(() =>
         this.queue.run(game.roomCode, async () => {
           if (this.games.get(game.roomCode) !== session) return;
@@ -299,6 +358,63 @@ export class GameService implements OnModuleInit {
         }),
       );
     });
+  }
+  /**
+   * 종 성공 5번째의 결과 표시가 끝나면 스킬 선택을 열고, 열린 뒤에는 10초 마감에 처리한다(FUNC-009-01·003).
+   * 둘 다 같은 방 큐에 넣어 다른 이벤트와 순서대로 처리한다.
+   */
+  private scheduleSkillPick(session: GameSession): void {
+    const { game } = session;
+    const code = game.roomCode;
+    const opensAt = game.skillPickOpensAt;
+    if (opensAt === null) this.timers.cancel(`skill-open:${code}`);
+    else
+      this.timers.schedule(`skill-open:${code}`, opensAt, () => {
+        this.background(() =>
+          this.queue.run(code, async () => {
+            if (this.games.get(code) !== session) return;
+            if (game.openSkillPick(this.spectatorIds(session), Math.max(Date.now(), opensAt)))
+              await this.changed(session);
+          }),
+        );
+      });
+    const deadline = game.skillPickDeadline;
+    if (deadline === null) this.timers.cancel(`skill-settle:${code}`);
+    else
+      this.timers.schedule(`skill-settle:${code}`, deadline, () => {
+        this.background(() =>
+          this.queue.run(code, async () => {
+            if (this.games.get(code) !== session) return;
+            if (game.settleSkillPick(Math.max(Date.now(), deadline))) await this.changed(session);
+          }),
+        );
+      });
+  }
+  /** 방 안의 관전자(탈락·이탈해 관전 중인 사람, 도중에 들어온 관전자 포함) */
+  private spectatorIds(session: GameSession): number[] {
+    const room = this.roomOf(session);
+    return (room?.members ?? [])
+      .filter((member) => member.role === RoomRole.SPECTATOR)
+      .map((member) => member.userId);
+  }
+  private roomOf(session: GameSession) {
+    for (const id of session.game.userIds) {
+      const room = this.rooms.memberRoom(id);
+      if (room) return room;
+    }
+    return null;
+  }
+  /** 방 사람 모두에게, 스킬 상태가 바뀐 사람만 골라 본인에게 보낸다 */
+  private pushSkills(session: GameSession): void {
+    const room = this.roomOf(session);
+    if (!room) return;
+    for (const { userId } of room.members) {
+      const state = session.game.skillState(userId);
+      const signature = JSON.stringify(state);
+      if (session.skillSent.get(userId) === signature) continue;
+      session.skillSent.set(userId, signature);
+      this.events.skills(userId, state);
+    }
   }
   private scheduleDisconnect(userId: number, code: string, gameId: string): void {
     this.timers.schedule(`connection:${userId}`, Date.now() + GAME_RECONNECT_GRACE_MS, () => {

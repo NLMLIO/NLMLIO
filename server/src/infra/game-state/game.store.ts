@@ -8,6 +8,8 @@ export interface GameSession {
   returnedToRoom: boolean;
   closed: boolean;
   marked: Set<number>;
+  /** 사람마다 마지막으로 보낸 스킬 상태(바뀐 사람에게만 다시 보낸다) */
+  skillSent: Map<number, string>;
 }
 @Injectable()
 export class GameStore {
@@ -23,6 +25,7 @@ export class GameStore {
       returnedToRoom: false,
       closed: false,
       marked: new Set<number>(),
+      skillSent: new Map<number, string>(),
     };
     this.sessions.set(game.roomCode, session);
     return session;

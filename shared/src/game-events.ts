@@ -1,5 +1,6 @@
 import type { Fruit } from './domain';
 import type { ErrorCode } from './errors';
+import type { SkillPickPublic, SkillPickRequest, SkillStateEvent } from './skills';
 
 /** 차례마다 카드를 낼 수 있는 시간(FUNC-005-15). 넘기면 서버가 대신 낸다. */
 export const TURN_TIME_MS = 10_000;
@@ -25,8 +26,13 @@ export const GameClientEvent = {
   PLAY: 'card:play',
   BELL: 'bell:ring',
   RETURN: 'game:return',
+  SKILL_PICK: 'skill:pick',
 } as const;
-export const GameServerEvent = { STATE: 'game:state', ACTION: 'game:action' } as const;
+export const GameServerEvent = {
+  STATE: 'game:state',
+  ACTION: 'game:action',
+  SKILLS: 'game:skills',
+} as const;
 export interface CardPlayRequest {
   gameId: string;
   turnId: number;
@@ -77,6 +83,10 @@ export interface GameSnapshot {
   fruitTotals: Record<Fruit, number>;
   results: GameResultEntry[];
   settled: boolean;
+  /** 종 성공 누적 횟수(스킬 선택은 5번마다, FUNC-009-01) */
+  skillSuccesses: number;
+  /** 스킬 선택 중이면 진행 현황. 선택 중에는 카드 내기·종·턴 타이머가 멈춘다 */
+  skillPick: SkillPickPublic | null;
 }
 /** `game:state` 페이로드. 보낼 때의 서버 시각을 붙여 클라이언트가 시계 차이를 잰다. */
 export type GameStateEvent = GameSnapshot & { serverTime: number };
@@ -98,8 +108,11 @@ export interface GameClientToServerEvents {
   'card:play': (payload: CardPlayRequest, ack: (result: GameAck) => void) => void;
   'bell:ring': (payload: BellRingRequest, ack: (result: GameAck) => void) => void;
   'game:return': (payload: Record<string, never>, ack: (result: GameAck) => void) => void;
+  'skill:pick': (payload: SkillPickRequest, ack: (result: GameAck) => void) => void;
 }
 export interface GameServerToClientEvents {
   'game:state': (state: GameStateEvent | null) => void;
   'game:action': (action: GameActionEvent) => void;
+  /** 본인에게만. 보유 스킬과 선택 후보 */
+  'game:skills': (state: SkillStateEvent | null) => void;
 }

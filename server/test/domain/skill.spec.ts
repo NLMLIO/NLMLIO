@@ -321,3 +321,51 @@ describe('탈락·초기화(009-05)', () => {
     expect(book.recordSuccess(players(1), 0)).toBe(true);
   });
 });
+
+describe('선택 결과 기록과 열기·세기 분리(009-01·009-03)', () => {
+  it('성공 횟수는 따로 세고 선택은 나중에 열 수 있다', () => {
+    const book = new SkillBook(sequence(0));
+    for (let count = 1; count <= 4; count++) expect(book.countSuccess()).toBe(false);
+    expect(book.countSuccess()).toBe(true);
+    expect(book.pickNo).toBe(1);
+    expect(book.selection).toBeNull();
+    expect(book.open(players(1, 2), 5000)).toBe(true);
+    expect(book.selection?.deadline).toBe(5000 + SKILL_PICK_TIME_MS);
+    expect(() => book.open(players(1), 6000)).toThrow();
+  });
+  it('대상이 없으면 선택을 열지 않는다', () => {
+    const book = new SkillBook(sequence(0));
+    for (let count = 1; count <= 5; count++) book.countSuccess();
+    expect(book.open([], 0)).toBe(false);
+    expect(book.selection).toBeNull();
+  });
+  it('고른 후보 칸과 들어간 보유 칸을 기록한다', () => {
+    const book = open(sequence(0));
+    const selection = book.selection!;
+    expect(selection.outcome(1)).toBeNull();
+    book.choose(1, { slot: 2 }, 2000);
+    expect(selection.outcome(1)).toEqual({ candidate: 2, slot: 0, declined: false });
+  });
+  it('칸이 가득 찬 사람의 교체·포기와 시간 초과를 기록한다', () => {
+    const book = full();
+    const selection = book.selection!;
+    book.choose(1, { slot: 1, replace: 2 }, 2000);
+    expect(selection.outcome(1)).toEqual({ candidate: 1, slot: 2, declined: false });
+    book.settle(60_000);
+    expect(selection.outcome(2)).toEqual({ candidate: null, slot: null, declined: true });
+  });
+  it('시간 초과로 무작위로 들어간 스킬도 기록한다', () => {
+    const book = open(sequence(0));
+    const selection = book.selection!;
+    book.settle(1000 + SKILL_PICK_TIME_MS);
+    expect(selection.outcome(1)).toMatchObject({ declined: false, slot: 0 });
+    expect(selection.outcome(1)?.candidate).not.toBeNull();
+  });
+  it('선택을 취소해도 보유 스킬은 그대로다', () => {
+    const book = open(sequence(0));
+    book.choose(1, { slot: 0 }, 2000);
+    book.cancelSelection();
+    expect(book.selection).toBeNull();
+    expect(book.inventory(1).list()).toHaveLength(1);
+  });
+});

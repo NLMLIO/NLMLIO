@@ -1,3 +1,5 @@
+import type { RoomRole } from './domain';
+
 /**
  * 게임 스킬(FUNC-009). 목록·등급·사용 시점·사용 역할의 원본은 노션 「자료실 ▸ 게임 스킬 (1)」이고,
  * 이 파일은 그 내용을 옮긴 것이다. 규칙(후보 뽑기·보유 칸·선택 진행)은 서버 도메인이 계산한다.
@@ -225,3 +227,38 @@ export interface SkillCandidateView {
  * 받지 않는다(`decline`, 가득 찼을 때만).
  */
 export type SkillChoice = { slot: number; replace?: number } | { decline: true };
+
+/** 선택 진행 현황. 방 전체에 공개한다(후보·보유 스킬은 본인에게만 보낸다) */
+export interface SkillPickPublic {
+  /** 이 서버 시각까지 선택할 수 있다 */
+  deadline: number;
+  /** 게임 전체 종 성공 누적 횟수 */
+  successCount: number;
+  /** 몇 번째 선택인지 */
+  pickNo: number;
+  /** 선택을 마친 사람 수와 전체 대상 수(플레이어·관전자 모두) */
+  done: number;
+  total: number;
+}
+
+/** 본인에게만 보내는 스킬 상태(`game:skills`) */
+export interface SkillStateEvent {
+  gameId: string;
+  /** 보유 스킬(최대 3개, 칸 순서대로) */
+  slots: SkillId[];
+  /** 선택에 참여 중이면 후보와 내 선택 */
+  pick: {
+    role: RoomRole;
+    candidates: SkillId[];
+    /** 고른 후보 칸, 아직 안 골랐거나 받지 않았으면 null */
+    candidate: number | null;
+    /** 들어간 보유 칸 */
+    slot: number | null;
+    declined: boolean;
+  } | null;
+}
+
+export interface SkillPickRequest {
+  gameId: string;
+  choice: SkillChoice;
+}
