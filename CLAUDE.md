@@ -196,8 +196,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `server/src/domain/user/`: 인프라와 독립적인 계정 타입, 누적 통계 계산 객체.
 - `server/src/domain/game/game-settlement.ts`: 저장 전 확정 순위·기록 검증.
 - `server/src/domain/card/deck.ts`, `domain/player/game-player.ts`, `domain/game/game.ts`, `table.ts`: 카드·셔플·분배, 보유 카드, 테이블, 턴·종·벌칙·탈락·순위를 캡슐화한 순수 TS 객체. 종 판정 후 1.8초 동안 서버도 카드 내기를 막고 `roundResumeAt`을 공개한다.
-- `shared/src/skills.ts`, `server/src/domain/skill/`: 스킬(FUNC-009). 17개 스킬 목록·등급·확률은 `shared`, 후보 뽑기(`skill-roll.ts`)·보유 칸(`skill-inventory.ts`)·선택 진행(`skill-book.ts`, `skill-selection.ts`)은 순수 도메인이다. 아직 게임 엔진·소켓에는 연결하지 않았다.
-- `client/src/pages/game/skill/`, `styles/skill.css`, `assets/skills/`: Figma NLML_design 「07 · 스킬」 화면(FUNC-009). `SkillPick`(선택 창, 21·21-1), `SkillDock`·`SkillSlot`(슬롯, 22), `SkillCard`, `SkillGlyph`(Noto Emoji 글리프 또는 SVG 마스크)를 `GameView.skills`로 그린다. 서버 연결 전이라 `#game-preview/skill-pick`, `skill-pick-spectator`, `skill-pick-full`(시안 없음), `skill-slots` 장면으로만 볼 수 있다. 시안과 다른 점: 보유 칸은 처음부터 3칸이고 가득 차면 교체·받지 않기를 둔다(명세), 러시안 룰렛은 4성 영웅(명세).
+- `shared/src/skills.ts`, `server/src/domain/skill/`: 스킬(FUNC-009). 17개 스킬 목록·등급·확률은 `shared`, 후보 뽑기(`skill-roll.ts`)·보유 칸(`skill-inventory.ts`)·선택 진행(`skill-book.ts`, `skill-selection.ts`)은 순수 도메인이다. `Game`이 종 성공을 세어 5번마다 선택을 열고(`openSkillPick`), 선택 중에는 카드 내기·종·턴 타이머를 멈춘다. 서비스(`GameService`)가 방 큐 타이머(`skill-open`·`skill-settle`)로 열기·마감을 처리하고 `game:skills`를 본인에게만 보낸다. 규칙·계약은 `server/GAME.md`의 「스킬 선택」.
+- `client/src/pages/game/skill/`, `styles/skill.css`, `assets/skills/`: Figma NLML_design 「07 · 스킬」 화면(FUNC-009). `SkillPick`(선택 창, 21·21-1), `SkillDock`·`SkillSlot`(슬롯, 22), `SkillCard`, `SkillGlyph`(Noto Emoji 글리프 또는 SVG 마스크)를 `GameView.skills`로 그린다. 서버 상태(`game:skills`, 스냅샷 `skillPick`)로 그리고(`to-game-view.ts`의 `skillsOf`), 개발 서버에서는 `#game-preview/skill-pick`, `skill-pick-spectator`, `skill-pick-full`(시안 없음), `skill-slots` 장면으로 고정 상태도 볼 수 있다. 선택 중에는 카드 내기·종·단축키를 막는다. 슬롯 사용(Q·W·E)은 아직 연결하지 않았다. 시안과 다른 점: 보유 칸은 처음부터 3칸이고 가득 차면 교체·받지 않기를 둔다(명세), 러시안 룰렛은 4성 영웅(명세).
 - `server/src/modules/game/`: 게임 Gateway, 서비스, 서버 셔플 팩토리, 타이머, 브로드캐스트, 결과 저장. `infra/game-state/room-queue.ts`가 인증·타이머·이탈·정산을 방별 접수 순서로 직렬화한다.
 - `server/src/infra/redis/game-state.repository.ts`: 첨부 Redis 명세의 미러, 종 예약과 정산 후 삭제. `shared/src/game-events.ts`는 공개 스냅샷과 소켓 계약이다.
 - `server/src/modules/room/room-game.lifecycle.ts`: Room→Game 모듈 순환 참조 없이 시작·이탈·방 종료를 게임 큐에 연결한다.
@@ -345,9 +345,11 @@ C→S 이벤트는 ack로 `{ ok: true }` 또는 `{ ok: false, code }`를 받는�
 | C→S | `room:start` | `{}` | 005-01 |
 | C→S | `card:play` | `{ gameId, turnId }` → `GameAck` | 005-12,13 |
 | C→S | `bell:ring` | `{ gameId, turnSeq }` → `GameAck` | 005-06,07,08 |
+| C→S | `skill:pick` | `{ gameId, choice }` → `GameAck` | 009-03 |
 | C→S | `game:sync`, `game:return` | `{}` → `GameAck` | 003-07,005-10 |
 | S→C | `game:state` | `GameStateEvent \| null` (숨긴 덱은 개수만, 보낸 서버 시각 `serverTime`) | 005 |
 | S→C | `game:action` | `GameAction` (카드·종·이탈·연결 상태) | 005 |
+| S→C | `game:skills` | `SkillStateEvent \| null` (본인에게만: 보유 스킬·선택 후보) | 009 |
 | S→C | `room:state` | `RoomResponse \| null` 연결 직후와 방이 바뀔 때마다 전체 상태 | 003 |
 | S→C | `room:notice` | 입장·퇴장·이동·추방·방장 변경·게임 시작 안내 | 003 |
 | S→C | `room:kicked` | 없음. 추방당한 회원에게만 | 003-10 |

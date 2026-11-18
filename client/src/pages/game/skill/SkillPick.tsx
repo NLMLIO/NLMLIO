@@ -53,8 +53,7 @@ export function SkillPick({
   return (
     <div className="skill-pick" role="dialog" aria-modal="true" aria-labelledby="skill-pick-title">
       <p className="skill-pick-progress">
-        {spectator ? '관전자' : '다른 플레이어'} {pick.progress.done} / {pick.progress.total} 선택
-        완료
+        다른 사람 {pick.progress.done} / {pick.progress.total} 선택 완료
       </p>
       <p className="skill-pick-timer">
         <span>남은 시간</span>

@@ -6,6 +6,7 @@ import type {
   GameCard,
   GameSnapshot,
   GameStateEvent,
+  SkillStateEvent,
 } from '@nlmlio/shared';
 
 type BellAction = Extract<GameAction, { kind: 'bell' }>;
@@ -33,6 +34,8 @@ interface GameState {
   offlineSince: Record<number, number>;
   /** 서버 시각 − 이 브라우저 시각 추정치(스냅샷의 serverTime으로 잰다). 턴 마감 시각을 남은 초로 바꿀 때 쓴다 */
   clockOffset: number;
+  /** 내 보유 스킬과 선택 후보(`game:skills`, 본인에게만 온다) */
+  skills: SkillStateEvent | null;
   /** 결과 확인 뒤 대기실로 돌아간 게임. 이 게임의 종료 스냅샷이 늦게 와도 다시 띄우지 않는다 */
   returnedGameId: string | null;
 }
@@ -49,6 +52,7 @@ export const useGameStore = create<GameState>(() => ({
   lastCards: {},
   offlineSince: {},
   clockOffset: 0,
+  skills: null,
   returnedGameId: null,
 }));
 
@@ -63,6 +67,7 @@ export const gameActions = {
           lastBell: null,
           lastCards: {},
           offlineSince: {},
+          skills: null,
           returnedGameId: prev?.status === GameStatus.ENDED ? prev.gameId : state.returnedGameId,
         };
       }
@@ -82,9 +87,13 @@ export const gameActions = {
         snapshot: next,
         clockOffset,
         offlineSince,
-        ...(sameGame ? {} : { lastBell: null, lastCards: {}, returnedGameId: null }),
+        ...(sameGame ? {} : { lastBell: null, lastCards: {}, skills: null, returnedGameId: null }),
       };
     });
+  },
+  /** `game:skills`. 내 보유 스킬과 후보. null이면 스킬 상태가 없다 */
+  skills(event: SkillStateEvent | null) {
+    useGameStore.setState({ skills: event });
   },
   /** `game:action`. 받아들였으면 true(효과음·로그에 쓴다), 지난 이벤트면 false */
   action(event: GameActionEvent): boolean {

@@ -120,7 +120,12 @@ export function GameBoard({
         <Bell
           state={view.bell}
           pileCount={view.pileCount}
-          disabled={spectating || view.myPhase === 'judging' || view.bell.kind === 'countdown'}
+          disabled={
+            spectating ||
+            view.myPhase === 'judging' ||
+            view.bell.kind === 'countdown' ||
+            !!view.skills?.pick
+          }
           onRing={actions.onRingBell}
         />
         {seatedPlayers.map((player, index) => (

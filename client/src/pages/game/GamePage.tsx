@@ -6,7 +6,7 @@ import {
   GameStatus,
   RoomStatus,
 } from '@nlmlio/shared';
-import type { PublicUser } from '@nlmlio/shared';
+import type { PublicUser, SkillChoice } from '@nlmlio/shared';
 import { ApiError, api, errorMessage } from '../../api/http';
 import { playSound } from '../../audio/sounds';
 import { useGameShortcuts } from '../../hooks/use-game-shortcuts';
@@ -39,6 +39,7 @@ export function GamePage({
   const lastCards = useGameStore((state) => state.lastCards);
   const offlineSince = useGameStore((state) => state.offlineSince);
   const clockOffset = useGameStore((state) => state.clockOffset);
+  const skills = useGameStore((state) => state.skills);
   const room = useRoomStore((state) => state.room);
   const roomSynced = useRoomStore((state) => state.synced);
   const log = useRoomStore((state) => state.log);
@@ -88,10 +89,15 @@ export function GamePage({
   const canAct = live && me?.status === GamePlayerStatus.ACTIVE;
   const myTurn = canAct && snapshot?.turnUserId === user.id;
   const judging = live && (snapshot?.roundResumeAt ?? 0) > now + clockOffset;
+  // 스킬 선택 중에는 게임이 멈춘다(FUNC-009-01). 카드 내기·종은 서버도 무시한다.
+  const picking = live && !!snapshot?.skillPick;
 
   function isPaused() {
     const current = useGameStore.getState();
-    return (current.snapshot?.roundResumeAt ?? 0) > Date.now() + current.clockOffset;
+    return (
+      (current.snapshot?.roundResumeAt ?? 0) > Date.now() + current.clockOffset ||
+      !!current.snapshot?.skillPick
+    );
   }
 
   async function playCard() {
@@ -123,6 +129,16 @@ export function GamePage({
       setError(failure);
       if (rungSeq.current === key) rungSeq.current = null;
     });
+  }
+
+  /** 후보 칸 선택(FUNC-009-03): 결과는 서버가 보내는 상태로만 화면에 반영한다 */
+  function pickSkill(choice: SkillChoice) {
+    if (!snapshot) return;
+    void sendGameIntent(GameClientEvent.SKILL_PICK, { gameId: snapshot.gameId, choice }).then(
+      (failure) => {
+        if (failure) setError(failure);
+      },
+    );
   }
 
   async function leaveRoom() {
@@ -157,19 +173,20 @@ export function GamePage({
     onLeave: () => (canAct ? setConfirmLeave(true) : void leaveRoom()),
     onSendChat: (text) => sendChat('message', text),
     onSendEmote: (emoji) => sendChat('emoji', emoji),
+    onPickSkill: pickSkill,
   };
 
   const ended = snapshot?.status === GameStatus.ENDED;
   useGameShortcuts({
     j:
-      confirmLeave || ended || judging
+      confirmLeave || ended || judging || picking
         ? undefined
         : myTurn
           ? actions.onPlayCard
           : !canAct && !leaving
             ? actions.onLeave
             : undefined,
-    space: canAct && !confirmLeave && !judging ? ringBell : undefined,
+    space: canAct && !confirmLeave && !judging && !picking ? ringBell : undefined,
   });
 
   if (!snapshot)
@@ -202,6 +219,7 @@ export function GamePage({
     room,
     log,
     emojis,
+    skills,
     bell: judging ? lastBell : null,
     lastCards,
     offlineSince,

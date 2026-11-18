@@ -3,9 +3,18 @@ import {
   GAME_RECONNECT_GRACE_MS,
   GamePlayerStatus,
   GameStatus,
+  RoomRole,
+  SKILL_PICK_TIME_MS,
+  SKILL_SLOT_COUNT,
   TURN_TIME_MS,
 } from '@nlmlio/shared';
-import type { ChatEmojiCode, Fruit, GameSnapshot, RoomResponse } from '@nlmlio/shared';
+import type {
+  ChatEmojiCode,
+  Fruit,
+  GameSnapshot,
+  RoomResponse,
+  SkillStateEvent,
+} from '@nlmlio/shared';
 import type { BellEvent, CardEvent } from '../../stores/game-store';
 import type { LogEntry as RoomLogEntry } from '../../stores/room-store';
 import { colorOf } from '../room/member-color';
@@ -20,6 +29,7 @@ import {
   type RankingEntry,
   type Verdict,
 } from './game-view';
+import type { SkillsView } from './skill/skill-view';
 
 /**
  * 서버 스냅샷 → 화면 모델 변환. 판정·순위·카드 수는 서버가 보낸 값을 그대로 옮기고,
@@ -36,6 +46,8 @@ export interface GameViewInput {
   bell: BellEvent | null;
   lastCards: Record<number, CardEvent>;
   offlineSince: Record<number, number>;
+  /** 서버가 본인에게 보낸 보유 스킬·선택 후보 */
+  skills: SkillStateEvent | null;
   /** 서버 시각으로 맞춘 지금 */
   serverNow: number;
   /** 이 브라우저 시각 */
@@ -199,6 +211,39 @@ function bannerOf(input: GameViewInput, seated: boolean): Banner | undefined {
   return undefined;
 }
 
+/** 서버가 보낸 내 스킬 상태 → 슬롯과 선택 창. 아직 못 받았거나 다른 게임의 것이면 만들지 않는다 */
+function skillsOf(input: GameViewInput): SkillsView | undefined {
+  const { snapshot, skills } = input;
+  if (snapshot.status !== GameStatus.PLAYING || !skills || skills.gameId !== snapshot.gameId)
+    return undefined;
+  const slots = Array.from({ length: SKILL_SLOT_COUNT }, (_, index) => ({
+    skillId: skills.slots[index] ?? null,
+    usable: true,
+  }));
+  const open = snapshot.skillPick;
+  const pick = skills.pick;
+  if (!open || !pick) return { slots };
+  const chosen = pick.candidate !== null || pick.declined;
+  return {
+    slots,
+    pick: {
+      role: pick.role === RoomRole.SPECTATOR ? 'spectator' : 'player',
+      successCount: open.successCount,
+      pickNo: open.pickNo,
+      candidates: pick.candidates,
+      chosenCandidate: pick.candidate,
+      placedSlot: pick.slot,
+      declined: pick.declined,
+      secondsLeft: secondsLeft(open.deadline, input.serverNow, SKILL_PICK_TIME_MS / 1000),
+      // 나를 뺀 다른 사람들의 선택 진행
+      progress: {
+        done: Math.max(0, open.done - (chosen ? 1 : 0)),
+        total: Math.max(0, open.total - 1),
+      },
+    },
+  };
+}
+
 export function toGameView(input: GameViewInput): GameView {
   const { snapshot, userId, bell } = input;
   const seat = snapshot.players.findIndex((player) => player.userId === userId);
@@ -301,6 +346,7 @@ export function toGameView(input: GameViewInput): GameView {
     banner: bannerOf(input, seated),
     verdict: bell ? verdictOf(input, bell) : undefined,
     log: logOf(input),
+    skills: skillsOf(input),
   };
 }
 
