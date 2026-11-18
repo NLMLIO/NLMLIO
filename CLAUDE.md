@@ -196,6 +196,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `server/src/domain/user/`: 인프라와 독립적인 계정 타입, 누적 통계 계산 객체.
 - `server/src/domain/game/game-settlement.ts`: 저장 전 확정 순위·기록 검증.
 - `server/src/domain/card/deck.ts`, `domain/player/game-player.ts`, `domain/game/game.ts`, `table.ts`: 카드·셔플·분배, 보유 카드, 테이블, 턴·종·벌칙·탈락·순위를 캡슐화한 순수 TS 객체. 종 판정 후 1.8초 동안 서버도 카드 내기를 막고 `roundResumeAt`을 공개한다.
+- `shared/src/skills.ts`, `server/src/domain/skill/`: 스킬(FUNC-009). 17개 스킬 목록·등급·확률은 `shared`, 후보 뽑기(`skill-roll.ts`)·보유 칸(`skill-inventory.ts`)·선택 진행(`skill-book.ts`, `skill-selection.ts`)은 순수 도메인이다. 아직 게임 엔진·소켓·화면에는 연결하지 않았다.
 - `server/src/modules/game/`: 게임 Gateway, 서비스, 서버 셔플 팩토리, 타이머, 브로드캐스트, 결과 저장. `infra/game-state/room-queue.ts`가 인증·타이머·이탈·정산을 방별 접수 순서로 직렬화한다.
 - `server/src/infra/redis/game-state.repository.ts`: 첨부 Redis 명세의 미러, 종 예약과 정산 후 삭제. `shared/src/game-events.ts`는 공개 스냅샷과 소켓 계약이다.
 - `server/src/modules/room/room-game.lifecycle.ts`: Room→Game 모듈 순환 참조 없이 시작·이탈·방 종료를 게임 큐에 연결한다.
