@@ -1,3 +1,0 @@
-nlmlio.heijionline.com {
-	reverse_proxy web:80
-}

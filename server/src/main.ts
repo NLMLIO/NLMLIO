@@ -1,13 +1,16 @@
 import { loadEnvFiles, serverPort } from './config/env';
 loadEnvFiles();
 
+import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { configureApp } from './common/configure-app';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  configureApp(app);
+  app.setGlobalPrefix('api');
+  app.useGlobalPipes(
+    new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+  );
   app.enableShutdownHooks();
   await app.listen(serverPort());
 }
