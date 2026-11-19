@@ -119,6 +119,8 @@ export class GameService implements OnModuleInit {
     authorize: Authorize = trusted,
   ): Promise<boolean> {
     return this.command(userId, input.gameId, authorize, async (game) => {
+      // 승자는 이미 확정돼도 최초 접수 후 200ms 이내의 손은 서버 순서로 함께 표시한다.
+      if (game.recordBellHand(userId, input.turnSeq, receivedAt)) return null;
       if (!game.canRing(userId, input.turnSeq)) return null;
       if (!(await this.snapshots.claimBell(game.id, input.turnSeq, userId))) return null;
       return game.ring(userId, input.turnSeq, receivedAt);
@@ -197,13 +199,15 @@ export class GameService implements OnModuleInit {
       const session = this.games.get(code);
       if (!session || session.game.id !== gameId) throw appError(ErrorCode.GAME_NOT_FOUND);
       let event: GameAction | null;
+      const version = session.game.version;
       try {
         event = await action(session.game);
       } catch (error) {
         if (error instanceof GameRuleError) throw appError(error.code);
         throw error;
       }
-      if (event) await this.changed(session, event);
+      if (event || session.game.version !== version)
+        await this.changed(session, event ?? undefined);
       return event !== null;
     });
   }

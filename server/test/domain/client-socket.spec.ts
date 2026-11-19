@@ -108,4 +108,14 @@ describe('클라이언트 소켓 인증 갱신과 의도 응답', () => {
     expect(await api.sendGameIntent(shared.GameClientEvent.PLAY, {})).toContain('차례나 판정 상태');
     api.disconnectSocket();
   });
+  it('점수는 확정됐어도 서버가 손을 받아 주면 실패 안내를 띄우지 않는다', async () => {
+    const { api, emitWithAck } = setup();
+    emitWithAck.mockImplementationOnce(async () => ({
+      ok: true,
+      ignored: true,
+      handAccepted: true,
+    }));
+    expect(await api.sendGameIntent(shared.GameClientEvent.BELL, {})).toBeNull();
+    api.disconnectSocket();
+  });
 });

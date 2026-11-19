@@ -10,6 +10,7 @@ import { Card, Deck } from '../card/deck';
 import { GamePlayer } from '../player/game-player';
 import { GameSettlement } from './game-settlement';
 import { Table } from './table';
+import { BellHands } from './bell-hands';
 
 export { TURN_TIME_MS };
 export interface StartGameInput {
@@ -53,6 +54,7 @@ export interface GameCheckpoint {
 export class Game {
   private readonly players: GamePlayer[];
   private readonly table: Table;
+  private bellHands: BellHands | null = null;
   private pile: Card[];
   private readonly out: number[] = [];
   /** 덱을 다 낸 순서. 아무도 낼 카드가 없을 때 마지막에 낸 사람이 이기고, 나머지는 먼저 떨어진 순으로 아래 순위다 */
@@ -158,6 +160,7 @@ export class Game {
     now = this.time(now);
     if (this.resumeAt !== null && now < this.resumeAt) return null;
     this.resumeAt = null;
+    this.bellHands = null;
     const card = player.draw(automatic);
     this.table.play(userId, card);
     this.sequence++;
@@ -174,6 +177,10 @@ export class Game {
 
   ring(userId: number, sequence: number, now: number): GameAction | null {
     if (!this.canRing(userId, sequence)) return null;
+    const receivedAt = now;
+    const eligibleUserIds = this.players
+      .filter((player) => player.active)
+      .map((player) => player.userId);
     now = this.time(now);
     const player = this.activePlayer(userId);
     const totals = this.table.totals();
@@ -209,6 +216,7 @@ export class Game {
     this.roundNumber++;
     this.newTurn(now);
     this.resumeAt = now + ROUND_RESULT_MS;
+    this.bellHands = new BellHands(sequence, receivedAt, this.resumeAt, eligibleUserIds, userId);
     this.deadline = this.resumeAt + TURN_TIME_MS;
     this.finishIfNeeded(now);
     this.revision++;
@@ -220,6 +228,12 @@ export class Game {
       totals,
       ...(!success ? { penaltyCards } : {}),
     };
+  }
+
+  recordBellHand(userId: number, sequence: number, receivedAt: number): boolean {
+    if (!this.bellHands?.add(userId, sequence, receivedAt)) return false;
+    this.revision++;
+    return true;
   }
 
   /**
@@ -324,6 +338,7 @@ export class Game {
       turnUserId: this.current,
       turnDeadline: this.deadline,
       roundResumeAt: this.resumeAt,
+      bellHands: this.bellHands?.snapshot() ?? null,
       lastPlayAt: this.playedAt,
       startedAt: this.input.now,
       endedAt: this.endedAt,

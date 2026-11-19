@@ -72,10 +72,17 @@ export class GameGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     @ConnectedSocket() socket: Socket,
     @MessageBody() input: BellRingDto,
   ): Promise<GameAck> {
-    const accepted = await this.games.bell(socketUser(socket).userId, input, Date.now(), () =>
-      this.authorize(socket),
-    );
-    return { ok: true, ...(!accepted ? { ignored: true } : {}) };
+    const userId = socketUser(socket).userId;
+    const accepted = await this.games.bell(userId, input, Date.now(), () => this.authorize(socket));
+    const state = this.games.sync(userId);
+    const handAccepted =
+      state?.gameId === input.gameId &&
+      state.bellHands?.turnSeq === input.turnSeq &&
+      state.bellHands.userIds.includes(userId);
+    return {
+      ok: true,
+      ...(!accepted ? { ignored: true, ...(handAccepted ? { handAccepted: true } : {}) } : {}),
+    };
   }
   @SubscribeMessage(GameClientEvent.SYNC)
   async sync(

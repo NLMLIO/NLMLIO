@@ -24,6 +24,29 @@ const { GameInputSequence } = load('pages/game/game-input-sequence.ts') as {
   GameInputSequence: new () => Sequence;
 };
 
+describe('서버가 허용한 손 접수 구간', () => {
+  const { canJoinBellHandWindow } = load('pages/game/game-input-sequence.ts') as {
+    canJoinBellHandWindow: (snapshot: object | null, userId: number, now: number) => boolean;
+  };
+  const snapshot = {
+    bellHands: {
+      turnSeq: 1,
+      windowClosesAt: 1200,
+      displayUntil: 2800,
+      userIds: [2],
+      eligibleUserIds: [1, 2],
+    },
+  };
+  it('서버 참가자·순서·마감으로만 판단하고 자기 손을 미리 추가하지 않는다', () => {
+    expect(canJoinBellHandWindow(null, 1, 1000)).toBe(false);
+    expect(canJoinBellHandWindow(snapshot, 1, 1200)).toBe(true);
+    expect(canJoinBellHandWindow(snapshot, 1, 1201)).toBe(false);
+    expect(canJoinBellHandWindow(snapshot, 2, 1100)).toBe(false);
+    expect(canJoinBellHandWindow(snapshot, 99, 1100)).toBe(false);
+    expect(snapshot.bellHands.userIds).toEqual([2]);
+  });
+});
+
 describe('카드와 종 연속 입력', () => {
   it('카드 요청 중 종을 눌러도 버리지 않고 응답 뒤 최신 테이블 순번을 사용한다', async () => {
     const input = new GameInputSequence();
