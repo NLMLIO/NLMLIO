@@ -21,7 +21,10 @@ export function SkillCast({ cast }: { cast: SkillCastView }) {
         <small>{cast.caster} 님이 사용</small>
         <b>{skill.name}!</b>
       </span>
-      <span className="skill-cast-target">{cast.target ? `→ ${cast.target}` : '전원'}</span>
+      <span className="skill-cast-target">
+        {cast.reflectedBy ? `🌈 ${cast.reflectedBy} 반사 → ` : cast.target ? '→ ' : ''}
+        {cast.target ?? '전원'}
+      </span>
     </div>
   );
 }

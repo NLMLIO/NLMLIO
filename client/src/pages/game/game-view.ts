@@ -117,6 +117,8 @@ export interface GameView {
   log: LogEntry[];
   /** 스킬 슬롯과 선택 창(FUNC-009). 스킬이 없는 화면은 비워 둔다 */
   skills?: SkillsView;
+  /** 지뢰가 깔려 있다(다음 종 판정까지). 모두에게 흐릿하게 보인다 */
+  mine?: boolean;
   /** 방금 쓴 스킬 알림(화면 위쪽, 1.6초) */
   skillCast?: SkillCastView;
   /** 대상 지정 중: 누를 수 있는 좌석 */
@@ -163,6 +165,8 @@ export interface SkillCastView {
   target: string | null;
   /** 대상의 좌석 id. 대상이 없으면 null */
   targetId: string | null;
+  /** 무지개 반사로 막아 낸 사람의 닉네임. 있으면 target은 쓴 사람 자신이다 */
+  reflectedBy?: string;
 }
 
 export interface SkillTargeting {

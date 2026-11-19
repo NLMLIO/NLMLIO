@@ -28,8 +28,10 @@
 ## 스킬 사용 (FUNC-009-04)
 
 - `skill:use { gameId, slot, targetUserId? }`: 보유 칸 `slot`(0~2)의 스킬을 쓴다. 쓰면 칸에서 사라지고 `game:action`으로 `{ kind: 'skill', userId, skillId, targetUserId }`가 방 전체에 가며, 슬롯이 바뀐 사람에게만 `game:skills`를 다시 보낸다.
-- 쓸 수 있는 스킬은 `SkillDefinition.available`이 true인 것뿐이다(현재 반짝반짝한 카드·종 옮기기·과일 6개 카드·시간 정지·침 뱉기·아마테라스·숫자 바꾸기·종 부수기·해킹·쥐새끼·러시안 룰렛). 나머지는 보유할 수 있어도 `SKILL_UNAVAILABLE`이고 칸에서 사라지지 않는다. 사용 시점은 지금 `ANYTIME`만 지원한다.
+- 쓸 수 있는 스킬은 `SkillDefinition.available`이 true인 것뿐이다(현재 반짝반짝한 카드·종 옮기기·과일 6개 카드·시간 정지·침 뱉기·아마테라스·숫자 바꾸기·종 부수기·해킹·쥐새끼·러시안 룰렛·지뢰·무지개 반사). 나머지는 보유할 수 있어도 `SKILL_UNAVAILABLE`이고 칸에서 사라지지 않는다. 사용 시점은 지금 `ANYTIME`만 지원한다.
 - 플레이 중인 사람은 플레이어, 아니면 관전자로 보고 스킬의 사용 역할과 맞는지 검사한다. 대상 지정 스킬은 플레이 중인 다른 사람만 대상이 된다. 선택 중에는 조용히 무시(`ignored`)한다.
+- 지뢰: `mine` 플래그를 켠다(공개 스냅샷 `mine`). 다음 `ring`에서 5개가 맞으면 승자 없이 테이블 카드를 모두 `pile`에 넣고 `GameAction.mined`를 보낸다. `GamePlayer.bell`·성공 횟수(`countSuccess`)는 부르지 않는다. 오발·게임 종료·성공 판정 어느 쪽이든 판정이 나면 플래그가 꺼진다.
+- 무지개 반사: `useSkill`에서 단일 지정 스킬의 대상이 플레이어이고 `SkillBook.consumeSkill(target, RAINBOW_REFLECT)`가 성공하면 효과 대상을 쓴 사람으로 바꾸고 `GameAction.reflectedBy`에 원래 대상을 싣는다. 쓴 사람이 관전자면 반사하지 않는다. 직접 사용은 `timing=AUTOMATIC`이라 거부된다.
 - 쥐새끼: `pile`(종 밑 보관 스택) 전부를 쓴 사람의 덱 아래로 옮기고(`GamePlayer.take`) '덱을 다 낸 순서' 기록(`emptied`)에서 뺀다. 보관 스택이 비어 있으면 `SKILL_UNAVAILABLE`이고 스킬은 칸에 남는다.
 - 러시안 룰렛: 관전자가 대상(플레이 중이고 테이블에 카드가 있는 사람)을 지정하면 `Table.shoot`이 그 사람의 테이블 맨 위부터 5장(있는 만큼)을 꺼내 보관 스택에 넣는다. 금칠·개수 증가는 풀리고 과일 6개 카드는 사라진다. 테이블이 바뀌므로 `turnSeq`를 올려 이전 순번의 종 요청이 무시되게 한다.
 - 숫자 바꾸기: 내 테이블 맨 위 카드에 `Card.boost()`(과일 개수 +1)를 건다. `count`가 늘어난 값을 돌려주므로 합계·판정·공개 스냅샷(`topCard.count`, `boosted: true`)이 모두 같은 값을 쓴다. 걸 수 있는 카드(특수 카드·이미 늘어난 카드·6개 카드 제외)가 없으면 `SKILL_UNAVAILABLE`이고 스킬은 칸에 남는다. 카드가 `Table.remove`로 테이블을 떠나면 원복한다.

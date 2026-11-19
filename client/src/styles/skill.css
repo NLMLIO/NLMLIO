@@ -923,3 +923,43 @@ body:has(.scene-switcher) .skill-shot-ring,
 body:has(.scene-switcher) .skill-shot-text {
   animation: none;
 }
+
+/* 지뢰: 종 옆에 흐릿하게 보인다. 터지면 판정 결과(지뢰 폭발!)가 대신 뜬다 */
+.skill-mine {
+  position: absolute;
+  left: 50%;
+  top: 56%;
+  z-index: 2;
+  color: var(--status-danger);
+  font-size: 22px;
+  line-height: 1;
+  opacity: 0.28;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  animation: mine-pulse 2.4s ease-in-out infinite;
+}
+@keyframes mine-pulse {
+  50% {
+    opacity: 0.12;
+  }
+}
+
+/* 지뢰: 종 옆에 흐릿하게 보인다. 터지면 판정 결과(지뢰 폭발!)가 대신 뜬다 */
+.skill-mine {
+  position: absolute;
+  left: 50%;
+  top: 56%;
+  z-index: 2;
+  color: var(--status-danger);
+  font-size: 22px;
+  line-height: 1;
+  opacity: 0.28;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  animation: mine-pulse 2.4s ease-in-out infinite;
+}
+@keyframes mine-pulse {
+  50% {
+    opacity: 0.12;
+  }
+}

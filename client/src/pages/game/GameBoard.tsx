@@ -155,6 +155,11 @@ export function GameBoard({
           hackKey={view.hackKey}
         />
         {view.bellMove && <span className="bell-ghost" aria-hidden="true" />}
+        {view.mine && (
+          <span className="skill-mine" role="img" aria-label="지뢰가 깔려 있어요">
+            ✸
+          </span>
+        )}
         {seatedPlayers.map((player, index) => (
           <div
             key={`${player.id}:${strike?.playerId === player.id ? strike.id : 'rest'}`}

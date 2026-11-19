@@ -95,6 +95,13 @@ function verdictOf(input: GameViewInput, bell: BellEvent): Verdict {
     nickname: ringer?.nickname ?? '',
     color: playerColor(input.snapshot, input.room, action.userId),
   };
+  if (action.mined)
+    return {
+      tone: 'misfire',
+      ringer: ringerView,
+      formula: '지뢰 폭발!',
+      detail: `성공도 오발도 아니에요 · 카드 ${action.movedCards}장이 모두 종 아래로`,
+    };
   if (action.success) {
     const fruit = FRUIT_ORDER.find((name) => action.totals[name] === 5) ?? 'STRAWBERRY';
     const counts = tableBefore
@@ -167,12 +174,15 @@ function logOf(input: GameViewInput): LogEntry[] {
           action.targetUserId === null
             ? null
             : snapshot.players.find((player) => player.userId === action.targetUserId)?.nickname;
+        const reflected = action.reflectedBy
+          ? snapshot.players.find((player) => player.userId === action.reflectedBy)?.nickname
+          : undefined;
         return {
           kind: 'event',
           id,
           tone: 'success',
           nickname,
-          text: `${skillById(action.skillId).name} 사용${target ? ` → ${target}` : ''}`,
+          text: `${skillById(action.skillId).name} 사용${target ? ` → ${target}` : ''}${reflected ? ` · ${reflected}님의 무지개 반사!` : ''}`,
         };
       }
     }
@@ -257,6 +267,9 @@ function skillCastOf(input: GameViewInput): SkillCastView | undefined {
     skillId: action.skillId,
     target: action.targetUserId === null ? null : nicknameOf(input, action.targetUserId),
     targetId: action.targetUserId === null ? null : String(action.targetUserId),
+    ...(action.reflectedBy !== undefined
+      ? { reflectedBy: nicknameOf(input, action.reflectedBy) }
+      : {}),
   };
 }
 
@@ -423,9 +436,11 @@ export function toGameView(input: GameViewInput): GameView {
       emoteKey: emoji?.id,
       outcome:
         bell && ringer
-          ? bell.action.success
-            ? { tone: 'win', label: `WIN +${bell.action.movedCards}` }
-            : { tone: 'misfire', label: '오발' }
+          ? bell.action.mined
+            ? { tone: 'misfire', label: '지뢰!' }
+            : bell.action.success
+              ? { tone: 'win', label: `WIN +${bell.action.movedCards}` }
+              : { tone: 'misfire', label: '오발' }
           : undefined,
     };
   });
@@ -504,6 +519,7 @@ export function toGameView(input: GameViewInput): GameView {
     turnNickname: turnPlayer?.nickname,
     myTurnSeconds: myPhase === 'turn' ? turnSeconds : undefined,
     pileCount: snapshot.pileCount,
+    mine: snapshot.mine || undefined,
     bell: bell
       ? { kind: bell.action.success ? 'success' : 'misfire' }
       : playing && snapshot.turnUserId === null
