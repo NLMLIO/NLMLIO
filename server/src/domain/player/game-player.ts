@@ -62,6 +62,24 @@ export class GamePlayer {
   statistics() {
     return { bellSuccess: this.success, bellFail: this.fail, reactionSumMs: this.reaction };
   }
+  cards(): Card[] {
+    return [...this.hand];
+  }
+  /** 도르마무: 판정 전의 카드와 종 기록으로 되돌린다 */
+  restore(hand: readonly Card[], stats: ReturnType<GamePlayer['statistics']>): void {
+    this.hand = [...hand];
+    this.success = stats.bellSuccess;
+    this.fail = stats.bellFail;
+    this.reaction = stats.reactionSumMs;
+  }
+  /** 안해: 새로 분배받은 카드로 처음부터 다시 시작한다(종 기록도 지운다) */
+  restart(hand: readonly Card[]): void {
+    this.hand = [...hand];
+    this.success = 0;
+    this.fail = 0;
+    this.reaction = 0;
+    this.automatic = 0;
+  }
   handCodes(): string[] {
     return this.hand.map((card) => card.code());
   }

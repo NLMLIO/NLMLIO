@@ -13,6 +13,10 @@ export const SKILL_PICK_TIME_MS = 10_000;
 export const SKILL_CAST_MS = 1_600;
 /** 손 개 쌔게 내려치기: 종 판정이 난 뒤 이 시간 안에만 쓸 수 있다 */
 export const HAND_SMASH_WINDOW_MS = 2_000;
+/** 종 야바위가 이어지는 시간과 늘어나는 종의 개수 */
+export const BELL_SHELL_MS = 10_000;
+export const BELL_SHELL_MIN = 3;
+export const BELL_SHELL_MAX = 5;
 /**
  * 종 옮기기(009-05): 종이 옮겨지는 연출 0.5초 + 새 키로 치는 3초. 이동 중 처음 300ms는 종 입력을 무시한다.
  * 새 키는 방 전체가 같은 키 하나를 쓴다.
@@ -169,7 +173,7 @@ export const SKILLS: readonly SkillDefinition[] = [
     timing: SkillTiming.ANYTIME,
     user: SkillUser.PLAYER,
     target: 'none',
-    available: false,
+    available: true,
     description: '10초 동안 종이 3~5개로 늘어난다. 종마다 단축키가 있고 진짜는 하나뿐이다.',
   },
   {
@@ -251,7 +255,7 @@ export const SKILLS: readonly SkillDefinition[] = [
     timing: SkillTiming.ON_ROUND_END,
     user: SkillUser.PLAYER,
     target: 'none',
-    available: false,
+    available: true,
     description: '종을 치기 전 라운드의 카드 상태로 되돌린다.',
   },
   {
@@ -271,7 +275,7 @@ export const SKILLS: readonly SkillDefinition[] = [
     timing: SkillTiming.ANYTIME,
     user: SkillUser.PLAYER,
     target: 'none',
-    available: false,
+    available: true,
     description: '게임을 처음부터 다시 시작한다.',
   },
 ];
@@ -354,4 +358,11 @@ export interface TimeStopPublic {
 /** 종 부수기: 종이 돌아오는 서버 시각 */
 export interface BellBreakPublic {
   endsAt: number;
+}
+
+/** 종 야바위 중: 종마다 단축키가 있고 진짜는 하나뿐이다(어느 것인지는 알리지 않는다) */
+export interface BellShellPublic {
+  endsAt: number;
+  /** 종마다의 단축키. 순서가 종의 번호(0부터)다 */
+  keys: string[];
 }

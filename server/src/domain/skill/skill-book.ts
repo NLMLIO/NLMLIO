@@ -176,6 +176,11 @@ export class SkillBook {
     this.current = null;
   }
 
+  /** 도르마무: 되돌린 판정이 센 성공 1회를 취소한다 */
+  uncountSuccess(): void {
+    if (this.successes > 0) this.successes--;
+  }
+
   /** 안해(009-05): 종 성공 횟수와 모든 보유 스킬, 진행 중인 선택을 처음 상태로 돌린다. */
   reset(): void {
     this.inventories.clear();

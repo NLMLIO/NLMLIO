@@ -35,7 +35,6 @@ const pickRandom = (grade: number, skill: number) => {
 describe.each([
   ['반짝반짝한 카드', sparkleRandom, true, 'SPARKLE_CARD'],
   ['시간 정지', () => pickRandom(0.97, 0), true, 'TIME_STOP'],
-  ['안해(효과 미구현)', () => pickRandom(0.999, 0), false, 'RESET'],
 ])('GameService 스킬 사용 — %s (FUNC-009-04)', (_name, makeRandom, usable, skillId) => {
   let service: GameService;
   let timers: GameTimers;

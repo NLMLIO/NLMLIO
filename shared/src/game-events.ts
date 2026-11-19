@@ -3,6 +3,7 @@ import type { ErrorCode } from './errors';
 import type {
   BellBreakPublic,
   BellMovePublic,
+  BellShellPublic,
   SkillId,
   SkillPickPublic,
   SkillPickRequest,
@@ -57,6 +58,8 @@ export interface CardPlayRequest {
 export interface BellRingRequest {
   gameId: string;
   turnSeq: number;
+  /** 종 야바위 중 누른 종의 번호(`shell.keys` 순서). 야바위가 아닐 때는 보내지 않는다 */
+  bell?: number;
 }
 export interface GamePlayerView {
   userId: number;
@@ -112,6 +115,10 @@ export interface GameSnapshot {
   bellBreak: BellBreakPublic | null;
   /** 아마테라스에 걸린 사람들. 다음 종 판정(또는 탈락)까지 카드 내기·종 치기가 불가다 */
   burning: number[];
+  /** 종 야바위 중이면 종마다의 단축키와 끝나는 시각 */
+  shell: BellShellPublic | null;
+  /** 도르마무로 되돌릴 수 있는 마감 시각(방금 종 판정이 났고 결과를 보여 주는 동안). 아니면 null */
+  rewindUntil: number | null;
   /** 방금 종 판정이 났다: 이 시각까지 다른 플레이어가 손 개 쌔게 내려치기로 종을 친 사람을 칠 수 있다 */
   smashWindow: { userId: number; endsAt: number } | null;
   /** 손이 부서진 사람들. 다음 종 판정(또는 탈락)까지 종을 칠 수 없다 */
@@ -131,6 +138,8 @@ export type GameAction =
       totals: Record<Fruit, number>;
       /** 지뢰가 터졌다: 5개를 맞췄지만 카드가 모두 종 밑으로 갔다. 성공도 오발도 아니다 */
       mined?: true;
+      /** 종 야바위 중 가짜 종을 눌러 오발로 처리됐다 */
+      fake?: true;
     }
   | { kind: 'departed'; userId: number }
   /** 스킬 사용 알림. `targetUserId`가 null이면 대상 없음(전원·나에게) */

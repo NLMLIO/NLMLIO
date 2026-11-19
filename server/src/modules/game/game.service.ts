@@ -121,7 +121,7 @@ export class GameService implements OnModuleInit {
     return this.command(userId, input.gameId, authorize, async (game) => {
       if (!game.canRing(userId, input.turnSeq, receivedAt)) return null;
       if (!(await this.snapshots.claimBell(game.id, input.turnSeq, userId))) return null;
-      return game.ring(userId, input.turnSeq, receivedAt);
+      return game.ring(userId, input.turnSeq, receivedAt, input.bell);
     });
   }
 

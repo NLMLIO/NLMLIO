@@ -246,11 +246,6 @@ describe('Game 스킬 선택 연결(FUNC-009-01)', () => {
   });
 });
 
-/** 후보 3칸이 모두 아직 효과를 구현하지 않은 스킬(안해)이 되는 난수: 등급 ⭐⭐⭐⭐⭐ */
-const unavailableRandom = () => {
-  let index = 0;
-  return () => (index++ % 2 === 0 ? 0.999 : 0);
-};
 /** 후보 3칸이 모두 반짝반짝한 카드가 되도록 등급(⭐)·스킬(둘째)을 고르는 난수 */
 const sparkleRandom = () => {
   let index = 0;
@@ -311,14 +306,6 @@ describe('Game 스킬 사용 틀(FUNC-009-04)', () => {
     expect(game.snapshot().players.map((player) => player.topCard)).not.toContainEqual(
       expect.objectContaining({ gilded: true }),
     );
-  });
-
-  it('효과를 아직 구현하지 않은 스킬은 쓸 수 없고 칸에서 사라지지도 않는다', () => {
-    const game = start(2, unavailableRandom());
-    const at = holdSkills(game);
-    expect(game.skillState(1).slots).toEqual([SkillId.RESET]);
-    expectRule(() => game.useSkill(1, 0, undefined, at + 1), ErrorCode.SKILL_UNAVAILABLE);
-    expect(game.skillState(1).slots).toEqual([SkillId.RESET]);
   });
 
   it('빈 칸·잘못된 칸 번호·필요 없는 대상은 거부한다', () => {
@@ -1031,5 +1018,132 @@ describe('스킬 효과: 손 개 쌔게 내려치기(FUNC-009-05)', () => {
     const at = holdSkills(game);
     expectRule(() => game.useSkill(2, 0, undefined, at + 5000), ErrorCode.SKILL_UNAVAILABLE);
     expectRule(() => game.useSkill(2, 0, 1, at + 2), ErrorCode.VALIDATION_FAILED);
+  });
+});
+
+describe('스킬 효과: 종 야바위(FUNC-009-05)', () => {
+  const setup = () => {
+    const game = start(2, pickRandom(0.6, 0.55));
+    const at = holdSkills(game);
+    expect(game.skillState(1).slots).toEqual([SkillId.BELL_SHELL_GAME]);
+    expect(game.useSkill(1, 0, undefined, at + 1)).toMatchObject({
+      skillId: SkillId.BELL_SHELL_GAME,
+    });
+    game.play(1, game.turnId, at + 2);
+    game.play(2, game.turnId, at + 3);
+    return { game, at };
+  };
+
+  it('10초 동안 종이 3~5개로 늘고 종마다 서로 다른 단축키가 생긴다', () => {
+    const { game, at } = setup();
+    const shell = game.snapshot().shell!;
+    expect(shell.endsAt).toBe(at + 1 + 10_000);
+    expect(shell.keys.length).toBeGreaterThanOrEqual(3);
+    expect(shell.keys.length).toBeLessThanOrEqual(5);
+    expect(new Set(shell.keys).size).toBe(shell.keys.length);
+    expect(JSON.stringify(game.snapshot())).not.toContain('real');
+  });
+
+  it('진짜 종은 하나뿐이다: 진짜를 누르면 평소 판정, 가짜를 누르면 오발이다', () => {
+    const count = setup().game.snapshot().shell!.keys.length;
+    const results = Array.from({ length: count }, (_, bell) => {
+      const { game, at } = setup();
+      return game.ring(1, game.turnSeq, at + 4, bell);
+    });
+    expect(
+      results.filter((action) => action && 'success' in action && action.success),
+    ).toHaveLength(1);
+    for (const action of results.filter((entry) => entry && 'success' in entry && !entry.success))
+      expect(action).toMatchObject({ fake: true, movedCards: 1 });
+  });
+
+  it('종 번호 없이 누르면 가짜로 보고, 10초가 지나면 원래대로 종 하나다', () => {
+    const none = setup();
+    expect(none.game.ring(1, none.game.turnSeq, none.at + 4)).toMatchObject({
+      success: false,
+      fake: true,
+    });
+    const late = setup();
+    expect(late.game.ring(1, late.game.turnSeq, late.at + 12_000)).toMatchObject({
+      success: true,
+    });
+    expect(late.game.snapshot().shell).toBeNull();
+  });
+});
+
+describe('스킬 효과: 도르마무(FUNC-009-05)', () => {
+  const setup = () => {
+    const game = start(2, pickRandom(0.97, 0.9));
+    const at = holdSkills(game);
+    expect(game.skillState(2).slots).toEqual([SkillId.DORMAMMU]);
+    game.play(1, game.turnId, at + 1);
+    game.play(2, game.turnId, at + 2);
+    return { game, at, before: game.checkpoint() };
+  };
+
+  it('판정 결과를 보여 주는 동안 쓰면 카드·성공 횟수가 판정 전으로 돌아온다', () => {
+    const { game, at, before } = setup();
+    const successes = game.snapshot().skillSuccesses;
+    expect(game.ring(1, game.turnSeq, at + 3)).toMatchObject({ success: true });
+    expect(game.snapshot().rewindUntil).toBe(at + 3 + ROUND_RESULT_MS);
+    expect(game.snapshot().skillSuccesses).toBe(successes + 1);
+    expect(game.useSkill(2, 0, undefined, at + 500)).toMatchObject({
+      kind: 'skill',
+      skillId: SkillId.DORMAMMU,
+    });
+    const after = game.checkpoint();
+    expect(after.players).toEqual(before.players);
+    expect(after.pile).toEqual(before.pile);
+    expect(after.turnUserId).toBe(before.turnUserId);
+    expect(game.snapshot().skillSuccesses).toBe(successes);
+    expect(game.snapshot().rewindUntil).toBeNull();
+    // 되돌린 테이블에서 다시 종을 칠 수 있다
+    expect(game.ring(2, game.turnSeq, at + 3 + ROUND_RESULT_MS + 10)).toMatchObject({
+      success: true,
+    });
+  });
+
+  it('결과 표시가 끝난 뒤에는 쓸 수 없고, 쓰는 스킬도 사라지지 않는다', () => {
+    const { game, at } = setup();
+    game.ring(1, game.turnSeq, at + 3);
+    expectRule(
+      () => game.useSkill(2, 0, undefined, at + 3 + ROUND_RESULT_MS + 1),
+      ErrorCode.SKILL_UNAVAILABLE,
+    );
+    expect(game.skillState(2).slots).toEqual([SkillId.DORMAMMU]);
+  });
+
+  it('종 판정이 한 번도 없으면 쓸 수 없다', () => {
+    const { game, at } = setup();
+    expectRule(() => game.useSkill(2, 0, undefined, at + 3), ErrorCode.SKILL_UNAVAILABLE);
+  });
+});
+
+describe('스킬 효과: 안해(FUNC-009-05)', () => {
+  it('플레이 중인 사람끼리 카드를 다시 섞어 분배하고 성공 횟수·보유 스킬·기록을 모두 처음으로 돌린다', () => {
+    const game = start(2, pickRandom(0.999, 0));
+    const at = holdSkills(game);
+    expect(game.skillState(1).slots).toEqual([SkillId.RESET]);
+    expect(game.skillState(2).slots).toEqual([SkillId.RESET]);
+    game.play(1, game.turnId, at + 1);
+    expect(game.snapshot().skillSuccesses).toBe(5);
+    expect(game.useSkill(2, 0, undefined, at + 2)).toMatchObject({
+      kind: 'skill',
+      skillId: SkillId.RESET,
+    });
+    const state = game.checkpoint();
+    expect(game.snapshot().skillSuccesses).toBe(0);
+    expect(game.skillState(1).slots).toEqual([]);
+    expect(game.skillState(2).slots).toEqual([]);
+    expect(state.players.every((player) => player.table.length === 0)).toBe(true);
+    expect(state.players.every((player) => player.bellSuccess === 0 && player.bellFail === 0)).toBe(
+      true,
+    );
+    // 표준 덱 56장을 2명이 28장씩 받는다
+    expect(state.players.map((player) => player.hand.length)).toEqual([28, 28]);
+    expect(state.pile).toHaveLength(0);
+    expect(state.turnUserId).toBe(1);
+    expect(state.round).toBe(1);
+    expect(game.status).toBe('PLAYING');
   });
 });

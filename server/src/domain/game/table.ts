@@ -34,6 +34,17 @@ export class Table {
     }
     return removed.filter((card) => !card.special);
   }
+  /** 도르마무: 테이블 카드 전체의 복사본(사람별, 맨 위가 앞) */
+  snapshot(): Map<number, Card[]> {
+    return new Map([...this.stacks].map(([id, cards]) => [id, [...cards]]));
+  }
+  restore(stacks: ReadonlyMap<number, readonly Card[]>): void {
+    for (const id of this.stacks.keys()) this.stacks.set(id, [...(stacks.get(id) ?? [])]);
+  }
+  /** 안해: 테이블을 모두 비운다 */
+  clear(): void {
+    for (const id of this.stacks.keys()) this.stacks.set(id, []);
+  }
   /** 판정이 났다. 테이블에 남은 과일 6개 카드는 성공·오발과 상관없이 사라진다 */
   discardSpecial(): void {
     for (const [id, cards] of this.stacks)

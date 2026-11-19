@@ -22,6 +22,9 @@ import {
   BELL_MOVE_KEYS,
   BELL_MOVE_MS,
   BELL_MOVE_POSITIONS,
+  BELL_SHELL_MAX,
+  BELL_SHELL_MIN,
+  BELL_SHELL_MS,
   ROULETTE_CARDS,
   RoomRole,
   TIME_STOP_MS,
@@ -77,6 +80,22 @@ export interface GameCheckpoint {
   pile: string[];
 }
 
+/** 도르마무: 가장 최근 종 판정 직전의 카드 상태 */
+interface RewindPoint {
+  hands: Map<number, Card[]>;
+  stats: Map<number, ReturnType<GamePlayer['statistics']>>;
+  tables: Map<number, Card[]>;
+  pile: Card[];
+  faces: Map<Card, { gilded: boolean; boosted: boolean }>;
+  emptied: number[];
+  current: number | null;
+  roundNumber: number;
+  /** 그 판정이 종 성공으로 센 것이면 되돌릴 때 성공 횟수도 취소한다 */
+  counted: boolean;
+  /** 판정 때 플레이 중이던 사람들. 판정으로 탈락·이탈이 생기면 되돌릴 수 없다 */
+  activeIds: number[];
+}
+
 /** 모든 게임 상태 변경은 동기 메서드다. 시간·셔플 결과는 서버 서비스가 전달한다. */
 export class Game {
   private readonly players: GamePlayer[];
@@ -122,6 +141,10 @@ export class Game {
   private mine = false;
   /** 종 부수기: 종이 돌아올 때까지 아무도 종을 칠 수 없다 */
   private bellBreak: BellBreakPublic | null = null;
+  /** 종 야바위: 종마다의 단축키와 진짜 종의 번호(진짜는 공개하지 않는다) */
+  private shell: { endsAt: number; keys: string[]; real: number } | null = null;
+  /** 도르마무로 되돌릴 수 있는 판정 직전 상태 */
+  private rewind: RewindPoint | null = null;
   /** 해킹: 걸린 사람 → Space 대신 쓰는 새 종 치기 키(다음 판정까지, 본인에게만 알린다) */
   private readonly hacked = new Map<number, string>();
 
@@ -254,12 +277,15 @@ export class Game {
     return { kind: 'card', userId, card: card.face(), automatic };
   }
 
-  ring(userId: number, sequence: number, now: number): GameAction | null {
+  ring(userId: number, sequence: number, now: number, bell?: number): GameAction | null {
     now = this.time(now);
     if (!this.canRing(userId, sequence, now)) return null;
     const player = this.activePlayer(userId);
     const totals = this.table.totals();
-    const success = Object.values(totals).some((count) => count === 5);
+    // 종 야바위 중에는 진짜가 아닌 종(번호를 보내지 않은 것 포함)을 누르면 5개여도 오발이다.
+    const fake = this.shellAt(now) !== null && bell !== this.shell!.real;
+    const success = !fake && Object.values(totals).some((count) => count === 5);
+    this.rewind = this.captureRewind(success && !this.mine);
     // 지뢰: 5개를 맞춰도 터져서 카드가 모두 종 밑으로 간다. 성공도 오발도 아니라 기록·성공 횟수에 넣지 않는다.
     const mined = success && this.mine;
     const won = success && !mined;
@@ -312,7 +338,95 @@ export class Game {
       movedCards,
       totals,
       ...(mined ? { mined: true as const } : {}),
+      ...(fake ? { fake: true as const } : {}),
     };
+  }
+
+  /** 종 야바위가 진행 중이면 그 상태, 끝났으면 null */
+  private shellAt(now: number) {
+    return this.shell && now < this.shell.endsAt ? this.shell : null;
+  }
+  private captureRewind(counted: boolean): RewindPoint {
+    const tables = this.table.snapshot();
+    const faces = new Map<Card, { gilded: boolean; boosted: boolean }>();
+    for (const cards of tables.values())
+      for (const card of cards) faces.set(card, { gilded: card.gilded, boosted: card.boosted });
+    return {
+      hands: new Map(this.players.map((player) => [player.userId, player.cards()])),
+      stats: new Map(this.players.map((player) => [player.userId, player.statistics()])),
+      tables,
+      pile: [...this.pile],
+      faces,
+      emptied: [...this.emptied],
+      current: this.current,
+      roundNumber: this.roundNumber,
+      counted,
+      activeIds: this.players.filter((player) => player.active).map((player) => player.userId),
+    };
+  }
+  /** 도르마무를 쓸 수 있나: 판정 결과를 보여 주는 동안이고 판정으로 탈락·이탈이 없었다 */
+  private canRewind(now: number): boolean {
+    const point = this.rewind;
+    if (!point || this.phase !== GameStatus.PLAYING || this.skills.selection) return false;
+    if (this.resumeAt === null || now >= this.resumeAt) return false;
+    const active = this.players.filter((player) => player.active).map((player) => player.userId);
+    return (
+      active.length === point.activeIds.length && active.every((id) => point.activeIds.includes(id))
+    );
+  }
+  private rewindRound(now: number): void {
+    const point = this.rewind!;
+    for (const player of this.players)
+      if (player.active)
+        player.restore(point.hands.get(player.userId)!, point.stats.get(player.userId)!);
+    this.table.restore(point.tables);
+    for (const [card, face] of point.faces) {
+      if (face.gilded) card.gild();
+      if (face.boosted && card.canBoost) card.boost();
+    }
+    this.pile = [...point.pile];
+    this.emptied = [...point.emptied];
+    this.current = point.current;
+    this.roundNumber = point.roundNumber;
+    if (point.counted) {
+      this.skills.uncountSuccess();
+      this.skillDue = false;
+    }
+    this.smashWindow = null;
+    this.smashed.clear();
+    this.rewind = null;
+    this.sequence++;
+    this.newTurn(now);
+  }
+  /** 안해: 플레이 중인 사람끼리 카드를 다시 섞어 분배하고 모든 진행·스킬을 처음으로 돌린다 */
+  private restart(now: number): void {
+    const active = this.players.filter((player) => player.active);
+    const { hands, remainder } = Deck.standard().shuffle(this.random).deal(active.length);
+    active.forEach((player, index) => player.restart(hands[index]));
+    this.table.clear();
+    this.pile = remainder;
+    this.emptied = [];
+    this.current = active[0].userId;
+    this.roundNumber = 1;
+    this.sparkle.clear();
+    this.sixCard.clear();
+    this.burning.clear();
+    this.smashed.clear();
+    this.smashWindow = null;
+    this.hacked.clear();
+    this.mine = false;
+    this.bellMove = null;
+    this.timeStop = null;
+    this.bellBreak = null;
+    this.shell = null;
+    this.rewind = null;
+    this.skills.reset();
+    this.skillDue = false;
+    this.pausedTurnMs = null;
+    this.playedAt = null;
+    this.resumeAt = null;
+    this.sequence++;
+    this.newTurn(now);
   }
 
   /**
@@ -467,11 +581,7 @@ export class Game {
       skill.user === SkillUser.BOTH ||
       skill.user === (role === RoomRole.PLAYER ? SkillUser.PLAYER : SkillUser.SPECTATOR);
     // 아직 구현하지 않은 효과, 사용자 역할이 안 맞는 스킬, 사용 시점이 아닌 스킬은 쓸 수 없다.
-    if (
-      !skill.available ||
-      !allowed ||
-      (skill.timing !== SkillTiming.ANYTIME && skill.timing !== SkillTiming.ON_BELL)
-    )
+    if (!skill.available || !allowed || skill.timing === SkillTiming.AUTOMATIC)
       throw new GameRuleError(ErrorCode.SKILL_UNAVAILABLE);
     if (skill.target === 'one') {
       if (
@@ -616,6 +726,10 @@ export class Game {
       timeStop: this.timeStop,
       bellBreak: this.bellBreak,
       mine: this.mine,
+      shell: this.shellAt(this.clock)
+        ? { endsAt: this.shell!.endsAt, keys: this.shell!.keys }
+        : null,
+      rewindUntil: this.canRewind(this.clock) ? this.resumeAt : null,
       smashWindow: this.smashWindow,
       smashed: [...this.smashed],
       burning: [...this.burning],
@@ -712,6 +826,23 @@ export class Game {
       case SkillId.MINE:
         this.mine = true;
         break;
+      case SkillId.BELL_SHELL_GAME: {
+        // 종이 3~5개로 늘어나고 종마다 서로 다른 단축키가 생긴다. 진짜는 하나뿐이다.
+        const count = BELL_SHELL_MIN + pickIndex(this.random, BELL_SHELL_MAX - BELL_SHELL_MIN + 1);
+        const pool = [...BELL_MOVE_KEYS];
+        const keys = Array.from(
+          { length: count },
+          () => pool.splice(pickIndex(this.random, pool.length), 1)[0],
+        );
+        this.shell = { endsAt: now + BELL_SHELL_MS, keys, real: pickIndex(this.random, count) };
+        break;
+      }
+      case SkillId.DORMAMMU:
+        this.rewindRound(now);
+        break;
+      case SkillId.RESET:
+        this.restart(now);
+        break;
       case SkillId.HAND_SMASH:
         // 가장 최근에 종 판정을 낸 사람의 손이 부서진다(창이 닫히면 쓸 수 없으므로 반드시 있다).
         this.smashed.add(this.smashWindow!.userId);
@@ -791,6 +922,7 @@ export class Game {
   }
   private effectUsable(skillId: SkillId, userId: number, now: number): boolean {
     // 손 개 쌔게 내려치기는 종 판정이 난 지 2초 안에, 판정을 낸 사람이 아닌 플레이어만 쓴다.
+    if (skillId === SkillId.DORMAMMU) return this.canRewind(now);
     if (skillId === SkillId.HAND_SMASH) {
       const window = this.smashWindow;
       return (
@@ -843,6 +975,8 @@ export class Game {
     this.smashWindow = null;
     this.hacked.clear();
     this.mine = false;
+    this.shell = null;
+    this.rewind = null;
     this.skillDue = false;
     this.pausedTurnMs = null;
     this.endedAt = now;
