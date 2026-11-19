@@ -86,7 +86,10 @@ export type GameAction =
       kind: 'bell';
       userId: number;
       success: boolean;
+      /** 성공 시 가져간 카드 수, 오발 시 테이블 전체에서 보관 스택으로 옮긴 카드 수 */
       movedCards: number;
+      /** 오발자가 다른 생존 플레이어에게 1장씩 나눠 준 총 벌칙 카드 수 */
+      penaltyCards?: number;
       totals: Record<Fruit, number>;
     }
   | { kind: 'departed'; userId: number }

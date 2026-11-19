@@ -22,6 +22,7 @@ export function useGameShortcuts(shortcuts: GameShortcuts) {
         event.ctrlKey ||
         event.metaKey ||
         event.altKey ||
+        document.querySelector('[aria-modal="true"]') !== null ||
         isTyping(event.target)
       )
         return;
@@ -44,8 +45,8 @@ function isTyping(target: EventTarget | null) {
   return (
     target instanceof HTMLElement &&
     (target.isContentEditable ||
-      target.closest(
-        'button, a, input, textarea, select, [role="dialog"], [role="alertdialog"]',
-      ) !== null)
+      target.closest('input, textarea, select, [role="dialog"], [role="alertdialog"]') !== null ||
+      (target.closest('button, a') !== null &&
+        target.closest('.action-button.play, .bell-button') === null))
   );
 }

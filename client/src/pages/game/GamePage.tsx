@@ -17,6 +17,7 @@ import { useRoomStore } from '../../stores/room-store';
 import { GameBoard, type GameActions } from './GameBoard';
 import { GameFrame } from './GameFrame';
 import { GameResult } from './GameResult';
+import { GameInputSequence } from './game-input-sequence';
 import { toGameView, toRanking } from './to-game-view';
 
 /** 의도 실패 안내를 띄워 두는 시간 */
@@ -54,7 +55,7 @@ export function GamePage({
   const [playing, setPlaying] = useState(false);
   const [returning, setReturning] = useState(false);
   const rungSeq = useRef<string | null>(null);
-  const playInFlight = useRef(false);
+  const inputs = useRef(new GameInputSequence());
   const cancelLeave = useCallback(() => setConfirmLeave(false), []);
 
   // 남은 턴·유예 시간을 줄여 보이게 하는 화면 시계. 판정은 서버 마감 시각으로만 한다.
@@ -101,32 +102,44 @@ export function GamePage({
   }
 
   async function playCard() {
-    if (!snapshot || !myTurn || playInFlight.current || isPaused()) return;
-    playInFlight.current = true;
+    if (!snapshot || !myTurn || inputs.current.playing || isPaused()) return;
     setPlaying(true);
-    const failure = await sendGameIntent(GameClientEvent.PLAY, {
-      gameId: snapshot.gameId,
-      turnId: snapshot.turnId,
-    });
+    const failure = await inputs.current.play(() =>
+      sendGameIntent(GameClientEvent.PLAY, {
+        gameId: snapshot.gameId,
+        turnId: snapshot.turnId,
+      }),
+    );
     setPlaying(false);
-    playInFlight.current = false;
     if (failure) setError(failure);
   }
 
-  function ringBell() {
+  async function ringBell() {
     if (!snapshot || !canAct || isPaused()) return;
-    // 같은 공개 테이블에 대한 종은 서버가 한 번만 판정하므로 다시 보내지 않는다.
-    const key = `${snapshot.gameId}:${snapshot.turnSeq}`;
     playSound('bell');
     setStrike({ id: ++strikeId.current, playerId: String(user.id) });
+    // J 직후 Space를 눌러도 이전 공개 테이블 순번을 보내지 않는다.
+    await inputs.current.beforeBell();
+    const latest = useGameStore.getState().snapshot;
+    if (
+      !latest ||
+      latest.gameId !== snapshot.gameId ||
+      latest.status !== GameStatus.PLAYING ||
+      latest.players.find((player) => player.userId === user.id)?.status !==
+        GamePlayerStatus.ACTIVE ||
+      isPaused()
+    )
+      return;
+    // 같은 공개 테이블에 대한 종은 서버가 한 번만 판정하므로 다시 보내지 않는다.
+    const key = `${latest.gameId}:${latest.turnSeq}`;
     if (rungSeq.current === key) {
       setError('이미 보낸 종이에요. 다음 카드가 공개되면 다시 눌러주세요.');
       return;
     }
     rungSeq.current = key;
     void sendGameIntent(GameClientEvent.BELL, {
-      gameId: snapshot.gameId,
-      turnSeq: snapshot.turnSeq,
+      gameId: latest.gameId,
+      turnSeq: latest.turnSeq,
     }).then((failure) => {
       if (!failure) return;
       setError(failure);
