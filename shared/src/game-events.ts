@@ -112,6 +112,8 @@ export interface GameSnapshot {
   bellBreak: BellBreakPublic | null;
   /** 아마테라스에 걸린 사람들. 다음 종 판정(또는 탈락)까지 카드 내기·종 치기가 불가다 */
   burning: number[];
+  /** 지뢰가 깔려 있다(누가 깔았는지는 알리지 않는다). 다음 종 판정까지 */
+  mine: boolean;
 }
 /** `game:state` 페이로드. 보낼 때의 서버 시각을 붙여 클라이언트가 시계 차이를 잰다. */
 export type GameStateEvent = GameSnapshot & { serverTime: number };
@@ -123,10 +125,20 @@ export type GameAction =
       success: boolean;
       movedCards: number;
       totals: Record<Fruit, number>;
+      /** 지뢰가 터졌다: 5개를 맞췄지만 카드가 모두 종 밑으로 갔다. 성공도 오발도 아니다 */
+      mined?: true;
     }
   | { kind: 'departed'; userId: number }
   /** 스킬 사용 알림. `targetUserId`가 null이면 대상 없음(전원·나에게) */
-  | { kind: 'skill'; userId: number; skillId: SkillId; targetUserId: number | null }
+  | {
+      kind: 'skill';
+      userId: number;
+      skillId: SkillId;
+      /** 효과를 받은 사람. 무지개 반사가 일어났다면 쓴 사람 자신이다 */
+      targetUserId: number | null;
+      /** 무지개 반사로 막아 낸 사람(원래 대상) */
+      reflectedBy?: number;
+    }
   | { kind: 'connection'; userId: number; connected: boolean };
 export type GameActionEvent = GameAction & { gameId: string; revision: number };
 export type GameAck = { ok: true; ignored?: boolean } | { ok: false; code: ErrorCode };

@@ -113,6 +113,8 @@ export class Game {
   private timeStop: TimeStopPublic | null = null;
   /** 아마테라스에 걸린 사람: 다음 종 판정(또는 탈락)까지 카드·종이 불가이고 차례는 건너뛴다 */
   private readonly burning = new Set<number>();
+  /** 지뢰: 다음 종 판정까지, 5개를 맞춰 종을 쳐도 카드가 모두 종 밑으로 간다(성공도 오발도 아니다) */
+  private mine = false;
   /** 종 부수기: 종이 돌아올 때까지 아무도 종을 칠 수 없다 */
   private bellBreak: BellBreakPublic | null = null;
   /** 해킹: 걸린 사람 → Space 대신 쓰는 새 종 치기 키(다음 판정까지, 본인에게만 알린다) */
@@ -248,11 +250,18 @@ export class Game {
     const player = this.activePlayer(userId);
     const totals = this.table.totals();
     const success = Object.values(totals).some((count) => count === 5);
-    const pickDue = success && this.skills.countSuccess();
+    // 지뢰: 5개를 맞춰도 터져서 카드가 모두 종 밑으로 간다. 성공도 오발도 아니라 기록·성공 횟수에 넣지 않는다.
+    const mined = success && this.mine;
+    const won = success && !mined;
+    const pickDue = won && this.skills.countSuccess();
     this.resolvedSequence = sequence;
-    player.bell(success, this.playedAt === null ? 0 : now - this.playedAt);
+    if (!mined) player.bell(success, this.playedAt === null ? 0 : now - this.playedAt);
     let movedCards: number;
-    if (success) {
+    if (mined) {
+      const cards = this.table.collect();
+      this.pile.push(...cards);
+      movedCards = cards.length;
+    } else if (success) {
       const cards = [...this.table.collect(), ...this.pile];
       this.pile = [];
       player.take(cards);
@@ -271,6 +280,7 @@ export class Game {
     // 판정이 났으니 라운드가 끝난다: 아마테라스도 풀린다.
     this.burning.clear();
     this.hacked.clear();
+    this.mine = false;
     this.eliminateEmpty();
     if (this.current === null || !this.canPlay(this.current))
       this.current = this.nextAfter(this.current ?? userId);
@@ -282,7 +292,14 @@ export class Game {
     // 그 판정으로 게임이 끝나면 선택을 열지 않는다(009-01).
     if (pickDue && this.phase === GameStatus.PLAYING) this.skillDue = true;
     this.revision++;
-    return { kind: 'bell', userId, success, movedCards, totals };
+    return {
+      kind: 'bell',
+      userId,
+      success: won,
+      movedCards,
+      totals,
+      ...(mined ? { mined: true as const } : {}),
+    };
   }
 
   /**
@@ -453,10 +470,29 @@ export class Game {
     // 효과마다 쓸 수 있는 상태가 아니면(예: 숫자 바꾸기는 테이블에 걸 수 있는 내 카드가 있어야 한다) 거부한다.
     if (!this.effectUsable(skillId, userId)) throw new GameRuleError(ErrorCode.SKILL_UNAVAILABLE);
     const at = this.time(now);
+    // 무지개 반사: 나를 노린 단일 지정 스킬을 자동으로 막고 쓴 사람이 대신 맞는다. 반사는 한 번 쓰면 사라지고,
+    // 쓴 사람이 플레이어가 아니면(관전자의 러시안 룰렛) 맞을 수 없으므로 반사하지 않는다.
+    let victim = targetUserId;
+    let reflectedBy: number | undefined;
+    if (
+      skill.target === 'one' &&
+      targetUserId !== undefined &&
+      role === RoomRole.PLAYER &&
+      this.skills.consumeSkill(targetUserId, SkillId.RAINBOW_REFLECT)
+    ) {
+      reflectedBy = targetUserId;
+      victim = userId;
+    }
     this.skills.consume(userId, slot);
-    this.applySkill(skillId, userId, at, targetUserId);
+    this.applySkill(skillId, userId, at, victim);
     this.revision++;
-    return { kind: 'skill', userId, skillId, targetUserId: targetUserId ?? null };
+    return {
+      kind: 'skill',
+      userId,
+      skillId,
+      targetUserId: victim ?? null,
+      ...(reflectedBy !== undefined ? { reflectedBy } : {}),
+    };
   }
 
   /** 본인에게만 보내는 스킬 상태: 보유 스킬과(선택 중이면) 후보·내 선택 */
@@ -561,6 +597,7 @@ export class Game {
       bellMove: this.bellMove,
       timeStop: this.timeStop,
       bellBreak: this.bellBreak,
+      mine: this.mine,
       burning: [...this.burning],
       skillPick: this.skills.selection
         ? {
@@ -652,6 +689,9 @@ export class Game {
         this.pile.push(...this.table.shoot(targetUserId!, ROULETTE_CARDS));
         this.sequence++;
         break;
+      case SkillId.MINE:
+        this.mine = true;
+        break;
       case SkillId.SPIT:
         // 대상 화면에만 보이는 연출이라 서버가 바꾸는 상태가 없다(사용 알림만 간다).
         break;
@@ -694,6 +734,7 @@ export class Game {
       this.roundNumber++;
       this.burning.clear();
       this.hacked.clear();
+      this.mine = false;
     }
   }
   private markEmptied(userId: number): void {
@@ -762,6 +803,7 @@ export class Game {
     this.bellBreak = null;
     this.burning.clear();
     this.hacked.clear();
+    this.mine = false;
     this.skillDue = false;
     this.pausedTurnMs = null;
     this.endedAt = now;

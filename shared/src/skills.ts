@@ -187,7 +187,7 @@ export const SKILLS: readonly SkillDefinition[] = [
     timing: SkillTiming.ANYTIME,
     user: SkillUser.PLAYER,
     target: 'none',
-    available: false,
+    available: true,
     description:
       '이번 라운드에 지뢰를 깐다. 5개를 맞춰 종을 눌러도 카드가 종 밑에 쌓인다. 잘 보이지 않는다.',
   },
@@ -219,7 +219,7 @@ export const SKILLS: readonly SkillDefinition[] = [
     timing: SkillTiming.AUTOMATIC,
     user: SkillUser.PLAYER,
     target: 'none',
-    available: false,
+    available: true,
     description: '나를 노린 단일 지정 스킬을 자동으로 반사해, 쓴 사람이 대신 맞는다.',
   },
   {

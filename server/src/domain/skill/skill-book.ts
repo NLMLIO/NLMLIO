@@ -166,6 +166,11 @@ export class SkillBook {
     return this.inventories.get(userId)?.useSlot(slot) ?? null;
   }
 
+  /** 이 스킬을 하나 쓴다(무지개 반사처럼 사용자가 고르지 않고 자동으로 나가는 스킬). 없으면 false */
+  consumeSkill(userId: number, skillId: SkillId): boolean {
+    return this.inventories.get(userId)?.use(skillId) ?? false;
+  }
+
   /** 게임이 끝나는 등 선택을 더 이어갈 수 없다. 보유 스킬은 그대로 둔다 */
   cancelSelection(): void {
     this.current = null;
