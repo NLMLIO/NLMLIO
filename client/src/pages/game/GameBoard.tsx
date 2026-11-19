@@ -147,6 +147,7 @@ export function GameBoard({
             !!view.skills?.pick ||
             !!view.bellMove?.locked ||
             !!view.bellBreak ||
+            !!view.smashed ||
             !!view.frozen
           }
           onRing={actions.onRingBell}
@@ -155,6 +156,12 @@ export function GameBoard({
           hackKey={view.hackKey}
         />
         {view.bellMove && <span className="bell-ghost" aria-hidden="true" />}
+        {view.smashed && (
+          <p className="skill-hint smashed-hint" role="status">
+            <b>손이 부서졌어요</b>
+            <span>다음 종 판정까지 종을 칠 수 없어요</span>
+          </p>
+        )}
         {view.mine && (
           <span className="skill-mine" role="img" aria-label="지뢰가 깔려 있어요">
             ✸

@@ -301,7 +301,12 @@ function targetingOf(
  * 지금 이 스킬을 쓸 수 있어 보이는가. 진짜 판단은 서버가 하고(`SKILL_UNAVAILABLE`),
  * 화면은 흐리게 보일지·누르게 할지를 같은 기준으로 미리 정한다.
  */
-export function skillUsable(snapshot: GameSnapshot, userId: number, skillId: SkillId): boolean {
+export function skillUsable(
+  snapshot: GameSnapshot,
+  userId: number,
+  skillId: SkillId,
+  serverNow: number = Date.now(),
+): boolean {
   if (snapshot.status !== GameStatus.PLAYING || snapshot.skillPick !== null) return false;
   const skill = skillById(skillId);
   const me = snapshot.players.find((player) => player.userId === userId);
@@ -315,6 +320,17 @@ export function skillUsable(snapshot: GameSnapshot, userId: number, skillId: Ski
     )
   )
     return false;
+  // 손 개 쌔게 내려치기는 종 판정이 난 지 2초 안에, 판정을 낸 사람이 아닌 플레이어만 쓴다.
+  if (skillId === SkillId.HAND_SMASH) {
+    const window = snapshot.smashWindow;
+    if (
+      !window ||
+      serverNow > window.endsAt ||
+      window.userId === userId ||
+      me?.status !== GamePlayerStatus.ACTIVE
+    )
+      return false;
+  }
   // 숫자 바꾸기는 과일 개수를 늘릴 수 있는 내 테이블 카드가 있어야 쓴다.
   if (skillId === SkillId.NUMBER_SHIFT) {
     const card = me?.topCard;
@@ -322,7 +338,7 @@ export function skillUsable(snapshot: GameSnapshot, userId: number, skillId: Ski
   }
   return (
     skill.available &&
-    skill.timing === SkillTiming.ANYTIME &&
+    (skill.timing === SkillTiming.ANYTIME || skill.timing === SkillTiming.ON_BELL) &&
     (skill.user === SkillUser.BOTH || skill.user === role)
   );
 }
@@ -368,7 +384,10 @@ function skillsOf(input: GameViewInput): SkillsView | undefined {
     return undefined;
   const slots = Array.from({ length: SKILL_SLOT_COUNT }, (_, index) => {
     const skillId = skills.slots[index] ?? null;
-    return { skillId, usable: skillId === null || skillUsable(snapshot, input.userId, skillId) };
+    return {
+      skillId,
+      usable: skillId === null || skillUsable(snapshot, input.userId, skillId, input.serverNow),
+    };
   });
   const open = snapshot.skillPick;
   const pick = skills.pick;
@@ -520,6 +539,7 @@ export function toGameView(input: GameViewInput): GameView {
     myTurnSeconds: myPhase === 'turn' ? turnSeconds : undefined,
     pileCount: snapshot.pileCount,
     mine: snapshot.mine || undefined,
+    smashed: snapshot.smashed.includes(userId) || undefined,
     bell: bell
       ? { kind: bell.action.success ? 'success' : 'misfire' }
       : playing && snapshot.turnUserId === null

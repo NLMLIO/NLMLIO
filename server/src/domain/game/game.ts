@@ -2,6 +2,7 @@ import {
   ErrorCode,
   GamePlayerStatus,
   GameStatus,
+  HAND_SMASH_WINDOW_MS,
   ROUND_RESULT_MS,
   TURN_TIME_MS,
 } from '@nlmlio/shared';
@@ -113,6 +114,10 @@ export class Game {
   private timeStop: TimeStopPublic | null = null;
   /** 아마테라스에 걸린 사람: 다음 종 판정(또는 탈락)까지 카드·종이 불가이고 차례는 건너뛴다 */
   private readonly burning = new Set<number>();
+  /** 손 개 쌔게 내려치기: 가장 최근 종 판정을 낸 사람과 쓸 수 있는 마감 시각 */
+  private smashWindow: { userId: number; endsAt: number } | null = null;
+  /** 손이 부서진 사람들: 다음 종 판정까지 종을 칠 수 없다(카드는 낼 수 있다) */
+  private readonly smashed = new Set<number>();
   /** 지뢰: 다음 종 판정까지, 5개를 맞춰 종을 쳐도 카드가 모두 종 밑으로 간다(성공도 오발도 아니다) */
   private mine = false;
   /** 종 부수기: 종이 돌아올 때까지 아무도 종을 칠 수 없다 */
@@ -205,7 +210,12 @@ export class Game {
     if (sequence !== this.sequence) throw new GameRuleError(ErrorCode.VALIDATION_FAILED);
     this.activePlayer(userId);
     // 아마테라스에 걸렸거나, 시간 정지 중 쓴 사람이 아니면 종을 칠 수 없다(조용히 무시).
-    if (this.burning.has(userId) || this.frozenFor(userId, now) || this.bellBrokenAt(now))
+    if (
+      this.burning.has(userId) ||
+      this.smashed.has(userId) ||
+      this.frozenFor(userId, now) ||
+      this.bellBrokenAt(now)
+    )
       return false;
     return true;
   }
@@ -279,9 +289,12 @@ export class Game {
     this.table.discardSpecial();
     // 판정이 났으니 라운드가 끝난다: 아마테라스도 풀린다.
     this.burning.clear();
+    this.smashed.clear();
     this.hacked.clear();
     this.mine = false;
     this.eliminateEmpty();
+    // 이 판정을 낸 사람은 2초 동안 다른 플레이어에게 손을 맞을 수 있다.
+    this.smashWindow = { userId, endsAt: now + HAND_SMASH_WINDOW_MS };
     if (this.current === null || !this.canPlay(this.current))
       this.current = this.nextAfter(this.current ?? userId);
     this.roundNumber++;
@@ -454,7 +467,11 @@ export class Game {
       skill.user === SkillUser.BOTH ||
       skill.user === (role === RoomRole.PLAYER ? SkillUser.PLAYER : SkillUser.SPECTATOR);
     // 아직 구현하지 않은 효과, 사용자 역할이 안 맞는 스킬, 사용 시점이 아닌 스킬은 쓸 수 없다.
-    if (!skill.available || !allowed || skill.timing !== SkillTiming.ANYTIME)
+    if (
+      !skill.available ||
+      !allowed ||
+      (skill.timing !== SkillTiming.ANYTIME && skill.timing !== SkillTiming.ON_BELL)
+    )
       throw new GameRuleError(ErrorCode.SKILL_UNAVAILABLE);
     if (skill.target === 'one') {
       if (
@@ -468,8 +485,9 @@ export class Game {
         throw new GameRuleError(ErrorCode.VALIDATION_FAILED);
     } else if (targetUserId !== undefined) throw new GameRuleError(ErrorCode.VALIDATION_FAILED);
     // 효과마다 쓸 수 있는 상태가 아니면(예: 숫자 바꾸기는 테이블에 걸 수 있는 내 카드가 있어야 한다) 거부한다.
-    if (!this.effectUsable(skillId, userId)) throw new GameRuleError(ErrorCode.SKILL_UNAVAILABLE);
     const at = this.time(now);
+    if (!this.effectUsable(skillId, userId, at))
+      throw new GameRuleError(ErrorCode.SKILL_UNAVAILABLE);
     // 무지개 반사: 나를 노린 단일 지정 스킬을 자동으로 막고 쓴 사람이 대신 맞는다. 반사는 한 번 쓰면 사라지고,
     // 쓴 사람이 플레이어가 아니면(관전자의 러시안 룰렛) 맞을 수 없으므로 반사하지 않는다.
     let victim = targetUserId;
@@ -598,6 +616,8 @@ export class Game {
       timeStop: this.timeStop,
       bellBreak: this.bellBreak,
       mine: this.mine,
+      smashWindow: this.smashWindow,
+      smashed: [...this.smashed],
       burning: [...this.burning],
       skillPick: this.skills.selection
         ? {
@@ -692,6 +712,11 @@ export class Game {
       case SkillId.MINE:
         this.mine = true;
         break;
+      case SkillId.HAND_SMASH:
+        // 가장 최근에 종 판정을 낸 사람의 손이 부서진다(창이 닫히면 쓸 수 없으므로 반드시 있다).
+        this.smashed.add(this.smashWindow!.userId);
+        this.smashWindow = null;
+        break;
       case SkillId.SPIT:
         // 대상 화면에만 보이는 연출이라 서버가 바꾸는 상태가 없다(사용 알림만 간다).
         break;
@@ -728,11 +753,13 @@ export class Game {
     this.sixCard.delete(player.userId);
     this.emptied = this.emptied.filter((id) => id !== player.userId);
     this.burning.delete(player.userId);
+    this.smashed.delete(player.userId);
     this.hacked.delete(player.userId);
     if (this.timeStop?.userId === player.userId) this.timeStop = null;
     if (advanceRound) {
       this.roundNumber++;
       this.burning.clear();
+      this.smashed.clear();
       this.hacked.clear();
       this.mine = false;
     }
@@ -762,7 +789,17 @@ export class Game {
     for (const player of ordered) if (player.userId !== survivor) this.remove(player, false, false);
     if (exhausted) this.current = null;
   }
-  private effectUsable(skillId: SkillId, userId: number): boolean {
+  private effectUsable(skillId: SkillId, userId: number, now: number): boolean {
+    // 손 개 쌔게 내려치기는 종 판정이 난 지 2초 안에, 판정을 낸 사람이 아닌 플레이어만 쓴다.
+    if (skillId === SkillId.HAND_SMASH) {
+      const window = this.smashWindow;
+      return (
+        !!window &&
+        now <= window.endsAt &&
+        window.userId !== userId &&
+        this.activePlayerOrNull(window.userId) !== null
+      );
+    }
     if (skillId === SkillId.NUMBER_SHIFT) return this.table.cards(userId)[0]?.canBoost ?? false;
     // 쥐새끼는 종 밑 보관 스택에 카드가 있어야 쓴다.
     if (skillId === SkillId.RAT) return this.pile.length > 0;
@@ -802,6 +839,8 @@ export class Game {
     this.timeStop = null;
     this.bellBreak = null;
     this.burning.clear();
+    this.smashed.clear();
+    this.smashWindow = null;
     this.hacked.clear();
     this.mine = false;
     this.skillDue = false;

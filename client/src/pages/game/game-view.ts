@@ -119,6 +119,8 @@ export interface GameView {
   skills?: SkillsView;
   /** 지뢰가 깔려 있다(다음 종 판정까지). 모두에게 흐릿하게 보인다 */
   mine?: boolean;
+  /** 내 손이 부서져 다음 종 판정까지 종을 칠 수 없다 */
+  smashed?: boolean;
   /** 방금 쓴 스킬 알림(화면 위쪽, 1.6초) */
   skillCast?: SkillCastView;
   /** 대상 지정 중: 누를 수 있는 좌석 */

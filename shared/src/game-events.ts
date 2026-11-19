@@ -112,6 +112,10 @@ export interface GameSnapshot {
   bellBreak: BellBreakPublic | null;
   /** 아마테라스에 걸린 사람들. 다음 종 판정(또는 탈락)까지 카드 내기·종 치기가 불가다 */
   burning: number[];
+  /** 방금 종 판정이 났다: 이 시각까지 다른 플레이어가 손 개 쌔게 내려치기로 종을 친 사람을 칠 수 있다 */
+  smashWindow: { userId: number; endsAt: number } | null;
+  /** 손이 부서진 사람들. 다음 종 판정(또는 탈락)까지 종을 칠 수 없다 */
+  smashed: number[];
   /** 지뢰가 깔려 있다(누가 깔았는지는 알리지 않는다). 다음 종 판정까지 */
   mine: boolean;
 }

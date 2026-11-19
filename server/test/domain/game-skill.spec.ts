@@ -246,10 +246,10 @@ describe('Game 스킬 선택 연결(FUNC-009-01)', () => {
   });
 });
 
-/** 후보 3칸이 모두 아직 효과를 구현하지 않은 스킬(손 개 쌔게 내려치기)이 되는 난수: 등급 ⭐⭐⭐, 그 등급의 첫째 */
+/** 후보 3칸이 모두 아직 효과를 구현하지 않은 스킬(안해)이 되는 난수: 등급 ⭐⭐⭐⭐⭐ */
 const unavailableRandom = () => {
   let index = 0;
-  return () => (index++ % 2 === 0 ? 0.9 : 0);
+  return () => (index++ % 2 === 0 ? 0.999 : 0);
 };
 /** 후보 3칸이 모두 반짝반짝한 카드가 되도록 등급(⭐)·스킬(둘째)을 고르는 난수 */
 const sparkleRandom = () => {
@@ -316,9 +316,9 @@ describe('Game 스킬 사용 틀(FUNC-009-04)', () => {
   it('효과를 아직 구현하지 않은 스킬은 쓸 수 없고 칸에서 사라지지도 않는다', () => {
     const game = start(2, unavailableRandom());
     const at = holdSkills(game);
-    expect(game.skillState(1).slots).toEqual([SkillId.HAND_SMASH]);
+    expect(game.skillState(1).slots).toEqual([SkillId.RESET]);
     expectRule(() => game.useSkill(1, 0, undefined, at + 1), ErrorCode.SKILL_UNAVAILABLE);
-    expect(game.skillState(1).slots).toEqual([SkillId.HAND_SMASH]);
+    expect(game.skillState(1).slots).toEqual([SkillId.RESET]);
   });
 
   it('빈 칸·잘못된 칸 번호·필요 없는 대상은 거부한다', () => {
@@ -979,5 +979,57 @@ describe('스킬 효과: 무지개 반사(FUNC-009-05)', () => {
     expect(game.snapshot().players[1].tableCount).toBe(0);
     // 반사는 그대로 남는다
     expect(game.skillState(2).slots).toEqual([SkillId.RAINBOW_REFLECT]);
+  });
+});
+
+describe('스킬 효과: 손 개 쌔게 내려치기(FUNC-009-05)', () => {
+  const setup = () => {
+    const game = start(2, pickRandom(0.9, 0));
+    const at = holdSkills(game);
+    expect(game.skillState(1).slots).toEqual([SkillId.HAND_SMASH]);
+    expect(game.skillState(2).slots).toEqual([SkillId.HAND_SMASH]);
+    // 1번이 종을 쳐서 성공한다(딸기 2 + 3)
+    game.play(1, game.turnId, at + 1);
+    game.play(2, game.turnId, at + 2);
+    const ringAt = at + 3;
+    expect(game.ring(1, game.turnSeq, ringAt)).toMatchObject({ success: true });
+    return { game, ringAt };
+  };
+
+  it('종 판정이 난 2초 안에 쓰면 종을 친 사람의 손이 부서져 다음 판정까지 종을 못 친다', () => {
+    const { game, ringAt } = setup();
+    expect(game.snapshot().smashWindow).toEqual({ userId: 1, endsAt: ringAt + 2000 });
+    expect(game.useSkill(2, 0, undefined, ringAt + 1500)).toMatchObject({
+      kind: 'skill',
+      userId: 2,
+      skillId: SkillId.HAND_SMASH,
+    });
+    expect(game.snapshot().smashed).toEqual([1]);
+    expect(game.snapshot().smashWindow).toBeNull();
+    expect(game.skillState(2).slots).toEqual([]);
+    // 손이 부서진 사람은 카드는 낼 수 있지만 종은 못 친다
+    let t = ringAt + 5000;
+    while (game.snapshot().turnUserId !== 2)
+      game.play(game.snapshot().turnUserId!, game.turnId, (t += 1));
+    game.play(2, game.turnId, (t += 1));
+    game.play(1, game.turnId, (t += 1));
+    expect(game.ring(1, game.turnSeq, (t += 1))).toBeNull();
+    // 다음 종 판정이 나면 풀린다
+    expect(game.ring(2, game.turnSeq, (t += 1))).not.toBeNull();
+    expect(game.snapshot().smashed).toEqual([]);
+  });
+
+  it('2초가 지나면 쓸 수 없고, 판정을 낸 본인은 쓸 수 없다', () => {
+    const { game, ringAt } = setup();
+    expectRule(() => game.useSkill(1, 0, undefined, ringAt + 500), ErrorCode.SKILL_UNAVAILABLE);
+    expectRule(() => game.useSkill(2, 0, undefined, ringAt + 2500), ErrorCode.SKILL_UNAVAILABLE);
+    expect(game.skillState(2).slots).toEqual([SkillId.HAND_SMASH]);
+  });
+
+  it('마지막 판정이 2초 전이 아니면 쓸 수 없고, 대상을 지정할 수 없다', () => {
+    const game = start(2, pickRandom(0.9, 0));
+    const at = holdSkills(game);
+    expectRule(() => game.useSkill(2, 0, undefined, at + 5000), ErrorCode.SKILL_UNAVAILABLE);
+    expectRule(() => game.useSkill(2, 0, 1, at + 2), ErrorCode.VALIDATION_FAILED);
   });
 });

@@ -963,3 +963,7 @@ body:has(.scene-switcher) .skill-shot-text {
     opacity: 0.12;
   }
 }
+
+.smashed-hint {
+  --grade: var(--status-danger);
+}

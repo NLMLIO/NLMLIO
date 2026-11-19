@@ -111,6 +111,8 @@ export function GamePage({
   const timeStop = snapshot ? timeStopAt(snapshot, now + clockOffset) : undefined;
   const stopByMe = timeStop?.userId === user.id;
   const burnedSelf = !!snapshot?.burning.includes(user.id);
+  // 손이 부서진 사람은 카드는 낼 수 있지만 다음 종 판정까지 종을 못 친다.
+  const smashedSelf = !!snapshot?.smashed.includes(user.id);
   const frozen = canAct && (burnedSelf || (!!timeStop && !stopByMe));
   const canPlayNow = canAct && !burnedSelf && (timeStop ? stopByMe : myTurn);
 
@@ -136,7 +138,7 @@ export function GamePage({
   }
 
   function ringBell() {
-    if (!snapshot || !canAct || frozen || isPaused()) return;
+    if (!snapshot || !canAct || frozen || smashedSelf || isPaused()) return;
     // 종이 부서져 있는 동안은 아무도 종을 칠 수 없다(종 부수기).
     if (bellBreakAt(snapshot, Date.now() + useGameStore.getState().clockOffset)) return;
     // 종이 옮겨지는 중(처음 300ms)에는 종 입력을 무시한다(종 옮기기).
@@ -265,11 +267,25 @@ export function GamePage({
             : undefined,
     // 종 옮기기·해킹 중에는 Space 대신 새 키로만 종을 친다.
     space:
-      canAct && !confirmLeave && !judging && !picking && !frozen && !bellBroken && !ringKey
+      canAct &&
+      !confirmLeave &&
+      !judging &&
+      !picking &&
+      !frozen &&
+      !smashedSelf &&
+      !bellBroken &&
+      !ringKey
         ? ringBell
         : undefined,
     bell:
-      canAct && !confirmLeave && !judging && !picking && !frozen && !bellBroken && ringKey
+      canAct &&
+      !confirmLeave &&
+      !judging &&
+      !picking &&
+      !frozen &&
+      !smashedSelf &&
+      !bellBroken &&
+      ringKey
         ? { code: `Key${ringKey}`, run: ringBell }
         : undefined,
   });

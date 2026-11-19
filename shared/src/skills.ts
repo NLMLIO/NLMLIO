@@ -11,6 +11,8 @@ export const SKILL_PICK_EVERY = 5;
 export const SKILL_PICK_TIME_MS = 10_000;
 /** 스킬을 쓰면 모두의 화면 위쪽에 사용 알림이 뜨는 시간(009-04) */
 export const SKILL_CAST_MS = 1_600;
+/** 손 개 쌔게 내려치기: 종 판정이 난 뒤 이 시간 안에만 쓸 수 있다 */
+export const HAND_SMASH_WINDOW_MS = 2_000;
 /**
  * 종 옮기기(009-05): 종이 옮겨지는 연출 0.5초 + 새 키로 치는 3초. 이동 중 처음 300ms는 종 입력을 무시한다.
  * 새 키는 방 전체가 같은 키 하나를 쓴다.
@@ -197,10 +199,10 @@ export const SKILLS: readonly SkillDefinition[] = [
     grade: 3,
     timing: SkillTiming.ON_BELL,
     user: SkillUser.PLAYER,
-    target: 'one',
-    available: false,
+    target: 'none',
+    available: true,
     description:
-      '누군가 종을 쳤을 때 2초 안에 쓰면, 나보다 먼저 친 사람의 손이 부서져 다음 라운드에 종을 못 친다.',
+      '누군가 종을 쳐서 판정이 난 뒤 2초 안에 쓰면, 종을 먼저 친 사람의 손이 부서져 다음 판정까지 종을 못 친다.',
   },
   {
     id: SkillId.AMATERASU,
