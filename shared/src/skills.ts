@@ -25,6 +25,9 @@ export const TIME_STOP_MS = 3_000;
 /** 침 뱉기(009-05): 대상 화면이 3초 가려지고 3초 흘러내린다 */
 export const SPIT_COVER_MS = 3_000;
 export const SPIT_DRIP_MS = 3_000;
+/** 종 부수기(009-05): 종이 부서져 아무도 못 치는 시간(10~30초 중 서버가 정한다) */
+export const BELL_BREAK_MIN_MS = 10_000;
+export const BELL_BREAK_MAX_MS = 30_000;
 /** 후보 칸 수와 보유 칸 수(009-02, 009-03) */
 export const SKILL_CANDIDATE_COUNT = 3;
 export const SKILL_SLOT_COUNT = 3;
@@ -132,7 +135,7 @@ export const SKILLS: readonly SkillDefinition[] = [
     timing: SkillTiming.ANYTIME,
     user: SkillUser.PLAYER,
     target: 'none',
-    available: false,
+    available: true,
     description: '자신의 과일 개수를 +1 한다.',
   },
   {
@@ -152,7 +155,7 @@ export const SKILLS: readonly SkillDefinition[] = [
     timing: SkillTiming.ANYTIME,
     user: SkillUser.PLAYER,
     target: 'none',
-    available: false,
+    available: true,
     description: '10~30초 동안 종을 부순다. 종이 돌아올 때까지 아무도 종을 못 친다.',
   },
   {
@@ -172,7 +175,7 @@ export const SKILLS: readonly SkillDefinition[] = [
     timing: SkillTiming.ANYTIME,
     user: SkillUser.PLAYER,
     target: 'one',
-    available: false,
+    available: true,
     description: '상대방의 종 누르기 키를 바꾼다.',
   },
   {
@@ -305,6 +308,8 @@ export interface SkillStateEvent {
   gameId: string;
   /** 보유 스킬(최대 3개, 칸 순서대로) */
   slots: SkillId[];
+  /** 해킹당했으면 Space 대신 쓰는 새 종 치기 키. 본인에게만 알린다. 다음 판정까지 */
+  hackKey: string | null;
   /** 선택에 참여 중이면 후보와 내 선택 */
   pick: {
     role: RoomRole;
@@ -339,5 +344,10 @@ export interface BellMovePublic {
 /** 시간 정지 중: 쓴 사람과 끝나는 서버 시각 */
 export interface TimeStopPublic {
   userId: number;
+  endsAt: number;
+}
+
+/** 종 부수기: 종이 돌아오는 서버 시각 */
+export interface BellBreakPublic {
   endsAt: number;
 }

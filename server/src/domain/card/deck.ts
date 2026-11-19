@@ -11,20 +11,35 @@ const INITIALS: Record<Fruit, string> = {
 export class Card {
   /** 반짝반짝한 카드: 꾸미기 표시일 뿐 판정에 영향이 없다. 테이블을 떠나면 사라진다 */
   private gold = false;
+  /** 숫자 바꾸기: 과일 개수가 1 늘어난 동안 true. 카드가 테이블을 떠나면 원래대로 돌아온다 */
+  private plusOne = false;
   constructor(
     readonly fruit: Fruit,
-    readonly count: GameCard['count'],
+    private readonly base: GameCard['count'],
     /** 과일 6개 카드(스킬): 판정으로 테이블을 떠나면 승자도 보관 스택도 아닌 곳으로 사라진다 */
     readonly special = false,
   ) {
     const max = special ? 6 : 5;
-    if (
-      !Object.values(Fruit).includes(fruit) ||
-      !Number.isInteger(count) ||
-      count < 1 ||
-      count > max
-    )
+    if (!Object.values(Fruit).includes(fruit) || !Number.isInteger(base) || base < 1 || base > max)
       throw new Error('Invalid card');
+  }
+  /** 판정에 쓰이는 과일 개수(숫자 바꾸기가 걸렸으면 1 늘어난 값) */
+  get count(): GameCard['count'] {
+    return (this.base + (this.plusOne ? 1 : 0)) as GameCard['count'];
+  }
+  get boosted(): boolean {
+    return this.plusOne;
+  }
+  /** 숫자 바꾸기를 걸 수 있나: 특수 카드가 아니고, 이미 걸리지 않았고, 6개를 넘지 않는다 */
+  get canBoost(): boolean {
+    return !this.special && !this.plusOne && this.base < 6;
+  }
+  boost(): void {
+    if (!this.canBoost) throw new Error('Card cannot be boosted');
+    this.plusOne = true;
+  }
+  unboost(): void {
+    this.plusOne = false;
   }
   /** 과일 6개 카드: 이 과일의 6개짜리 특수 카드 */
   static six(fruit: Fruit): Card {
@@ -44,6 +59,7 @@ export class Card {
       fruit: this.fruit,
       count: this.count,
       ...(this.special ? { special: true as const } : {}),
+      ...(this.plusOne ? { boosted: true as const } : {}),
       ...(this.gold ? { gilded: true as const } : {}),
     };
   }

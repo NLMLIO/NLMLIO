@@ -6,6 +6,7 @@ import {
   TURN_TIME_MS,
 } from '@nlmlio/shared';
 import type {
+  BellBreakPublic,
   BellMovePublic,
   GameAction,
   GameSnapshot,
@@ -15,6 +16,8 @@ import type {
   TimeStopPublic,
 } from '@nlmlio/shared';
 import {
+  BELL_BREAK_MAX_MS,
+  BELL_BREAK_MIN_MS,
   BELL_MOVE_KEYS,
   BELL_MOVE_MS,
   BELL_MOVE_POSITIONS,
@@ -109,6 +112,10 @@ export class Game {
   private timeStop: TimeStopPublic | null = null;
   /** 아마테라스에 걸린 사람: 다음 종 판정(또는 탈락)까지 카드·종이 불가이고 차례는 건너뛴다 */
   private readonly burning = new Set<number>();
+  /** 종 부수기: 종이 돌아올 때까지 아무도 종을 칠 수 없다 */
+  private bellBreak: BellBreakPublic | null = null;
+  /** 해킹: 걸린 사람 → Space 대신 쓰는 새 종 치기 키(다음 판정까지, 본인에게만 알린다) */
+  private readonly hacked = new Map<number, string>();
 
   private constructor(
     private readonly input: StartGameInput,
@@ -195,7 +202,8 @@ export class Game {
     if (sequence !== this.sequence) throw new GameRuleError(ErrorCode.VALIDATION_FAILED);
     this.activePlayer(userId);
     // 아마테라스에 걸렸거나, 시간 정지 중 쓴 사람이 아니면 종을 칠 수 없다(조용히 무시).
-    if (this.burning.has(userId) || this.frozenFor(userId, now)) return false;
+    if (this.burning.has(userId) || this.frozenFor(userId, now) || this.bellBrokenAt(now))
+      return false;
     return true;
   }
 
@@ -261,6 +269,7 @@ export class Game {
     this.table.discardSpecial();
     // 판정이 났으니 라운드가 끝난다: 아마테라스도 풀린다.
     this.burning.clear();
+    this.hacked.clear();
     this.eliminateEmpty();
     if (this.current === null || !this.canPlay(this.current))
       this.current = this.nextAfter(this.current ?? userId);
@@ -290,6 +299,12 @@ export class Game {
       return null;
     if (this.current !== null) return this.play(this.current, turnId, now, true);
     now = this.time(now);
+    // 종이 부서져 있으면 종 기회도 없으므로 마지막 종 기회를 종이 돌아온 뒤로 미룬다.
+    if (this.bellBreak && this.bellBrokenAt(now)) {
+      this.deadline = this.bellBreak.endsAt + TURN_TIME_MS;
+      this.revision++;
+      return null;
+    }
     // 낼 수 있는 사람이 아마테라스에 걸린 사람뿐이면 게임이 멈추므로 여기서 풀고 차례를 돌려준다.
     if (
       [...this.burning].some((id) => this.canPlay(id)) &&
@@ -431,6 +446,8 @@ export class Game {
       )
         throw new GameRuleError(ErrorCode.VALIDATION_FAILED);
     } else if (targetUserId !== undefined) throw new GameRuleError(ErrorCode.VALIDATION_FAILED);
+    // 효과마다 쓸 수 있는 상태가 아니면(예: 숫자 바꾸기는 테이블에 걸 수 있는 내 카드가 있어야 한다) 거부한다.
+    if (!this.effectUsable(skillId, userId)) throw new GameRuleError(ErrorCode.SKILL_UNAVAILABLE);
     const at = this.time(now);
     this.skills.consume(userId, slot);
     this.applySkill(skillId, userId, at, targetUserId);
@@ -446,6 +463,7 @@ export class Game {
     return {
       gameId: this.id,
       slots: this.skills.inventory(userId).list(),
+      hackKey: this.hacked.get(userId) ?? null,
       pick:
         selection && role
           ? {
@@ -538,6 +556,7 @@ export class Game {
       skillSuccesses: this.skills.successCount,
       bellMove: this.bellMove,
       timeStop: this.timeStop,
+      bellBreak: this.bellBreak,
       burning: [...this.burning],
       skillPick: this.skills.selection
         ? {
@@ -599,6 +618,23 @@ export class Game {
         this.timeStop = { userId, endsAt };
         break;
       }
+      case SkillId.NUMBER_SHIFT:
+        // 내 테이블 맨 위 카드의 과일 개수를 1 늘린다(모두에게 보인다). 카드가 테이블을 떠나면 원래대로 돌아온다.
+        this.table.cards(userId)[0].boost();
+        break;
+      case SkillId.BELL_BREAK: {
+        // 10~30초(1초 단위) 동안 아무도 종을 칠 수 없다. 이미 부서져 있으면 더 늦게 끝나는 쪽을 따른다.
+        const seconds = (BELL_BREAK_MAX_MS - BELL_BREAK_MIN_MS) / 1000 + 1;
+        const endsAt = now + BELL_BREAK_MIN_MS + pickIndex(this.random, seconds) * 1000;
+        this.bellBreak = { endsAt: Math.max(endsAt, this.bellBreak?.endsAt ?? 0) };
+        break;
+      }
+      case SkillId.HACK:
+        this.hacked.set(
+          targetUserId!,
+          BELL_MOVE_KEYS[pickIndex(this.random, BELL_MOVE_KEYS.length)],
+        );
+        break;
       case SkillId.SPIT:
         // 대상 화면에만 보이는 연출이라 서버가 바꾸는 상태가 없다(사용 알림만 간다).
         break;
@@ -635,10 +671,12 @@ export class Game {
     this.sixCard.delete(player.userId);
     this.emptied = this.emptied.filter((id) => id !== player.userId);
     this.burning.delete(player.userId);
+    this.hacked.delete(player.userId);
     if (this.timeStop?.userId === player.userId) this.timeStop = null;
     if (advanceRound) {
       this.roundNumber++;
       this.burning.clear();
+      this.hacked.clear();
     }
   }
   private markEmptied(userId: number): void {
@@ -665,6 +703,14 @@ export class Game {
     );
     for (const player of ordered) if (player.userId !== survivor) this.remove(player, false, false);
     if (exhausted) this.current = null;
+  }
+  private effectUsable(skillId: SkillId, userId: number): boolean {
+    if (skillId === SkillId.NUMBER_SHIFT) return this.table.cards(userId)[0]?.canBoost ?? false;
+    return true;
+  }
+  /** 종이 부서져 있나 */
+  private bellBrokenAt(now: number): boolean {
+    return this.bellBreak !== null && now < this.bellBreak.endsAt;
   }
   /** 지금 시간 정지를 쓴 사람. 정지 중이 아니면 null */
   private stopperAt(now: number): number | null {
@@ -694,7 +740,9 @@ export class Game {
     this.skills.cancelSelection();
     this.bellMove = null;
     this.timeStop = null;
+    this.bellBreak = null;
     this.burning.clear();
+    this.hacked.clear();
     this.skillDue = false;
     this.pausedTurnMs = null;
     this.endedAt = now;

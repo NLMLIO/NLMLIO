@@ -16,7 +16,10 @@ export class Table {
     const cards = this.stacks.get(userId) ?? [];
     this.stacks.set(userId, []);
     // 판정으로 옮겨지는 카드의 금칠은 사라지고, 과일 6개 카드는 어디로도 가지 않고 사라진다.
-    for (const card of cards) card.ungild();
+    for (const card of cards) {
+      card.ungild();
+      card.unboost();
+    }
     return cards.filter((card) => !card.special);
   }
   /** 판정이 났다. 테이블에 남은 과일 6개 카드는 성공·오발과 상관없이 사라진다 */

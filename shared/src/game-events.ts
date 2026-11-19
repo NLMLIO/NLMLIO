@@ -1,6 +1,7 @@
 import type { Fruit } from './domain';
 import type { ErrorCode } from './errors';
 import type {
+  BellBreakPublic,
   BellMovePublic,
   SkillId,
   SkillPickPublic,
@@ -31,6 +32,8 @@ export interface GameCard {
   count: 1 | 2 | 3 | 4 | 5 | 6;
   /** 과일 6개 카드: 판정이 나면 성공·오발과 상관없이 사라진다 */
   special?: true;
+  /** 숫자 바꾸기로 과일 개수가 1 늘었다(`count`는 늘어난 값). 카드가 테이블을 떠나면 원래대로 돌아온다 */
+  boosted?: true;
   /** 반짝반짝한 카드(꾸미기, 판정에 영향 없음). 판정으로 옮겨지면 사라진다 */
   gilded?: true;
 }
@@ -105,6 +108,8 @@ export interface GameSnapshot {
   bellMove: BellMovePublic | null;
   /** 시간 정지 중이면 쓴 사람과 끝나는 시각. 쓴 사람만 카드를 낼 수 있고 나머지는 카드·종이 모두 불가다 */
   timeStop: TimeStopPublic | null;
+  /** 종 부수기: 종이 돌아올 때까지 아무도 종을 칠 수 없다 */
+  bellBreak: BellBreakPublic | null;
   /** 아마테라스에 걸린 사람들. 다음 종 판정(또는 탈락)까지 카드 내기·종 치기가 불가다 */
   burning: number[];
 }

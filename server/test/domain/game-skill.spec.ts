@@ -1,4 +1,6 @@
 import {
+  BELL_BREAK_MAX_MS,
+  BELL_BREAK_MIN_MS,
   BELL_MOVE_KEYS,
   BELL_MOVE_MS,
   BELL_MOVE_POSITIONS,
@@ -12,6 +14,7 @@ import {
 } from '@nlmlio/shared';
 import { SkillId, skillById } from '@nlmlio/shared';
 import { Card, Deck } from '../../src/domain/card/deck';
+import { Table } from '../../src/domain/game/table';
 import { Game, GameRuleError } from '../../src/domain/game/game';
 
 const card = (fruit: Fruit, count: 1 | 2 | 3 | 4 | 5) => new Card(fruit, count);
@@ -243,11 +246,8 @@ describe('Game 스킬 선택 연결(FUNC-009-01)', () => {
   });
 });
 
-/** 후보 3칸이 모두 아직 효과를 구현하지 않은 스킬(숫자 바꾸기)이 되는 난수: 등급 ⭐⭐, 그 등급의 첫째 */
-const unavailableRandom = () => {
-  let index = 0;
-  return () => (index++ % 2 === 0 ? 0.6 : 0);
-};
+/** 후보 3칸이 모두 아직 효과를 구현하지 않은 스킬(쥐새끼)이 되는 난수: 등급 ⭐⭐⭐, 그 등급의 넷째 */
+const unavailableRandom = () => () => 0.9;
 /** 후보 3칸이 모두 반짝반짝한 카드가 되도록 등급(⭐)·스킬(둘째)을 고르는 난수 */
 const sparkleRandom = () => {
   let index = 0;
@@ -313,9 +313,9 @@ describe('Game 스킬 사용 틀(FUNC-009-04)', () => {
   it('효과를 아직 구현하지 않은 스킬은 쓸 수 없고 칸에서 사라지지도 않는다', () => {
     const game = start(2, unavailableRandom());
     const at = holdSkills(game);
-    expect(game.skillState(1).slots).toEqual([SkillId.NUMBER_SHIFT]);
+    expect(game.skillState(1).slots).toEqual([SkillId.RAT]);
     expectRule(() => game.useSkill(1, 0, undefined, at + 1), ErrorCode.SKILL_UNAVAILABLE);
-    expect(game.skillState(1).slots).toEqual([SkillId.NUMBER_SHIFT]);
+    expect(game.skillState(1).slots).toEqual([SkillId.RAT]);
   });
 
   it('빈 칸·잘못된 칸 번호·필요 없는 대상은 거부한다', () => {
@@ -330,28 +330,17 @@ describe('Game 스킬 사용 틀(FUNC-009-04)', () => {
   });
 
   it('대상 지정 스킬은 자신·관전자·없는 사람을 대상으로 지정할 수 없다', () => {
-    const hack = skillById(SkillId.HACK);
-    // 효과 구현 전이라 임시로 켜서 대상 검증만 확인한다(효과 적용 전에 거부되므로 상태는 바뀌지 않는다).
     // 난수 0.7 → 등급 ⭐⭐(50~80%), 그 등급의 다섯 번째(해킹)가 후보 3칸 모두에 나온다.
     const game = start(3, () => 0.7);
-    hack.available = true;
-    try {
-      succeed(game, 5);
-      const opensAt = game.skillPickOpensAt!;
-      game.openSkillPick([], opensAt);
-      expect(game.skillState(1).pick!.candidates).toEqual([
-        SkillId.HACK,
-        SkillId.HACK,
-        SkillId.HACK,
-      ]);
-      for (const id of [1, 2, 3]) game.chooseSkill(id, { slot: 0 }, opensAt + 10);
-      const at = opensAt + 20;
-      expectRule(() => game.useSkill(1, 0, undefined, at), ErrorCode.VALIDATION_FAILED);
-      expectRule(() => game.useSkill(1, 0, 1, at), ErrorCode.VALIDATION_FAILED);
-      expectRule(() => game.useSkill(1, 0, 99, at), ErrorCode.VALIDATION_FAILED);
-    } finally {
-      hack.available = false;
-    }
+    succeed(game, 5);
+    const opensAt = game.skillPickOpensAt!;
+    game.openSkillPick([], opensAt);
+    expect(game.skillState(1).pick!.candidates).toEqual([SkillId.HACK, SkillId.HACK, SkillId.HACK]);
+    for (const id of [1, 2, 3]) game.chooseSkill(id, { slot: 0 }, opensAt + 10);
+    const at = opensAt + 20;
+    expectRule(() => game.useSkill(1, 0, undefined, at), ErrorCode.VALIDATION_FAILED);
+    expectRule(() => game.useSkill(1, 0, 1, at), ErrorCode.VALIDATION_FAILED);
+    expectRule(() => game.useSkill(1, 0, 99, at), ErrorCode.VALIDATION_FAILED);
   });
 
   it('스킬 선택 중에는 쓸 수 없고(무시), 게임이 끝났으면 거부한다', () => {
@@ -623,5 +612,132 @@ describe('스킬 효과: 아마테라스(FUNC-009-05)', () => {
     expect(game.timeout(game.turnId, game.turnDeadline!)).toBeNull();
     expect(game.snapshot().burning).toEqual([]);
     expect(game.snapshot().turnUserId).toBe(2);
+  });
+});
+
+/** 숫자 바꾸기: ⭐⭐ 첫째 / 종 부수기: ⭐⭐ 셋째 / 해킹: ⭐⭐ 다섯째 */
+const numberShiftRandom = () => pickRandom(0.6, 0);
+const bellBreakRandom = () => pickRandom(0.6, 0.4);
+const hackRandom = () => pickRandom(0.6, 0.7);
+
+describe('스킬 효과: 숫자 바꾸기(FUNC-009-05)', () => {
+  it('테이블에 내 카드가 없으면 쓸 수 없고 스킬은 그대로다', () => {
+    const game = start(2, numberShiftRandom());
+    const at = holdSkills(game);
+    expect(game.skillState(1).slots).toEqual([SkillId.NUMBER_SHIFT]);
+    expectRule(() => game.useSkill(1, 0, undefined, at + 1), ErrorCode.SKILL_UNAVAILABLE);
+    expect(game.skillState(1).slots).toEqual([SkillId.NUMBER_SHIFT]);
+  });
+
+  it('내 맨 위 카드의 과일 개수가 1 늘어 모두에게 보이고 판정에 쓰인다', () => {
+    const game = start(2, numberShiftRandom());
+    const at = holdSkills(game);
+    game.play(1, game.turnId, at + 1); // 딸기 2
+    game.useSkill(1, 0, undefined, at + 2);
+    expect(game.snapshot().players[0].topCard).toEqual({
+      fruit: 'STRAWBERRY',
+      count: 3,
+      boosted: true,
+    });
+    game.play(2, game.turnId, at + 3); // 딸기 3 → 3 + 3 = 6 이므로 5가 아니다(평소라면 성공)
+    expect(game.snapshot().fruitTotals.STRAWBERRY).toBe(6);
+    expect(game.ring(1, game.turnSeq, at + 4)).toMatchObject({ kind: 'bell', success: false });
+    // 오발이면 테이블이 유지돼 카드의 +1도 그대로다
+    expect(game.snapshot().players[0].topCard).toMatchObject({ count: 3, boosted: true });
+  });
+
+  it('카드가 테이블을 떠나면 원래 개수로 돌아오고, 한 카드에 한 번만 걸 수 있다', () => {
+    const card = new Card(Fruit.BANANA, 5);
+    expect(card.canBoost).toBe(true);
+    card.boost();
+    expect(card.count).toBe(6);
+    expect(card.canBoost).toBe(false);
+    expect(new Card(Fruit.BANANA, 3, true).canBoost).toBe(false);
+    expect(Card.six(Fruit.LIME).canBoost).toBe(false);
+    const table = new Table([1]);
+    const lime = new Card(Fruit.LIME, 2);
+    table.play(1, lime);
+    lime.boost();
+    expect(table.totals().LIME).toBe(3);
+    expect(table.remove(1)).toEqual([lime]);
+    expect(lime.boosted).toBe(false);
+    expect(lime.count).toBe(2);
+  });
+});
+
+describe('스킬 효과: 종 부수기(FUNC-009-05)', () => {
+  it('10~30초 동안 아무도 종을 칠 수 없고(쓴 사람도), 카드는 낼 수 있다', () => {
+    const game = start(2, bellBreakRandom());
+    const at = holdSkills(game);
+    game.useSkill(1, 0, undefined, at + 1);
+    const { endsAt } = game.snapshot().bellBreak!;
+    expect(endsAt - (at + 1)).toBeGreaterThanOrEqual(BELL_BREAK_MIN_MS);
+    expect(endsAt - (at + 1)).toBeLessThanOrEqual(BELL_BREAK_MAX_MS);
+    expect((endsAt - (at + 1)) % 1000).toBe(0);
+    game.play(1, game.turnId, at + 2);
+    game.play(2, game.turnId, at + 3);
+    for (const id of [1, 2]) {
+      expect(game.canRing(id, game.turnSeq, at + 4)).toBe(false);
+      expect(game.ring(id, game.turnSeq, at + 4)).toBeNull();
+    }
+    // 돌아오면 평소와 같다: 딸기 2 + 3 = 5
+    expect(game.canRing(1, game.turnSeq, endsAt)).toBe(true);
+    expect(game.ring(1, game.turnSeq, endsAt)).toMatchObject({ kind: 'bell', success: true });
+  });
+
+  it('마지막 종 기회가 부서진 종 때문에 사라지지 않게 종이 돌아온 뒤로 미룬다', () => {
+    const game = start(2, bellBreakRandom());
+    const at = holdSkills(game);
+    let t = at;
+    while (game.checkpoint().players.some((player) => player.hand.length > 0))
+      game.play(game.snapshot().turnUserId!, game.turnId, (t += 1));
+    expect(game.snapshot().turnUserId).toBeNull();
+    game.useSkill(1, 0, undefined, t + 5);
+    const { endsAt } = game.snapshot().bellBreak!;
+    expect(game.timeout(game.turnId, game.turnDeadline!)).toBeNull();
+    expect(game.status).toBe(GameStatus.PLAYING);
+    expect(game.turnDeadline).toBe(endsAt + TURN_TIME_MS);
+  });
+
+  it('게임이 끝나면 사라진다', () => {
+    const game = start(2, bellBreakRandom());
+    const at = holdSkills(game);
+    game.useSkill(1, 0, undefined, at + 1);
+    game.depart(2, at + 2);
+    expect(game.snapshot().bellBreak).toBeNull();
+  });
+});
+
+describe('스킬 효과: 해킹(FUNC-009-05)', () => {
+  it('대상에게만 무작위 새 종 키가 알려지고 공개 상태에는 없다', () => {
+    const game = start(2, hackRandom());
+    const at = holdSkills(game);
+    expect(game.useSkill(1, 0, 2, at + 1)).toMatchObject({
+      kind: 'skill',
+      skillId: SkillId.HACK,
+      targetUserId: 2,
+    });
+    const key = game.skillState(2).hackKey;
+    expect(BELL_MOVE_KEYS as readonly (string | null)[]).toContain(key);
+    expect(game.skillState(1).hackKey).toBeNull();
+    expect(JSON.stringify(game.snapshot())).not.toContain('hackKey');
+  });
+
+  it('다음 종 판정이 나면 풀린다', () => {
+    const game = start(2, hackRandom());
+    const at = holdSkills(game);
+    game.useSkill(1, 0, 2, at + 1);
+    game.play(1, game.turnId, at + 2);
+    game.play(2, game.turnId, at + 3);
+    expect(game.ring(1, game.turnSeq, at + 4)).toMatchObject({ success: true });
+    expect(game.skillState(2).hackKey).toBeNull();
+  });
+
+  it('자신·없는 사람은 대상이 될 수 없다', () => {
+    const game = start(2, hackRandom());
+    const at = holdSkills(game);
+    expectRule(() => game.useSkill(1, 0, 1, at + 1), ErrorCode.VALIDATION_FAILED);
+    expectRule(() => game.useSkill(1, 0, 99, at + 1), ErrorCode.VALIDATION_FAILED);
+    expect(game.skillState(1).slots).toEqual([SkillId.HACK]);
   });
 });
