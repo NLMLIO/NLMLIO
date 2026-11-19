@@ -73,10 +73,17 @@ export class GameGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     @ConnectedSocket() socket: Socket,
     @MessageBody() input: BellRingDto,
   ): Promise<GameAck> {
-    const accepted = await this.games.bell(socketUser(socket).userId, input, Date.now(), () =>
-      this.authorize(socket),
-    );
-    return { ok: true, ...(!accepted ? { ignored: true } : {}) };
+    const userId = socketUser(socket).userId;
+    const accepted = await this.games.bell(userId, input, Date.now(), () => this.authorize(socket));
+    const state = this.games.sync(userId);
+    const handAccepted =
+      state?.gameId === input.gameId &&
+      state.bellHands?.turnSeq === input.turnSeq &&
+      state.bellHands.userIds.includes(userId);
+    return {
+      ok: true,
+      ...(!accepted ? { ignored: true, ...(handAccepted ? { handAccepted: true } : {}) } : {}),
+    };
   }
   @SubscribeMessage(GameClientEvent.SYNC)
   async sync(
@@ -120,7 +127,7 @@ export class GameGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     return { ok: true };
   }
   private async authorize(socket: Socket): Promise<void> {
-    const token: unknown = socket.handshake.auth?.token;
+    const token: unknown = socket.data.accessToken ?? socket.handshake.auth?.token;
     const claims = await this.tokens.verify(typeof token === 'string' ? token : '', 'access');
     const account = await this.users.findById(claims.sub);
     if (

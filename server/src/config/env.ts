@@ -25,9 +25,10 @@ export function databaseUrl(env: NodeJS.ProcessEnv = process.env): string {
   if (env.DATABASE_URL) return env.DATABASE_URL;
   const user = encodeURIComponent(env.POSTGRES_USER ?? 'nlmlio');
   const password = encodeURIComponent(env.POSTGRES_PASSWORD ?? 'nlmlio');
-  const db = env.POSTGRES_DB ?? 'nlmlio';
+  const db = encodeURIComponent(env.POSTGRES_DB ?? 'nlmlio');
+  const host = env.POSTGRES_HOST ?? 'localhost';
   const port = env.POSTGRES_PORT ?? '5432';
-  return `postgresql://${user}:${password}@localhost:${port}/${db}`;
+  return `postgresql://${user}:${password}@${host}:${port}/${db}`;
 }
 
 export function redisUrl(env: NodeJS.ProcessEnv = process.env): string {

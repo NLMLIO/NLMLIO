@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import type { Server as HttpServer } from 'node:http';
 import { Test } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { io, type Socket } from 'socket.io-client';
 import Redis from 'ioredis';
 import request from 'supertest';
@@ -11,6 +12,8 @@ import { AppModule } from '../../src/app.module';
 import { configureApp } from '../../src/common/configure-app';
 import { loadEnvFiles } from '../../src/config/env';
 import { SessionService } from '../../src/common/security/session.service';
+import { TokenService } from '../../src/common/security/token.service';
+import { UserRepository } from '../../src/infra/database/user.repository';
 import { PrismaService } from '../../src/infra/database/prisma.service';
 import { RoomStore } from '../../src/infra/game-state/room.store';
 import { REDIS } from '../../src/infra/redis/redis.module';
@@ -290,6 +293,46 @@ describe('채팅 Socket.io / Redis 통합 (FUNC-004-01, FUNC-004-02)', () => {
     expect(emojiAttempts.filter((result) => !result.ok)).toEqual([
       { ok: false, code: 'RATE_LIMITED' },
     ]);
+  });
+
+  it('만료된 소켓은 방 명령도 거부하고 연결을 유지한 재인증 뒤 채팅·이모티콘을 다시 받는다', async () => {
+    const config = app.get(ConfigService);
+    const previousTtl = config.get('JWT_ACCESS_TTL', '15m');
+    let token: string;
+    try {
+      config.set('JWT_ACCESS_TTL', '1s');
+      token = (
+        await app.get(TokenService).issue((await app.get(UserRepository).findById(host.user.id))!)
+      ).accessToken;
+    } finally {
+      config.set('JWT_ACCESS_TTL', previousTtl);
+    }
+    const observer = await connect(token);
+    const originalId = observer.id;
+    expect(await emit(observer, ChatEvent.JOIN, { code })).toEqual({ ok: true });
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    expect(await emit(observer, 'room:delegate', { userId: guest.user.id })).toEqual({
+      ok: false,
+      code: 'TOKEN_EXPIRED',
+    });
+    const sender = await connect(guest.accessToken);
+    await emit(sender, ChatEvent.JOIN, { code });
+    await redis.del(`chat-limit:${guest.user.id}`, `emoji:cd:${guest.user.id}`);
+    const required = next(observer, 'auth:required');
+    expect(await emit(sender, ChatEvent.SEND, { message: '만료 중' })).toEqual({ ok: true });
+    expect(await required).toEqual({ code: 'TOKEN_EXPIRED' });
+    expect(await emit(observer, 'auth:refresh', { token: outsider.accessToken })).toEqual({
+      ok: false,
+      code: 'TOKEN_INVALID',
+    });
+    expect(await emit(observer, 'auth:refresh', { token: host.accessToken })).toEqual({ ok: true });
+    expect(observer.id).toBe(originalId);
+    const message = next<ChatMessageEvent>(observer, ChatEvent.MESSAGE);
+    expect(await emit(sender, ChatEvent.SEND, { message: '갱신 뒤' })).toEqual({ ok: true });
+    expect((await message).message).toBe('갱신 뒤');
+    const emoji = next<EmojiMessageEvent>(observer, ChatEvent.EMOJI);
+    expect(await emit(sender, ChatEvent.EMOJI_SEND, { emoji: 'CLAP' })).toEqual({ ok: true });
+    expect((await emoji).userId).toBe(guest.user.id);
   });
 
   it('방에서 나가거나 인증 버전이 바뀌면 기존 소켓도 전송할 수 없다', async () => {

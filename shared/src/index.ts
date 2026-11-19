@@ -6,3 +6,4 @@ export * from './events';
 export * from './room-events';
 export * from './game-events';
 export * from './skills';
+export * from './auth-events';

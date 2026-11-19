@@ -128,7 +128,7 @@ function verdictOf(input: GameViewInput, bell: BellEvent): Verdict {
     formula: visible.length
       ? visible.map((name) => `${FRUIT_NAMES[name]} ${action.totals[name]}`).join(' · ')
       : '테이블이 비어 있어요',
-    detail: `5개인 과일이 없어요 · 내 덱 ${action.movedCards}장만 종 아래로 · 테이블은 유지돼요`,
+    detail: `상대에게 한 장씩 총 ${action.penaltyCards ?? 0}장 · 테이블 ${action.movedCards}장은 모두 종 아래로`,
   };
 }
 
@@ -162,7 +162,7 @@ function logOf(input: GameViewInput): LogEntry[] {
               id,
               tone: 'danger',
               nickname,
-              text: `오발 · ${action.movedCards}장 보관 스택으로`,
+              text: `오발 · 상대에게 ${action.penaltyCards ?? 0}장 · 테이블 ${action.movedCards}장 보관`,
             };
       case 'departed':
         return { kind: 'event', id, tone: 'danger', nickname, text: '이탈 · 관전으로 전환' };
@@ -490,7 +490,8 @@ export function toGameView(input: GameViewInput): GameView {
   if (!seated)
     players.unshift({
       id: 'me',
-      nickname: input.nickname,
+      nickname:
+        input.room?.members.find((member) => member.userId === userId)?.nickname ?? input.nickname,
       color: 'white',
       deckCount: 0,
       topCard: null,

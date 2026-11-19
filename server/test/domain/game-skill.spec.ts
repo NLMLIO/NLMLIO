@@ -390,9 +390,9 @@ describe('스킬 효과: 과일 6개 카드(FUNC-009-05)', () => {
     const state = game.checkpoint();
     expect(state.players[0].table).toEqual([]);
     expect(state.pile.some((code) => code.endsWith('*'))).toBe(false);
-    // 오발자의 카드 1장은 보관 스택으로 가고, 특수 카드(와 그 자리의 원래 카드)는 사라진다.
+    // 오발자의 카드 1장은 상대에게 가고, 테이블은 모두 비워진다. 특수 카드(와 그 자리의 원래 카드)는 사라진다.
     expect(totalCards(game)).toBe(before - 1);
-    expect(game.snapshot().players[1].topCard).not.toBeNull();
+    expect(game.snapshot().players[1].topCard).toBeNull();
   });
 
   it('성공 판정이 나도 승자가 가져가지 않고 사라진다(테이블 아래 깔려 있어도)', () => {
@@ -632,8 +632,9 @@ describe('스킬 효과: 숫자 바꾸기(FUNC-009-05)', () => {
     game.play(2, game.turnId, at + 3); // 딸기 3 → 3 + 3 = 6 이므로 5가 아니다(평소라면 성공)
     expect(game.snapshot().fruitTotals.STRAWBERRY).toBe(6);
     expect(game.ring(1, game.turnSeq, at + 4)).toMatchObject({ kind: 'bell', success: false });
-    // 오발이면 테이블이 유지돼 카드의 +1도 그대로다
-    expect(game.snapshot().players[0].topCard).toMatchObject({ count: 3, boosted: true });
+    // 오발이면 테이블이 모두 종 밑으로 가므로 카드의 +1도 풀려 원래 개수로 돌아간다
+    expect(game.snapshot().players[0].topCard).toBeNull();
+    expect(game.checkpoint().pile).toEqual(expect.arrayContaining(['S2', 'S3']));
   });
 
   it('카드가 테이블을 떠나면 원래 개수로 돌아오고, 한 카드에 한 번만 걸 수 있다', () => {
@@ -742,7 +743,7 @@ describe('스킬 효과: 쥐새끼(FUNC-009-05)', () => {
     const at = holdSkills(game);
     expect(game.skillState(1).slots).toEqual([SkillId.RAT]);
     game.play(1, game.turnId, at + 1);
-    // 오발: 2번의 덱 카드 1장이 종 밑 보관 스택으로 간다
+    // 오발: 테이블의 1번 카드가 종 밑 보관 스택으로 가고, 2번의 벌칙 카드 1장은 1번 덱 아래로 간다
     expect(game.ring(2, game.turnSeq, at + 2)).toMatchObject({ success: false });
     expect(game.snapshot().pileCount).toBe(1);
     const before = game.checkpoint().players[0].hand.length;
@@ -754,7 +755,8 @@ describe('스킬 효과: 쥐새끼(FUNC-009-05)', () => {
     expect(game.snapshot().pileCount).toBe(0);
     const hand = game.checkpoint().players[0].hand;
     expect(hand.length).toBe(before + 1);
-    expect(hand.at(-1)).toBe('S3');
+    // 덱 맨 아래는 보관 스택에서 가져온 1번이 낸 카드다
+    expect(hand.at(-1)).toBe('S2');
   });
 
   it('보관 스택이 비어 있으면 쓸 수 없고 스킬은 그대로다', () => {
@@ -886,9 +888,10 @@ describe('스킬 효과: 지뢰(FUNC-009-05)', () => {
     expect(game.ring(2, game.turnSeq, at + 3)).toMatchObject({ success: false, movedCards: 1 });
     expect(game.ring(2, game.turnSeq, at + 3)).toBeNull();
     expect(game.snapshot().mine).toBe(false);
-    // 다음 판정은 평소와 같다: 딸기 2 + 3 = 5
-    game.play(2, game.turnId, at + 10_000);
-    expect(game.ring(1, game.turnSeq, at + 10_001)).toMatchObject({ success: true });
+    // 다음 판정은 평소와 같다: 지뢰가 터지지 않는다
+    game.play(game.snapshot().turnUserId!, game.turnId, at + 10_000);
+    game.play(game.snapshot().turnUserId!, game.turnId, at + 10_001);
+    expect(game.ring(1, game.turnSeq, at + 10_002)).not.toHaveProperty('mined');
   });
 
   it('게임이 끝나면 사라진다', () => {
@@ -1054,7 +1057,7 @@ describe('스킬 효과: 종 야바위(FUNC-009-05)', () => {
       results.filter((action) => action && 'success' in action && action.success),
     ).toHaveLength(1);
     for (const action of results.filter((entry) => entry && 'success' in entry && !entry.success))
-      expect(action).toMatchObject({ fake: true, movedCards: 1 });
+      expect(action).toMatchObject({ fake: true, penaltyCards: 1 });
   });
 
   it('종 번호 없이 누르면 가짜로 보고, 10초가 지나면 원래대로 종 하나다', () => {

@@ -329,11 +329,16 @@ describe('게임 서버 Socket.io / Redis / PostgreSQL (FUNC-005)', () => {
       [host, guest].map((auth) => redis.hget(`game:${gameId}:stat:${auth.user.id}`, 'bellSuccess')),
     );
     expect(stats.reduce((sum, count) => sum + Number(count), 0)).toBe(1);
+    const winner = [host, guest][stats.findIndex((count) => Number(count) === 1)].user.id;
+    expect(snapshot().bellHands?.userIds[0]).toBe(winner);
+    expect(new Set(snapshot().bellHands?.userIds)).toEqual(new Set([host.user.id, guest.user.id]));
+    const observerHands = await waitState(c, (state) => state.bellHands?.userIds.length === 2);
+    expect(observerHands.bellHands).toEqual(snapshot().bellHands);
     expect(await redis.ttl(`game:${gameId}:bell:${turnSeq}`)).toBeGreaterThan(0);
     expect(snapshot().players.reduce((sum, player) => sum + player.handCount, 0)).toBe(56);
     expect(snapshot().fruitTotals.STRAWBERRY).toBe(0);
   });
-  it('결과 표시 중 카드를 막고 이후 오발은 1장만 보관하며 관전자에게 동기화한다', async () => {
+  it('결과 표시 중 카드를 막고 오발은 상대에게 1장씩 주고 테이블을 비워 관전자에게 동기화한다', async () => {
     const pause = snapshot();
     const actorDuringPause = pause.turnUserId === host.user.id ? a : b;
     expect(
@@ -347,13 +352,27 @@ describe('게임 서버 Socket.io / Redis / PostgreSQL (FUNC-005)', () => {
     expect(await emit(actor, GameClientEvent.PLAY, { gameId, turnId: snapshot().turnId })).toEqual({
       ok: true,
     });
+    const beforeMisfire = snapshot();
     expect(
       await emit(actor, GameClientEvent.BELL, { gameId, turnSeq: snapshot().turnSeq }),
     ).toEqual({ ok: true });
     expect(snapshot().pileCount).toBe(1);
-    expect(snapshot().players.reduce((sum, player) => sum + player.tableCount, 0)).toBe(1);
+    const actorId = actor === a ? host.user.id : guest.user.id;
+    for (const player of snapshot().players) {
+      const before = beforeMisfire.players.find((entry) => entry.userId === player.userId)!;
+      expect(player.handCount).toBe(before.handCount + (player.userId === actorId ? -1 : 1));
+    }
+    expect(
+      snapshot().players.every((player) => player.tableCount === 0 && player.topCard === null),
+    ).toBe(true);
     expect(await redis.llen(`game:${gameId}:pile`)).toBe(1);
-    expect((await waitState(c, (state) => state.pileCount === 1)).gameId).toBe(gameId);
+    for (const auth of [host, guest])
+      expect(await redis.llen(`game:${gameId}:table:${auth.user.id}`)).toBe(0);
+    const spectatorState = await waitState(c, (state) => state.pileCount === 1);
+    expect(spectatorState.gameId).toBe(gameId);
+    expect(
+      spectatorState.players.every((player) => player.tableCount === 0 && player.topCard === null),
+    ).toBe(true);
   });
   it('새 소켓이 재접속하면 같은 게임 전체 상태를 받는다', async () => {
     const before = snapshot();

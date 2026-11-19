@@ -1,6 +1,7 @@
 import { IsIn, IsInt, IsString, Matches, MaxLength } from 'class-validator';
 import { ROOM_CODE_PATTERN, ROOM_NAME_MAX_LENGTH, RoomRole } from '@nlmlio/shared';
 import type {
+  SocketAuthRequest,
   CreateRoomRequest,
   JoinRoomRequest,
   RoomMovePayload,
@@ -28,4 +29,10 @@ export class RoomTargetDto implements RoomTargetPayload {
 export class RoomMoveDto extends RoomTargetDto implements RoomMovePayload {
   @IsIn(Object.values(RoomRole))
   role!: RoomRole;
+}
+
+export class SocketAuthDto implements SocketAuthRequest {
+  @IsString()
+  @MaxLength(4096)
+  token!: string;
 }

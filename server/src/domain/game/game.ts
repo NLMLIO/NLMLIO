@@ -41,6 +41,7 @@ import type { Random } from '../skill/skill-roll';
 import type { SkillParticipant } from '../skill/skill-selection';
 import { GameSettlement } from './game-settlement';
 import { Table } from './table';
+import { BellHands } from './bell-hands';
 
 export { TURN_TIME_MS };
 export interface StartGameInput {
@@ -100,6 +101,7 @@ interface RewindPoint {
 export class Game {
   private readonly players: GamePlayer[];
   private readonly table: Table;
+  private bellHands: BellHands | null = null;
   private pile: Card[];
   private readonly out: number[] = [];
   /** 덱을 다 낸 순서. 아무도 낼 카드가 없을 때 마지막에 낸 사람이 이기고, 나머지는 먼저 떨어진 순으로 아래 순위다 */
@@ -260,6 +262,7 @@ export class Game {
     if (this.burning.has(userId)) return null;
     if (this.resumeAt !== null && now < this.resumeAt) return null;
     this.resumeAt = null;
+    this.bellHands = null;
     let card = player.draw(automatic);
     // 과일 6개 카드: 낼 카드의 과일 그대로 6개짜리 특수 카드로 바뀐다(원래 카드는 함께 사라진다).
     if (this.sixCard.delete(userId)) card = Card.six(card.fruit);
@@ -278,6 +281,10 @@ export class Game {
   }
 
   ring(userId: number, sequence: number, now: number, bell?: number): GameAction | null {
+    const receivedAt = now;
+    const eligibleUserIds = this.players
+      .filter((player) => player.active)
+      .map((player) => player.userId);
     now = this.time(now);
     if (!this.canRing(userId, sequence, now)) return null;
     const player = this.activePlayer(userId);
@@ -293,6 +300,7 @@ export class Game {
     this.resolvedSequence = sequence;
     if (!mined) player.bell(success, this.playedAt === null ? 0 : now - this.playedAt);
     let movedCards: number;
+    let penaltyCards = 0;
     if (mined) {
       const cards = this.table.collect();
       this.pile.push(...cards);
@@ -304,12 +312,19 @@ export class Game {
       movedCards = cards.length;
       this.current = userId;
     } else {
-      const penalty = player.penalty();
+      // 오발자를 제외한 생존 플레이어에게 참가 순서대로 1장씩 덱 아래에 준다.
+      for (const opponent of this.players) {
+        if (!opponent.active || opponent.userId === userId) continue;
+        const cards = player.penalty();
+        if (!cards.length) break;
+        opponent.take(cards);
+        penaltyCards += cards.length;
+      }
       // 벌칙으로 덱이 떨어진 사람은 마지막에 카드를 «낸» 사람이 아니므로 가장 앞(낮은 순위)에 둔다.
-      if (penalty.length && player.handCount === 0) this.emptied.unshift(userId);
-      // 오발은 본인 카드 1장만 보관한다. 다른 플레이어의 공개 카드는 유지한다.
-      this.pile.push(...penalty);
-      movedCards = penalty.length;
+      if (penaltyCards && player.handCount === 0) this.emptied.unshift(userId);
+      const cards = this.table.collect();
+      this.pile.push(...cards);
+      movedCards = cards.length;
     }
     // 판정이 났다: 테이블에 남은 과일 6개 카드는 성공·오발과 상관없이 사라진다.
     this.table.discardSpecial();
@@ -326,6 +341,7 @@ export class Game {
     this.roundNumber++;
     this.newTurn(now);
     this.resumeAt = now + ROUND_RESULT_MS;
+    this.bellHands = new BellHands(sequence, receivedAt, this.resumeAt, eligibleUserIds, userId);
     this.deadline = this.resumeAt + TURN_TIME_MS;
     this.finishIfNeeded(now);
     // 그 판정으로 게임이 끝나면 선택을 열지 않는다(009-01).
@@ -339,7 +355,17 @@ export class Game {
       totals,
       ...(mined ? { mined: true as const } : {}),
       ...(fake ? { fake: true as const } : {}),
+      ...(!success ? { penaltyCards } : {}),
     };
+  }
+
+  recordBellHand(userId: number, sequence: number, receivedAt: number): boolean {
+    // 종을 칠 수 없는 손(손이 부서짐·아마테라스·시간 정지·종 부서짐)은 접수 순서에도 올리지 않는다.
+    if (this.burning.has(userId) || this.smashed.has(userId)) return false;
+    if (this.frozenFor(userId, receivedAt) || this.bellBrokenAt(receivedAt)) return false;
+    if (!this.bellHands?.add(userId, sequence, receivedAt)) return false;
+    this.revision++;
+    return true;
   }
 
   /** 종 야바위가 진행 중이면 그 상태, 끝났으면 null */
@@ -518,6 +544,14 @@ export class Game {
     ];
     if (!this.skills.open(participants, now)) return false;
     this.pausedTurnMs = this.deadline === null ? null : Math.max(0, this.deadline - now);
+    this.revision++;
+    return true;
+  }
+
+  rename(userId: number, nickname: string): boolean {
+    const player = this.players.find((entry) => entry.userId === userId);
+    if (!player || player.nickname === nickname) return false;
+    player.rename(nickname);
     this.revision++;
     return true;
   }
@@ -704,6 +738,7 @@ export class Game {
       turnUserId: this.current,
       turnDeadline: this.turnDeadline,
       roundResumeAt: this.resumeAt,
+      bellHands: this.bellHands?.snapshot() ?? null,
       lastPlayAt: this.playedAt,
       startedAt: this.input.now,
       endedAt: this.endedAt,

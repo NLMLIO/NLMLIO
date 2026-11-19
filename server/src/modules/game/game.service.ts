@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import {
   ErrorCode,
   GAME_RECONNECT_GRACE_MS,
+  GamePlayerStatus,
   GameStatus,
   RoomRole,
   RoomStatus,
@@ -54,12 +55,22 @@ export class GameService implements OnModuleInit {
       start: (id) => this.start(id),
       leaving: (id, remove) => this.leaving(id, remove),
       closed: (code) => this.closed(code),
+      renamed: async (id, nickname) => {
+        const room = this.rooms.memberRoom(id);
+        if (!room) return;
+        await this.queue.run(room.code, async () => {
+          const session = this.games.get(room.code);
+          if (session?.game.rename(id, nickname)) await this.changed(session);
+        });
+      },
       joined: (id) => {
         const state = this.sync(id);
         if (state?.status === GameStatus.PLAYING) {
           this.events.sync(id, state);
           this.events.skills(id, this.skillsFor(id));
         }
+        if (state && !this.connections.get(id)?.size)
+          this.scheduleWaitingDisconnect(id, state.roomCode);
       },
     });
   }
@@ -119,6 +130,8 @@ export class GameService implements OnModuleInit {
     authorize: Authorize = trusted,
   ): Promise<boolean> {
     return this.command(userId, input.gameId, authorize, async (game) => {
+      // 승자는 이미 확정돼도 최초 접수 후 200ms 이내의 손은 서버 순서로 함께 표시한다.
+      if (game.recordBellHand(userId, input.turnSeq, receivedAt)) return null;
       if (!game.canRing(userId, input.turnSeq, receivedAt)) return null;
       if (!(await this.snapshots.claimBell(game.id, input.turnSeq, userId))) return null;
       return game.ring(userId, input.turnSeq, receivedAt, input.bell);
@@ -213,7 +226,14 @@ export class GameService implements OnModuleInit {
     const room = this.rooms.memberRoom(userId);
     if (!room) return;
     const session = this.games.get(room.code);
-    if (session?.game.status === GameStatus.PLAYING) {
+    if (
+      session?.game.status === GameStatus.PLAYING &&
+      session.game
+        .snapshot()
+        .players.some(
+          (player) => player.userId === userId && player.status === GamePlayerStatus.ACTIVE,
+        )
+    ) {
       this.scheduleDisconnect(userId, room.code, session.game.id);
       await this.queue.run(room.code, async () => {
         const action = session.game.connection(userId, false);
@@ -237,13 +257,15 @@ export class GameService implements OnModuleInit {
       const session = this.games.get(code);
       if (!session || session.game.id !== gameId) throw appError(ErrorCode.GAME_NOT_FOUND);
       let event: GameAction | null;
+      const version = session.game.version;
       try {
         event = await action(session.game);
       } catch (error) {
         if (error instanceof GameRuleError) throw appError(error.code);
         throw error;
       }
-      if (event) await this.changed(session, event);
+      if (event || session.game.version !== version)
+        await this.changed(session, event ?? undefined);
       return event !== null;
     });
   }
@@ -279,8 +301,10 @@ export class GameService implements OnModuleInit {
   private async changed(session: GameSession, action?: GameAction): Promise<void> {
     const game = session.game;
     for (const id of game.eliminatedIds) {
-      this.timers.cancel(`connection:${id}`);
       if (!session.marked.has(id)) {
+        this.timers.cancel(`connection:${id}`);
+        if (!this.connections.get(id)?.size && this.rooms.memberRoom(id)?.code === game.roomCode)
+          this.scheduleWaitingDisconnect(id, game.roomCode);
         if (this.rooms.memberRoom(id)?.code === game.roomCode) this.rooms.markSpectator(id);
         session.marked.add(id);
       }
@@ -450,7 +474,14 @@ export class GameService implements OnModuleInit {
       if (this.connections.get(userId)?.size || this.rooms.memberRoom(userId)?.code !== code)
         return;
       const session = this.games.get(code);
-      if (this.rooms.memberRoom(userId)?.status === RoomStatus.PLAYING && session?.game.has(userId))
+      if (
+        this.rooms.memberRoom(userId)?.status === RoomStatus.PLAYING &&
+        session?.game
+          .snapshot()
+          .players.some(
+            (player) => player.userId === userId && player.status === GamePlayerStatus.ACTIVE,
+          )
+      )
         return;
       this.background(() => this.rooms.leaveMember(userId));
     });

@@ -195,7 +195,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `server/src/common/security/`: Argon2id, JWT, HTTP Guard, Redis Refresh 세션. Refresh는 HttpOnly 쿠키에 저장하고 Redis에는 기기 세션마다(`refresh:{userId}:{sid}`) 토큰의 SHA-256 지문을 저장한다.
 - `server/src/domain/user/`: 인프라와 독립적인 계정 타입, 누적 통계 계산 객체.
 - `server/src/domain/game/game-settlement.ts`: 저장 전 확정 순위·기록 검증.
-- `server/src/domain/card/deck.ts`, `domain/player/game-player.ts`, `domain/game/game.ts`, `table.ts`: 카드·셔플·분배, 보유 카드, 테이블, 턴·종·벌칙·탈락·순위를 캡슐화한 순수 TS 객체. 종 판정 후 1.8초 동안 서버도 카드 내기를 막고 `roundResumeAt`을 공개한다.
+- `server/src/domain/card/deck.ts`, `domain/player/game-player.ts`, `domain/game/game.ts`, `table.ts`, `bell-hands.ts`: 서버 접수 후 200ms 이내 손 순서와 판정 종료까지의 표시, 카드·셔플·분배, 보유 카드, 테이블, 턴·종·벌칙·탈락·순위를 캡슐화한 순수 TS 객체. 종 판정 후 1.8초 동안 서버도 카드 내기를 막고 `roundResumeAt`을 공개한다.
 - `shared/src/skills.ts`, `server/src/domain/skill/`: 스킬(FUNC-009). 17개 스킬 목록·등급·확률은 `shared`, 후보 뽑기(`skill-roll.ts`)·보유 칸(`skill-inventory.ts`)·선택 진행(`skill-book.ts`, `skill-selection.ts`)은 순수 도메인이다. `Game`이 종 성공을 세어 5번마다 선택을 열고(`openSkillPick`), 선택 중에는 카드 내기·종·턴 타이머를 멈춘다. 서비스(`GameService`)가 방 큐 타이머(`skill-open`·`skill-settle`)로 열기·마감을 처리하고 `game:skills`를 본인에게만 보낸다. 규칙·계약은 `server/GAME.md`의 「스킬 선택」.
 - `client/src/pages/game/skill/`, `styles/skill.css`, `assets/skills/`: Figma NLML_design 「07 · 스킬」 화면(FUNC-009). `SkillPick`(선택 창, 21·21-1), `SkillDock`·`SkillSlot`(슬롯, 22), `SkillCard`, `SkillGlyph`(Noto Emoji 글리프 또는 SVG 마스크)를 `GameView.skills`로 그린다. 서버 상태(`game:skills`, 스냅샷 `skillPick`)로 그리고(`to-game-view.ts`의 `skillsOf`), 개발 서버에서는 `#game-preview/skill-pick`, `skill-pick-spectator`, `skill-pick-full`(시안 없음), `skill-slots` 장면으로 고정 상태도 볼 수 있다. 선택 중에는 카드 내기·종·단축키를 막는다. 슬롯은 눌러서 또는 Q·W·E로 쓰고(`GamePage.useSkillSlot`), 대상 지정 스킬은 좌석을 눌러 대상을 고른다(`SkillTargeting`, Esc 취소). 사용 알림은 `SkillCast`(1.6초), 금칠 카드는 `FruitCard`의 `gilded`다. 서버는 `SkillDefinition.available`인 스킬(지금은 반짝반짝한 카드·종 옮기기·과일 6개 카드·시간 정지·침 뱉기·아마테라스·숫자 바꾸기·종 부수기·해킹·쥐새끼·러시안 룰렛·지뢰·무지개 반사·손 개 쌔게 내려치기·종 야바위·도르마무·안해, 17개 모두)만 쓰게 한다. 종 야바위는 `Bell`의 `shell`(번호 있는 종 N개)과 `useGameShortcuts`의 `bells`(종마다 키)로 `bell:ring`에 `bell` 번호를 실어 보낸다. 도르마무는 `skillUsable`이 `snapshot.rewindUntil`로 판단한다. 손 개 쌔게 내려치기는 `skillUsable`이 `smashWindow`(2초)로 판단하고, 부서진 손(`smashed`)은 `GamePage`가 종 입력을 막고 안내를 띄운다. 지뢰는 `GameView.mine`(종 옆 `skill-mine`)과 `Verdict`의 "지뢰 폭발!", 무지개 반사는 `SkillCastView.reflectedBy`(알림·로그)로 그린다. 쥐새끼는 `SkillRat`(쥐가 종에서 쓴 사람의 좌석으로, `GameBoard.seatPoint`), 러시안 룰렛은 `SkillShot`(대상 좌석의 "탕!")과 대상 조건(`targetingOf`: 테이블 카드가 있는 사람)으로 그린다. 종 부수기는 `bellBreakAt`과 `Bell`의 `broken`(금 간 종·복구 시간), 해킹은 `game:skills`의 `hackKey`로 Space 대신 새 키를 받고(`GamePage`의 `ringKey`, 종 옮기기보다 우선), 숫자 바꾸기는 `FruitCard`의 `boosted`('+1' 배지)로 그린다. 시간 정지는 `timeStopAt`(to-game-view)과 `SkillTimeStop` 오버레이, 침 뱉기는 대상 본인에게만 `SkillSpit`, 아마테라스는 `PlayerView.burning`(좌석의 검은 불꽃)과 `GameView.frozen`으로 그린다. 시간 정지·아마테라스 중에는 `GamePage`가 카드·종 입력을 막는다. 종 옮기기는 `bellMoveAt`(to-game-view)이 자리·새 키·입력 잠금을 계산하고 `Bell`이 옮겨 그리며 `use-game-shortcuts`의 `bell`이 새 키를 받는다. 과일 6개 카드는 `FruitCard`의 `special`(6칸 배치·6 배지)이다. 시안과 다른 점: 보유 칸은 처음부터 3칸이고 가득 차면 교체·받지 않기를 둔다(명세), 러시안 룰렛은 4성 영웅(명세).
 - `server/src/modules/game/`: 게임 Gateway, 서비스, 서버 셔플 팩토리, 타이머, 브로드캐스트, 결과 저장. `infra/game-state/room-queue.ts`가 인증·타이머·이탈·정산을 방별 접수 순서로 직렬화한다.
@@ -206,12 +206,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `server/src/domain/room/room.ts`: 방 규칙(입장 순서, 참가자 6·관전자 10 칸, 자리 이동, 추방, 방장 위임·승계, 게임 시작). 진행 중 입장은 항상 관전자로 받고 탈락 참가자를 제외한 새 관전 10석·전체 16명 정원을 지킨다. 규칙 위반은 `RoomRuleError(앱 에러 코드)`로 던지고 서비스가 HTTP·소켓 응답으로 바꾼다.
 - `server/src/modules/room`: HTTP `POST /api/rooms`, `POST /api/rooms/join`(게임 중이면 관전 입장·현재 상태 전송), `GET /api/rooms/me`, `POST /api/rooms/me/leave`와 `RoomGateway`(소켓 인증 미들웨어, 방 의도 이벤트). `RoomEvents`가 소켓 채널 `user:{id}`·`room:{code}`로 상태를 내보낸다. 방은 서버 메모리(`infra/game-state/room.store.ts`), 코드 예약은 Redis `room-code:{code}`(SET NX, TTL 24시간). 모든 방은 비공개다(2026-10-22 결정).
 - `server/src/common/ws-ack.filter.ts`, `ws-validation.pipe.ts`, `socket-user.ts`: 소켓 이벤트 예외를 ack `{ ok: false, code }`로 돌려주고, 페이로드를 HTTP와 같은 규칙으로 검증한다.
-- `client/src/socket/socket.ts`, `stores/room-store.ts`: 로그인한 동안 소켓 하나를 유지하고(토큰 만료 시 재발급 후 재연결), 서버 이벤트로만 방 스토어를 갱신한다. 의도는 `sendIntent`로 보내고 ack를 기다린다. 연결 중 토큰이 만료돼 ack가 `TOKEN_EXPIRED`·`TOKEN_INVALID`면 재발급 → 새 토큰으로 재연결 → 한 번 다시 보낸다.
+- `client/src/socket/socket.ts`, `stores/room-store.ts`: 로그인한 동안 소켓 하나를 유지하고(토큰 만료 전에 재발급 후 기존 연결에서 인증 갱신), 서버 이벤트로만 방 스토어를 갱신한다. 의도는 `sendIntent`로 보내고 ack를 기다린다. 연결 중 토큰이 만료돼 ack가 `TOKEN_EXPIRED`·`TOKEN_INVALID`면 재발급 → `auth:refresh`로 기존 연결 갱신 → 한 번 다시 보낸다. `shared/src/auth-events.ts`가 갱신 계약이고, 채팅 수신 인증이 만료되면 `auth:required`를 받는다.
 - `client/src/pages/lobby/LobbyPage.tsx`, `CreateRoomPage.tsx`, `pages/room/WaitingRoomPage.tsx`, `RoomChat.tsx`(채팅·이모티콘·방 안내): 로비(`#lobby`, 기본 화면), 방 만들기(`#create-room`), 대기실(`#room`, 상단 메뉴 없이 전체 화면).
 - `server/src/modules/chat/`: Socket.io 인증·방 소속 검증, 텍스트/이모티콘 DTO, Redis Pub/Sub 전달과 사용자별 전송 제한. 방 소속 정보는 `RoomService`만 조회한다.
 - `shared/src/events.ts`: 채팅 Socket.io 이벤트 이름, 페이로드, 허용 이모티콘과 Ack 타입.
-- `client/src/pages/game/`, `styles/game.css`, `assets/game/`: Figma NLML_design 「03 · 게임」 화면(FUNC-005). `GamePage`(`#game`)가 `stores/game-store.ts`의 서버 스냅샷을 `to-game-view.ts`로 `GameView`(화면 모델)에 옮겨 그리고, 카드 내기·종·결과 확인은 `socket.ts`의 `sendGameIntent`로 보낸다. 게임이 시작되거나 진행 중인 게임에 다시 연결되면 `App`이 `#game`으로 옮긴다. 개발 서버에서는 고정 장면 미리보기(`#game-preview/<장면>`, `preview-scenes.ts`)도 볼 수 있다. 1440×900 좌표계로 그리고 `hooks/use-fit-scale.ts`로 창에 맞춘다. 단축키는 `hooks/use-game-shortcuts.ts`(J 카드 내기, Space 종).
-- `client/src/stores/game-store.ts`: `game:state`·`game:action`의 거울. 같은 게임의 낮은 revision은 버리고, 스냅샷의 `serverTime`으로 서버 시계 차이를 추정한다. 플레이어별 마지막 카드 공개(`lastCards`)로 뒤집기 key와 '자동' 표시를 유지한다. 게임 진행 로그는 채팅과 같은 순서로 `room-store` 로그에 쌓는다.
+- `client/src/pages/game/`, `styles/game.css`, `assets/game/`: Figma NLML_design 「03 · 게임」 화면(FUNC-005). `GamePage`(`#game`)가 `stores/game-store.ts`의 서버 스냅샷을 `to-game-view.ts`로 `GameView`(화면 모델)에 옮겨 그리고, 카드 내기·종·결과 확인은 `socket.ts`의 `sendGameIntent`로 보낸다. 게임이 시작되거나 진행 중인 게임에 다시 연결되면 `App`이 `#game`으로 옮긴다. 개발 서버에서는 고정 장면 미리보기(`#game-preview/<장면>`, `preview-scenes.ts`)도 볼 수 있다. 1440×900 좌표계로 그리고 `hooks/use-fit-scale.ts`로 창에 맞춘다. 단축키는 `hooks/use-game-shortcuts.ts`(J 카드 내기, Space 종). `pages/game/game-input-sequence.ts`는 카드 요청 중 종 입력을 응답 뒤 최신 스냅샷으로 보낸다.
+- `client/src/stores/game-store.ts`: `game:state`·`game:action`의 거울. 같은 게임의 낮은 revision은 버리고, 스냅샷의 `serverTime`으로 서버 시계 차이를 추정한다. 손 목록은 서버 스냅샷의 `bellHands`를 그대로 그리며 로컬 입력으로 손을 미리 올리지 않는다. 플레이어별 마지막 카드 공개(`lastCards`)로 뒤집기 key와 '자동' 표시를 유지한다. 게임 진행 로그는 채팅과 같은 순서로 `room-store` 로그에 쌓는다.
 - `client/src/audio/sounds.ts`, `public/sounds/`: Howler 효과음(FUNC-005-14). 앱 시작 시 preload, 첫 입력에서 오디오 활성화, 음소거는 localStorage. 효과음은 `client/scripts/generate-sounds.mjs`로 합성한 자체 제작물이다(`public/sounds/LICENSES.md`).
 - `server/src/infra/database/*repository.ts`: Prisma 타입·쿼리와 트랜잭션을 캡슐화. `RankingRepository`는 전체 경기의 승패를 SQL에서 집계해 목록과 내 순위를 같은 기준으로 계산한다.
 - `client/src/pages/auth`, `mypage`, `ranking`: 요청 이미지에 맞춘 화면. `api/http.ts`는 단일 Refresh 요청과 한 번의 HTTP 재시도를 담당한다.
@@ -242,7 +242,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | 보관 스택 | 종 아래에 모아 두는 카드(분배 후 남은 카드, 탈락·이탈자의 카드). 다음에 정당하게 종을 친 승자가 가져간다 |
 | 종 누르기 | 테이블 위 같은 과일 합이 **정확히 5개**일 때 누르는 행동 |
 | 선착순 판정 | 여러 명이 거의 동시에 종을 쳤을 때 **서버 도착 시각 기준 1명**만 인정 |
-| 오발 벌칙 | 오발자 카드 1장만 종 아래 보관 스택으로 옮기고 테이블은 유지(2026-11-12 피드백) |
+| 오발 벌칙 | 오발자가 다른 생존 플레이어에게 보유 카드 1장씩 지급, 테이블 전체는 종 아래 보관(2026-11-19 수정) |
 | 탈락 / 이탈 | 덱 0장인 채로 종 판정이 끝나 빠짐(순위 정상) / 나가기·연결 끊김 5초·턴 시간 초과 3회로 빠짐(맨 아래, 패배). 둘 다 관전자가 된다 |
 | 턴 제한 시간 | 차례마다 10초. 넘기면 서버가 대신 카드를 낸다 |
 | 라운드 | 카드를 차례로 내다가 종 판정이 나거나 탈락자가 생기면 끝나는 단위 |
@@ -269,7 +269,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### 6.2 종 치기 — 체감은 즉시, 판정은 서버
 
 - **종소리(Howler.js)는 클라이언트에서 누르는 즉시 재생**한다. 서버 응답을 기다리지 않는다(체감 지연 0).
-- 단, **승패·카드 이동과 그 효과음(성공·오발)은 낙관적으로 처리하지 않는다.** 서버의 판정 이벤트를 받은 뒤에만 화면을 바꾸고 소리를 낸다.
+- 단, **승패·카드 이동·손 모션과 그 효과음(성공·오발)은 낙관적으로 처리하지 않는다.** 서버의 판정 이벤트를 받은 뒤에만 화면을 바꾸고 소리를 낸다.
 - 효과음은 앱 시작 시 미리 로드(preload)하고, 브라우저 자동재생 정책 때문에 첫 사용자 입력 시점에 오디오를 활성화한다. 로드에 실패해도 게임은 계속 진행된다.
 - 음소거 상태는 클라이언트 설정이다(localStorage). 서버에 보내지 않는다.
 
@@ -339,6 +339,8 @@ C→S 이벤트는 ack로 `{ ok: true }` 또는 `{ ok: false, code }`를 받는�
 
 | 방향 | 이벤트 | 페이로드 | FUNC |
 |---|---|---|---|
+| C→S | `auth:refresh` | `{ token }` 동일 회원의 Access 토큰으로 소켓 인증 교체 → `SocketAuthAck` | 001-06 |
+| S→C | `auth:required` | `{ code: TOKEN_EXPIRED }` 수신 인증 갱신 요청 | 001-06 |
 | C→S | `room:move` | `{ userId, role }` 본인 또는 (방장) 다른 회원의 자리 이동 | 003-09 |
 | C→S | `room:kick` | `{ userId }` | 003-10 |
 | C→S | `room:delegate` | `{ userId }` | 003-11 |

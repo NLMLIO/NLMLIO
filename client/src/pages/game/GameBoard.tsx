@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
-import type { ChatEmojiCode } from '@nlmlio/shared';
+import type { BellHandsView, ChatEmojiCode } from '@nlmlio/shared';
 import { setMuted, useMuted } from '../../audio/sounds';
 import tableImage from '../../assets/game/table.png';
 import { ActionBar } from './ActionBar';
@@ -42,7 +42,8 @@ export function GameBoard({
   actions,
   leaving = false,
   playing = false,
-  strike,
+  hands,
+  canJoinHandWindow = false,
   children,
 }: {
   view: GameView;
@@ -51,7 +52,8 @@ export function GameBoard({
   leaving?: boolean;
   /** 카드 내기 요청을 보내는 중이면 카드 내기 버튼을 잠근다 */
   playing?: boolean;
-  strike?: { id: number; playerId: string };
+  hands?: Pick<BellHandsView, 'turnSeq' | 'userIds'>;
+  canJoinHandWindow?: boolean;
   /** 보드 위에 띄우는 확인 창 등 */
   children?: ReactNode;
 }) {
@@ -141,9 +143,8 @@ export function GameBoard({
           state={view.bell}
           pileCount={view.pileCount}
           disabled={
-            spectating ||
-            view.myPhase === 'judging' ||
-            view.bell.kind === 'countdown' ||
+            (!canJoinHandWindow &&
+              (spectating || view.myPhase === 'judging' || view.bell.kind === 'countdown')) ||
             !!view.skills?.pick ||
             !!view.bellMove?.locked ||
             !!view.bellBreak ||
@@ -168,26 +169,40 @@ export function GameBoard({
             ✸
           </span>
         )}
-        {seatedPlayers.map((player, index) => (
-          <div
-            key={`${player.id}:${strike?.playerId === player.id ? strike.id : 'rest'}`}
-            className={`player-hand-track${strike?.playerId === player.id ? ' is-striking' : ''}`}
-            style={
-              {
-                left: 550,
-                top: 440,
-                '--hand-angle': `${placements[index].rotation}deg`,
-                ...playerColorStyle(player.color),
-              } as CSSProperties
-            }
-            aria-hidden="true"
-          >
-            <svg className="player-hand" viewBox="0 0 80 110">
-              <path d="M22 104V81C13 74 7 62 9 57c2-5 7-4 11 0l5 6V20c0-8 11-8 11 0v29-37c0-8 11-8 11 0v37-30c0-8 11-8 11 0v33-21c0-8 11-8 11 0v35c0 12-5 20-10 27v11Z" />
-              <path className="hand-cuff" d="M20 94h42v14H20z" />
-            </svg>
-          </div>
-        ))}
+        {seatedPlayers.map((player, index) => {
+          const handIndex = hands?.userIds.indexOf(Number(player.id)) ?? -1;
+          return (
+            <div
+              key={`${player.id}:${handIndex >= 0 ? hands?.turnSeq : 'rest'}`}
+              className={`player-hand-track${handIndex >= 0 ? ' is-striking' : ''}`}
+              style={
+                {
+                  left: 550,
+                  top: 440,
+                  '--hand-angle': `${placements[index].rotation}deg`,
+                  '--hand-stack-index': Math.max(0, handIndex),
+                  ...playerColorStyle(player.color),
+                } as CSSProperties
+              }
+              aria-hidden="true"
+            >
+              <div className="player-hand">
+                <svg viewBox="0 0 100 140" focusable="false">
+                  <path d="M30 117v-12c-7-6-15-16-20-26l-5-11c-2-5 1-9 5-9 3-1 6 1 9 5l8 10V29c0-5 3-8 7-8s7 3 7 8v32-45c0-5 3-8 7-8s7 3 7 8v45-40c0-5 3-8 7-8s7 3 7 8v43-29c0-5 3-8 7-8s7 3 7 8v44c0 13-3 22-11 30v8Z" />
+                  <path className="hand-crease" d="M28 76c7-1 14 3 17 10M42 70v8m14-10v9m14-8v9" />
+                  <path className="hand-cuff" d="M27 113h48v22H27z" />
+                </svg>
+              </div>
+            </div>
+          );
+        })}
+        {!!hands?.userIds.length && (
+          <ul className="bell-hand-order" aria-label="서버 종 접수 순서">
+            {hands.userIds.map((id) => (
+              <li key={id}>{seatedPlayers.find((player) => Number(player.id) === id)?.nickname}</li>
+            ))}
+          </ul>
+        )}
         {others.map((player, index) => {
           const { seat, seatGrowsUp } = placements[index + (view.selfSeated === false ? 0 : 1)];
           return (
