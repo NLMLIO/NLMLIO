@@ -28,11 +28,16 @@ export function FruitCard({ card }: { card: CardFace }) {
   const cells = PIP_CELLS[card.count];
   return (
     <div
-      className={`fruit-card${card.gilded ? ' is-gilded' : ''}${card.special ? ' is-special' : ''}`}
+      className={`fruit-card${card.gilded ? ' is-gilded' : ''}${card.special ? ' is-special' : ''}${card.boosted ? ' is-boosted' : ''}`}
       role="img"
-      aria-label={`${FRUIT_NAMES[card.fruit]} ${card.count}${card.gilded ? ' 금칠' : ''}`}
+      aria-label={`${FRUIT_NAMES[card.fruit]} ${card.count}${card.gilded ? ' 금칠' : ''}${card.boosted ? ' +1' : ''}`}
     >
       {card.gilded && <span className="fruit-card-shine" aria-hidden="true" />}
+      {card.boosted && (
+        <span className="fruit-card-plus" aria-hidden="true">
+          +1
+        </span>
+      )}
       {card.special && (
         <span className="fruit-card-six" aria-hidden="true">
           6

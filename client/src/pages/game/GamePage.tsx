@@ -17,7 +17,14 @@ import { useRoomStore } from '../../stores/room-store';
 import { GameBoard, type GameActions } from './GameBoard';
 import { GameFrame } from './GameFrame';
 import { GameResult } from './GameResult';
-import { bellMoveAt, skillUsable, timeStopAt, toGameView, toRanking } from './to-game-view';
+import {
+  bellBreakAt,
+  bellMoveAt,
+  skillUsable,
+  timeStopAt,
+  toGameView,
+  toRanking,
+} from './to-game-view';
 
 /** 의도 실패 안내를 띄워 두는 시간 */
 const ERROR_MS = 2500;
@@ -96,6 +103,10 @@ export function GamePage({
   // 스킬 선택 중에는 게임이 멈춘다(FUNC-009-01). 카드 내기·종은 서버도 무시한다.
   const picking = live && !!snapshot?.skillPick;
   const bellMoved = snapshot ? bellMoveAt(snapshot, now + clockOffset) : undefined;
+  const bellBroken = snapshot ? bellBreakAt(snapshot, now + clockOffset) : undefined;
+  // 해킹(내 키)이 종 옮기기(모두의 키)보다 우선한다. 둘 다 Space 대신 이 키로만 종을 친다.
+  const hackKey = skills?.gameId === snapshot?.gameId ? skills?.hackKey : null;
+  const ringKey = hackKey ?? bellMoved?.key ?? null;
   // 시간 정지 중에는 쓴 사람만 카드를 내고(차례와 무관), 아마테라스에 걸린 사람은 카드·종이 모두 불가다.
   const timeStop = snapshot ? timeStopAt(snapshot, now + clockOffset) : undefined;
   const stopByMe = timeStop?.userId === user.id;
@@ -126,6 +137,8 @@ export function GamePage({
 
   function ringBell() {
     if (!snapshot || !canAct || frozen || isPaused()) return;
+    // 종이 부서져 있는 동안은 아무도 종을 칠 수 없다(종 부수기).
+    if (bellBreakAt(snapshot, Date.now() + useGameStore.getState().clockOffset)) return;
     // 종이 옮겨지는 중(처음 300ms)에는 종 입력을 무시한다(종 옮기기).
     const current = useGameStore.getState();
     if (bellMoveAt(snapshot, Date.now() + current.clockOffset)?.locked) return;
@@ -250,14 +263,14 @@ export function GamePage({
           : !canAct && !leaving
             ? actions.onLeave
             : undefined,
-    // 종 옮기기 중에는 Space 대신 새 키로만 종을 친다.
+    // 종 옮기기·해킹 중에는 Space 대신 새 키로만 종을 친다.
     space:
-      canAct && !confirmLeave && !judging && !picking && !frozen && !bellMoved
+      canAct && !confirmLeave && !judging && !picking && !frozen && !bellBroken && !ringKey
         ? ringBell
         : undefined,
     bell:
-      canAct && !confirmLeave && !judging && !picking && !frozen && bellMoved
-        ? { code: `Key${bellMoved.key}`, run: ringBell }
+      canAct && !confirmLeave && !judging && !picking && !frozen && !bellBroken && ringKey
+        ? { code: `Key${ringKey}`, run: ringBell }
         : undefined,
   });
 

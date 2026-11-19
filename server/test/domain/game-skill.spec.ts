@@ -12,7 +12,7 @@ import {
   TIME_STOP_MS,
   TURN_TIME_MS,
 } from '@nlmlio/shared';
-import { SkillId, skillById } from '@nlmlio/shared';
+import { SkillId } from '@nlmlio/shared';
 import { Card, Deck } from '../../src/domain/card/deck';
 import { Table } from '../../src/domain/game/table';
 import { Game, GameRuleError } from '../../src/domain/game/game';

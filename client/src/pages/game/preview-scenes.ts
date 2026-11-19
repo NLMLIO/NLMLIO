@@ -370,6 +370,31 @@ export const PREVIEW_SCENES = {
     skillCast: { key: 9, caster: '자두씨', skillId: SkillId.AMATERASU, target: '과일왕' },
     frozen: 'amaterasu',
   },
+  /** 숫자 바꾸기: 내 카드의 과일 개수가 1 늘어 모두에게 보인다 */
+  'skill-number-shift': {
+    ...MY_TURN,
+    players: MY_TURN.players.map((entry) =>
+      entry.id === 'me' && entry.topCard
+        ? { ...entry, topCard: { fruit: 'STRAWBERRY' as const, count: 4 as const, boosted: true } }
+        : entry,
+    ),
+    skills: { slots: [slot(SkillId.NUMBER_SHIFT), EMPTY_SLOT, EMPTY_SLOT] },
+    skillCast: { key: 10, caster: '과일왕', skillId: SkillId.NUMBER_SHIFT, target: null },
+  },
+  /** 종 부수기: 종이 부서져 돌아올 때까지 아무도 종을 못 친다 */
+  'skill-bell-break': {
+    ...MY_TURN,
+    skills: { slots: [slot(SkillId.TIME_STOP), EMPTY_SLOT, EMPTY_SLOT] },
+    skillCast: { key: 11, caster: '자두씨', skillId: SkillId.BELL_BREAK, target: null },
+    bellBreak: { seconds: 17 },
+  },
+  /** 해킹: 내 종 치기 키가 바뀌었다(나에게만 보인다) */
+  'skill-hacked': {
+    ...MY_TURN,
+    skills: { slots: [EMPTY_SLOT, EMPTY_SLOT, EMPTY_SLOT] },
+    skillCast: { key: 12, caster: '자두씨', skillId: SkillId.HACK, target: '과일왕' },
+    hackKey: 'F',
+  },
   /** 22 · 게임 · 스킬 슬롯 */
   'skill-slots': {
     ...MY_TURN,

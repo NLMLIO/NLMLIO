@@ -19,16 +19,21 @@ interface BellProps {
   onRing: () => void;
   /** 종 옮기기 진행 중이면 옮겨진 자리와 새 키 */
   moved?: BellMoveView;
+  /** 종 부수기로 부서져 있으면 복구까지 남은 시간 */
+  broken?: { seconds: number };
+  /** 해킹당했으면 새 종 치기 키 */
+  hackKey?: string;
 }
 
 /** 테이블 가운데 종과 종 아래 보관 스택 수. 판정 결과에 따라 라임(정답)·핑크(오발) 링이 켜진다 */
-export function Bell({ state, pileCount, disabled, onRing, moved }: BellProps) {
+export function Bell({ state, pileCount, disabled, onRing, moved, broken, hackKey }: BellProps) {
+  const keyChip = hackKey ?? moved?.key;
   const glow = state.kind === 'success' || state.kind === 'misfire' ? state.kind : null;
   const icon =
     glow === 'success' ? bellSuccessIcon : glow === 'misfire' ? bellMisfireIcon : bellIcon;
   return (
     <div
-      className={`bell${moved ? ' is-moved' : ''}`}
+      className={`bell${moved ? ' is-moved' : ''}${broken ? ' is-broken' : ''}`}
       style={
         moved
           ? ({
@@ -38,9 +43,18 @@ export function Bell({ state, pileCount, disabled, onRing, moved }: BellProps) {
           : undefined
       }
     >
-      {moved && (
-        <span className="bell-key" role="status" aria-label={`${moved.key} 키로 치기`}>
-          {moved.key}
+      {keyChip && (
+        <span className="bell-key" role="status" aria-label={`${keyChip} 키로 치기`}>
+          {keyChip}
+        </span>
+      )}
+      {broken && (
+        <span
+          className="bell-broken"
+          role="timer"
+          aria-label={`종이 부서졌어요 ${broken.seconds}초`}
+        >
+          종이 부서졌어요 · {broken.seconds}초
         </span>
       )}
       {pileCount > 0 && (
@@ -59,7 +73,7 @@ export function Bell({ state, pileCount, disabled, onRing, moved }: BellProps) {
         type="button"
         className={glow ? 'bell-button glow' : 'bell-button'}
         aria-label="종 누르기"
-        aria-keyshortcuts={moved ? moved.key : 'Space'}
+        aria-keyshortcuts={keyChip ?? 'Space'}
         disabled={disabled}
         onClick={onRing}
       >

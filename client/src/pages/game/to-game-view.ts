@@ -287,6 +287,11 @@ export function skillUsable(snapshot: GameSnapshot, userId: number, skillId: Ski
   const skill = skillById(skillId);
   const me = snapshot.players.find((player) => player.userId === userId);
   const role = me?.status === GamePlayerStatus.ACTIVE ? SkillUser.PLAYER : SkillUser.SPECTATOR;
+  // 숫자 바꾸기는 과일 개수를 늘릴 수 있는 내 테이블 카드가 있어야 쓴다.
+  if (skillId === SkillId.NUMBER_SHIFT) {
+    const card = me?.topCard;
+    if (!card || card.special || card.boosted || card.count >= 6) return false;
+  }
   return (
     skill.available &&
     skill.timing === SkillTiming.ANYTIME &&
@@ -303,6 +308,17 @@ export function timeStopAt(
   return stop && snapshot.status === GameStatus.PLAYING && serverNow < stop.endsAt
     ? stop
     : undefined;
+}
+
+/** 종 부수기로 종이 부서져 있으면 돌아올 때까지 남은 시간(초). 아니면 undefined */
+export function bellBreakAt(
+  snapshot: GameSnapshot,
+  serverNow: number,
+): { seconds: number } | undefined {
+  const broken = snapshot.bellBreak;
+  if (!broken || snapshot.status !== GameStatus.PLAYING || serverNow >= broken.endsAt)
+    return undefined;
+  return { seconds: Math.ceil((broken.endsAt - serverNow) / 1000) };
 }
 
 /** 종 옮기기가 진행 중이면 옮겨진 자리·새 키. 끝나는 시각은 서버가 정하고 화면은 서버 시각으로 센다 */
@@ -485,6 +501,11 @@ export function toGameView(input: GameViewInput): GameView {
     skillCast: skillCastOf(input),
     targeting: targetingOf(input, skills),
     bellMove: bellMoveAt(snapshot, input.serverNow),
+    bellBreak: bellBreakAt(snapshot, input.serverNow),
+    hackKey:
+      input.skills?.gameId === snapshot.gameId && snapshot.status === GameStatus.PLAYING
+        ? (input.skills.hackKey ?? undefined)
+        : undefined,
     timeStop: stop && {
       caster: nicknameOf(input, stop.userId),
       byMe: stopByMe,

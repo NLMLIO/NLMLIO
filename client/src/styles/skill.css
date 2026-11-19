@@ -607,8 +607,8 @@ body:has(.scene-switcher) .skill-cast {
 }
 .fruit-card-six {
   position: absolute;
-  top: -10px;
-  right: -10px;
+  bottom: -10px;
+  left: -10px;
   z-index: 2;
   display: flex;
   align-items: center;
@@ -777,4 +777,50 @@ body:has(.scene-switcher) .spit-blob,
 body:has(.scene-switcher) .spit-drip,
 body:has(.scene-switcher) .seat-flame {
   animation: none;
+}
+
+/* 종 부수기: 종이 회색으로 갈라지고, 복구까지 남은 시간을 알린다 */
+.bell.is-broken .bell-button img {
+  filter: grayscale(1) brightness(0.5);
+}
+.bell.is-broken .bell-button::after {
+  position: absolute;
+  inset: 12px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 3 L43 27 L59 41 L40 58 L55 73 L46 97' fill='none' stroke='%23101015' stroke-width='3.5' stroke-linejoin='round'/%3E%3Cpath d='M43 27 L24 33 M59 41 L80 38 M40 58 L21 67' fill='none' stroke='%23101015' stroke-width='2.5'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  content: '';
+  pointer-events: none;
+}
+.bell-broken {
+  position: absolute;
+  z-index: 3;
+  top: -30px;
+  left: 50%;
+  padding: 6px 14px;
+  color: var(--text-primary);
+  background: rgba(16, 16, 21, 0.92);
+  border: 1.5px solid var(--status-danger);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: normal;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+/* 숫자 바꾸기: 과일 개수가 1 늘어난 카드에 "+1" 배지 */
+.fruit-card.is-boosted {
+  border-color: var(--accent-primary);
+}
+.fruit-card-plus {
+  position: absolute;
+  bottom: -10px;
+  left: -10px;
+  z-index: 2;
+  padding: 2px 7px;
+  color: var(--accent-primary);
+  background: var(--bg-base);
+  border: 1.5px solid var(--accent-primary);
+  border-radius: 999px;
+  font: 700 12px/1.2 var(--font-mono);
 }

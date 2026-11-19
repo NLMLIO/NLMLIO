@@ -15,6 +15,8 @@ export interface CardFace {
   count: 1 | 2 | 3 | 4 | 5 | 6;
   /** 과일 6개 카드: 판정이 나면 성공·오발과 상관없이 사라진다 */
   special?: boolean;
+  /** 숫자 바꾸기로 과일 개수가 1 늘었다(`count`는 늘어난 값) */
+  boosted?: boolean;
   /** 반짝반짝한 카드(꾸미기). 판정으로 옮겨지면 사라진다 */
   gilded?: boolean;
 }
@@ -123,6 +125,10 @@ export interface GameView {
   bellMove?: BellMoveView;
   /** 시간 정지 중 */
   timeStop?: TimeStopView;
+  /** 종 부수기: 종이 부서져 돌아올 때까지 남은 시간(초) */
+  bellBreak?: { seconds: number };
+  /** 해킹당했을 때 Space 대신 쓰는 새 종 치기 키(나에게만 보인다). 다음 판정까지 */
+  hackKey?: string;
   /** 내가 지금 카드·종을 못 한다(시간 정지 중 쓴 사람이 아님, 또는 아마테라스) */
   frozen?: 'time-stop' | 'amaterasu';
   /** 침 뱉기를 맞았다: 내 화면이 가려졌다가 흘러내린다 */

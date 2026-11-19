@@ -28,8 +28,11 @@
 ## 스킬 사용 (FUNC-009-04)
 
 - `skill:use { gameId, slot, targetUserId? }`: 보유 칸 `slot`(0~2)의 스킬을 쓴다. 쓰면 칸에서 사라지고 `game:action`으로 `{ kind: 'skill', userId, skillId, targetUserId }`가 방 전체에 가며, 슬롯이 바뀐 사람에게만 `game:skills`를 다시 보낸다.
-- 쓸 수 있는 스킬은 `SkillDefinition.available`이 true인 것뿐이다(현재 반짝반짝한 카드·종 옮기기·과일 6개 카드·시간 정지·침 뱉기·아마테라스). 나머지는 보유할 수 있어도 `SKILL_UNAVAILABLE`이고 칸에서 사라지지 않는다. 사용 시점은 지금 `ANYTIME`만 지원한다.
+- 쓸 수 있는 스킬은 `SkillDefinition.available`이 true인 것뿐이다(현재 반짝반짝한 카드·종 옮기기·과일 6개 카드·시간 정지·침 뱉기·아마테라스·숫자 바꾸기·종 부수기·해킹). 나머지는 보유할 수 있어도 `SKILL_UNAVAILABLE`이고 칸에서 사라지지 않는다. 사용 시점은 지금 `ANYTIME`만 지원한다.
 - 플레이 중인 사람은 플레이어, 아니면 관전자로 보고 스킬의 사용 역할과 맞는지 검사한다. 대상 지정 스킬은 플레이 중인 다른 사람만 대상이 된다. 선택 중에는 조용히 무시(`ignored`)한다.
+- 숫자 바꾸기: 내 테이블 맨 위 카드에 `Card.boost()`(과일 개수 +1)를 건다. `count`가 늘어난 값을 돌려주므로 합계·판정·공개 스냅샷(`topCard.count`, `boosted: true`)이 모두 같은 값을 쓴다. 걸 수 있는 카드(특수 카드·이미 늘어난 카드·6개 카드 제외)가 없으면 `SKILL_UNAVAILABLE`이고 스킬은 칸에 남는다. 카드가 `Table.remove`로 테이블을 떠나면 원복한다.
+- 종 부수기: `bellBreak`(복구 시각 `endsAt`, 10~30초를 1초 단위로 서버가 무작위)로 공개한다. 부서져 있는 동안 `canRing`은 모두 false(조용히 무시)이고 카드 내기는 그대로다. 마지막 종 기회(`current === null`)에 `timeout`이 오면 복구 시각 + `TURN_TIME_MS`로 마감을 미룬다.
+- 해킹: 걸린 사람 → 새 종 키(`BELL_MOVE_KEYS` 중 무작위)를 서버가 들고 있다가 본인의 `game:skills`(`hackKey`)에만 보낸다. 공개 스냅샷에는 없다. 종 판정이나 탈락·이탈로 라운드가 넘어가면 풀린다. 키 제한은 화면이 하고 서버의 `bell:ring` 처리는 그대로다.
 - 시간 정지: `timeStop`(쓴 사람·끝나는 서버 시각 `endsAt`, `TIME_STOP_MS`=3초)으로 공개한다. 정지 중 쓴 사람은 `card:play`의 차례 검사(`NOT_YOUR_TURN`)를 건너뛰고 계속 낼 수 있고(낸 뒤 차례는 그 사람 다음으로 이어진다), 쓴 사람이 아닌 사람의 `card:play`·`bell:ring`은 조용히 무시(`ignored`)한다. 턴 타이머는 멈춘 시간만큼 `deadline`을 뒤로 밀어 멈춘다(별도 타이머 없음). 정지 중인지는 요청 시각(`receivedAt`)과 `endsAt`을 비교해 정하므로 `canRing`도 시각을 받는다.
 - 침 뱉기: 서버가 바꾸는 상태가 없다. 사용 알림(`game:action`의 `skill`)만 가고, 대상 본인의 클라이언트가 6초(가림 3초 + 흘러내림 3초) 연출을 보여 준다.
 - 아마테라스: `burning`(걸린 사람 id 배열)으로 공개한다. 걸린 사람의 `card:play`·`bell:ring`은 무시하고, 차례를 정할 때(`nextAfter`) 건너뛴다. 걸린 사람의 차례에 쓰면 바로 다음 사람으로 넘기고 `turnId`가 바뀐다. 종 판정(성공·오발)이나 탈락·이탈로 라운드가 넘어가면 모두 풀린다. 낼 수 있는 사람이 걸린 사람뿐이라 `current`가 비면 `timeout`에서 풀고 차례를 돌려준다.

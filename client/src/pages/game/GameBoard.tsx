@@ -132,10 +132,13 @@ export function GameBoard({
             view.bell.kind === 'countdown' ||
             !!view.skills?.pick ||
             !!view.bellMove?.locked ||
+            !!view.bellBreak ||
             !!view.frozen
           }
           onRing={actions.onRingBell}
           moved={view.bellMove}
+          broken={view.bellBreak}
+          hackKey={view.hackKey}
         />
         {view.bellMove && <span className="bell-ghost" aria-hidden="true" />}
         {seatedPlayers.map((player, index) => (
@@ -191,7 +194,7 @@ export function GameBoard({
           emoteKey={me.emoteKey}
           playing={playing}
           leaving={leaving}
-          bellKey={view.bellMove?.key}
+          bellKey={view.hackKey ?? view.bellMove?.key}
           onPlayCard={actions.onPlayCard}
           onLeave={actions.onLeave}
         />
