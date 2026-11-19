@@ -19,6 +19,7 @@ import { GameFrame } from './GameFrame';
 import { GameResult } from './GameResult';
 import {
   bellBreakAt,
+  shellAt,
   bellMoveAt,
   skillUsable,
   timeStopAt,
@@ -106,7 +107,9 @@ export function GamePage({
   const bellBroken = snapshot ? bellBreakAt(snapshot, now + clockOffset) : undefined;
   // 해킹(내 키)이 종 옮기기(모두의 키)보다 우선한다. 둘 다 Space 대신 이 키로만 종을 친다.
   const hackKey = skills?.gameId === snapshot?.gameId ? skills?.hackKey : null;
-  const ringKey = hackKey ?? bellMoved?.key ?? null;
+  const shell = snapshot ? shellAt(snapshot, now + clockOffset) : undefined;
+  // 종 야바위 중에는 종마다의 키로만 치고 Space·해킹·종 옮기기 키는 쓰지 않는다.
+  const ringKey = shell ? null : (hackKey ?? bellMoved?.key ?? null);
   // 시간 정지 중에는 쓴 사람만 카드를 내고(차례와 무관), 아마테라스에 걸린 사람은 카드·종이 모두 불가다.
   const timeStop = snapshot ? timeStopAt(snapshot, now + clockOffset) : undefined;
   const stopByMe = timeStop?.userId === user.id;
@@ -137,7 +140,7 @@ export function GamePage({
     if (failure) setError(failure);
   }
 
-  function ringBell() {
+  function ringBell(bell?: number) {
     if (!snapshot || !canAct || frozen || smashedSelf || isPaused()) return;
     // 종이 부서져 있는 동안은 아무도 종을 칠 수 없다(종 부수기).
     if (bellBreakAt(snapshot, Date.now() + useGameStore.getState().clockOffset)) return;
@@ -153,6 +156,7 @@ export function GamePage({
     void sendGameIntent(GameClientEvent.BELL, {
       gameId: snapshot.gameId,
       turnSeq: snapshot.turnSeq,
+      ...(bell !== undefined ? { bell } : {}),
     }).then((failure) => {
       if (!failure) return;
       setError(failure);
@@ -274,8 +278,9 @@ export function GamePage({
       !frozen &&
       !smashedSelf &&
       !bellBroken &&
+      !shell &&
       !ringKey
-        ? ringBell
+        ? () => ringBell()
         : undefined,
     bell:
       canAct &&
@@ -286,7 +291,18 @@ export function GamePage({
       !smashedSelf &&
       !bellBroken &&
       ringKey
-        ? { code: `Key${ringKey}`, run: ringBell }
+        ? { code: `Key${ringKey}`, run: () => ringBell() }
+        : undefined,
+    bells:
+      shell &&
+      canAct &&
+      !confirmLeave &&
+      !judging &&
+      !picking &&
+      !frozen &&
+      !smashedSelf &&
+      !bellBroken
+        ? shell.keys.map((key, index) => ({ code: `Key${key}`, run: () => ringBell(index) }))
         : undefined,
   });
 

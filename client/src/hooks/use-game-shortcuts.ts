@@ -9,6 +9,8 @@ interface GameShortcuts {
   skill?: (slot: number) => void;
   /** 종 옮기기로 바뀐 종 치기 키(예: `KeyK`). 이 동안 Space는 쓰지 않는다 */
   bell?: { code: string; run: () => void };
+  /** 종 야바위: 종마다의 단축키. 번호가 같은 종을 친다 */
+  bells?: { code: string; run: () => void }[];
 }
 
 const SLOT_CODES = ['KeyQ', 'KeyW', 'KeyE'];
@@ -34,8 +36,10 @@ export function useGameShortcuts(shortcuts: GameShortcuts) {
       const slot = SLOT_CODES.indexOf(event.code);
       const skill = latest.current.skill;
       const bell = latest.current.bell;
-      const handler =
-        bell && event.code === bell.code
+      const shellBell = latest.current.bells?.find((entry) => entry.code === event.code);
+      const handler = shellBell
+        ? shellBell.run
+        : bell && event.code === bell.code
           ? bell.run
           : event.code === 'Space'
             ? latest.current.space

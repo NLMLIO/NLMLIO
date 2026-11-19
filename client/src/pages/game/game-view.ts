@@ -131,6 +131,8 @@ export interface GameView {
   timeStop?: TimeStopView;
   /** 종 부수기: 종이 부서져 돌아올 때까지 남은 시간(초) */
   bellBreak?: { seconds: number };
+  /** 종 야바위 중: 종마다의 단축키(순서가 종 번호)와 남은 시간 */
+  shell?: { keys: string[]; seconds: number };
   /** 해킹당했을 때 Space 대신 쓰는 새 종 치기 키(나에게만 보인다). 다음 판정까지 */
   hackKey?: string;
   /** 내가 지금 카드·종을 못 한다(시간 정지 중 쓴 사람이 아님, 또는 아마테라스) */

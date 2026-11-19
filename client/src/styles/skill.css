@@ -967,3 +967,52 @@ body:has(.scene-switcher) .skill-shot-text {
 .smashed-hint {
   --grade: var(--status-danger);
 }
+
+/* 종 야바위: 종이 3~5개로 늘어나고 종마다 단축키가 있다. 진짜는 하나뿐이다 */
+.bell-shell {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+.bell-shell-bell {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  transform: translate(calc(-50% + var(--shell-x)), calc(-50% + var(--shell-y)));
+  pointer-events: auto;
+}
+.bell-shell-bell img {
+  width: 72px;
+  height: 72px;
+}
+.bell-shell-bell kbd {
+  padding: 2px 10px;
+  color: var(--accent-primary);
+  background: var(--bg-base);
+  border: 1.5px solid var(--accent-primary);
+  border-radius: 999px;
+  font: 700 14px/1.4 var(--font-mono);
+}
+.bell-shell-bell:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+.bell-shell-time {
+  position: absolute;
+  left: 50%;
+  top: -34px;
+  margin: 0;
+  color: var(--accent-primary);
+  font: 700 14px/1 var(--font-mono);
+  transform: translateX(-50%);
+  white-space: nowrap;
+}

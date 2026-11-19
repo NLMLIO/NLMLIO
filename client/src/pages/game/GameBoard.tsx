@@ -24,7 +24,7 @@ import { VerdictOverlay } from './VerdictOverlay';
 
 export interface GameActions {
   onPlayCard: () => void;
-  onRingBell: () => void;
+  onRingBell: (bell?: number) => void;
   onLeave: () => void;
   onSendChat: (text: string) => Promise<string | null> | void;
   onSendEmote: (emote: ChatEmojiCode) => Promise<string | null> | void;
@@ -154,6 +154,7 @@ export function GameBoard({
           moved={view.bellMove}
           broken={view.bellBreak}
           hackKey={view.hackKey}
+          shell={view.shell}
         />
         {view.bellMove && <span className="bell-ghost" aria-hidden="true" />}
         {view.smashed && (

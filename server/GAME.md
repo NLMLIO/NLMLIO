@@ -28,8 +28,11 @@
 ## 스킬 사용 (FUNC-009-04)
 
 - `skill:use { gameId, slot, targetUserId? }`: 보유 칸 `slot`(0~2)의 스킬을 쓴다. 쓰면 칸에서 사라지고 `game:action`으로 `{ kind: 'skill', userId, skillId, targetUserId }`가 방 전체에 가며, 슬롯이 바뀐 사람에게만 `game:skills`를 다시 보낸다.
-- 쓸 수 있는 스킬은 `SkillDefinition.available`이 true인 것뿐이다(현재 반짝반짝한 카드·종 옮기기·과일 6개 카드·시간 정지·침 뱉기·아마테라스·숫자 바꾸기·종 부수기·해킹·쥐새끼·러시안 룰렛·지뢰·무지개 반사·손 개 쌔게 내려치기). 나머지는 보유할 수 있어도 `SKILL_UNAVAILABLE`이고 칸에서 사라지지 않는다. 사용 시점은 지금 `ANYTIME`만 지원한다.
+- 쓸 수 있는 스킬은 `SkillDefinition.available`이 true인 것뿐이다(현재 반짝반짝한 카드·종 옮기기·과일 6개 카드·시간 정지·침 뱉기·아마테라스·숫자 바꾸기·종 부수기·해킹·쥐새끼·러시안 룰렛·지뢰·무지개 반사·손 개 쌔게 내려치기·종 야바위·도르마무·안해). 나머지는 보유할 수 있어도 `SKILL_UNAVAILABLE`이고 칸에서 사라지지 않는다. 사용 시점은 지금 `ANYTIME`만 지원한다.
 - 플레이 중인 사람은 플레이어, 아니면 관전자로 보고 스킬의 사용 역할과 맞는지 검사한다. 대상 지정 스킬은 플레이 중인 다른 사람만 대상이 된다. 선택 중에는 조용히 무시(`ignored`)한다.
+- 종 야바위: `shell {endsAt, keys, real}`을 만든다(종 3~5개, 키는 서로 다른 `BELL_MOVE_KEYS`). 공개 스냅샷에는 `keys`·`endsAt`만 나가고 `real`은 서버만 안다. `bell:ring`에 `bell`(종 번호)을 보내야 하며, 진행 중에 `bell`이 `real`과 다르거나 없으면 5개여도 오발이고 액션에 `fake: true`가 붙는다.
+- 도르마무: `ring`이 판정 직전 상태(`RewindPoint`: 덱·테이블·보관 스택·차례·종 기록·금칠/개수 증가)를 저장한다. 결과 표시 중(`resumeAt` 전)이고 판정 전후의 플레이 중인 사람이 같을 때만 쓸 수 있고(`rewindUntil`), 되돌리면 종 성공 횟수도 1 줄이고 `skillDue`를 끈다. 순번(`sequence`)과 턴 토큰을 새로 올린다.
+- 안해: 플레이 중인 사람끼리 `Deck.standard().shuffle(random)`로 다시 분배하고 테이블·보관 스택·모든 효과·`SkillBook`(`reset`)·종 기록을 초기화한다. 이전 진행은 결과(전적)로 남지 않는다.
 - 손 개 쌔게 내려치기: `ring`이 끝나면 `smashWindow {userId, endsAt: now+2000}`을 남긴다(공개 스냅샷). 창 안에서 판정을 낸 사람이 아닌 플레이어가 쓰면(`timing=ON_BELL`, 대상 없음) 그 사람을 `smashed`에 넣고 창을 닫는다. `canRing`이 `smashed`를 거부하고 다음 `ring` 판정·탈락·게임 종료에서 비운다.
 - 지뢰: `mine` 플래그를 켠다(공개 스냅샷 `mine`). 다음 `ring`에서 5개가 맞으면 승자 없이 테이블 카드를 모두 `pile`에 넣고 `GameAction.mined`를 보낸다. `GamePlayer.bell`·성공 횟수(`countSuccess`)는 부르지 않는다. 오발·게임 종료·성공 판정 어느 쪽이든 판정이 나면 플래그가 꺼진다.
 - 무지개 반사: `useSkill`에서 단일 지정 스킬의 대상이 플레이어이고 `SkillBook.consumeSkill(target, RAINBOW_REFLECT)`가 성공하면 효과 대상을 쓴 사람으로 바꾸고 `GameAction.reflectedBy`에 원래 대상을 싣는다. 쓴 사람이 관전자면 반사하지 않는다. 직접 사용은 `timing=AUTOMATIC`이라 거부된다.

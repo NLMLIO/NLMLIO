@@ -479,6 +479,12 @@ export const PREVIEW_SCENES = {
     },
     hackKey: 'F',
   },
+  /** 종 야바위: 종이 4개로 늘어나고 종마다 단축키가 있다 */
+  'skill-shell-game': {
+    ...MY_TURN,
+    shell: { keys: ['A', 'S', 'K', 'L'], seconds: 7 },
+    skills: { slots: [EMPTY_SLOT, EMPTY_SLOT, EMPTY_SLOT] },
+  },
   /** 쥐새끼: 쥐가 종 밑에서 카드를 물고 쓴 사람(나)의 자리로 달려간다 */
   'skill-rat': {
     ...MY_TURN,

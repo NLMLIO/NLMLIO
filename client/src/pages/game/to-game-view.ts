@@ -95,6 +95,13 @@ function verdictOf(input: GameViewInput, bell: BellEvent): Verdict {
     nickname: ringer?.nickname ?? '',
     color: playerColor(input.snapshot, input.room, action.userId),
   };
+  if (action.fake)
+    return {
+      tone: 'misfire',
+      ringer: ringerView,
+      formula: '가짜 종!',
+      detail: `잘못 눌렀어요 · 내 덱 ${action.movedCards}장만 종 아래로`,
+    };
   if (action.mined)
     return {
       tone: 'misfire',
@@ -320,6 +327,12 @@ export function skillUsable(
     )
   )
     return false;
+  // 도르마무는 판정 결과를 보여 주는 동안(되돌릴 수 있는 마감 전)에만 쓴다.
+  if (
+    skillId === SkillId.DORMAMMU &&
+    (snapshot.rewindUntil === null || serverNow >= snapshot.rewindUntil)
+  )
+    return false;
   // 손 개 쌔게 내려치기는 종 판정이 난 지 2초 안에, 판정을 낸 사람이 아닌 플레이어만 쓴다.
   if (skillId === SkillId.HAND_SMASH) {
     const window = snapshot.smashWindow;
@@ -338,7 +351,7 @@ export function skillUsable(
   }
   return (
     skill.available &&
-    (skill.timing === SkillTiming.ANYTIME || skill.timing === SkillTiming.ON_BELL) &&
+    skill.timing !== SkillTiming.AUTOMATIC &&
     (skill.user === SkillUser.BOTH || skill.user === role)
   );
 }
@@ -355,6 +368,17 @@ export function timeStopAt(
 }
 
 /** 종 부수기로 종이 부서져 있으면 돌아올 때까지 남은 시간(초). 아니면 undefined */
+/** 종 야바위 중이면 종마다의 단축키와 남은 시간. 아니면 undefined */
+export function shellAt(
+  snapshot: GameSnapshot,
+  serverNow: number,
+): { keys: string[]; seconds: number } | undefined {
+  const shell = snapshot.shell;
+  if (!shell || snapshot.status !== GameStatus.PLAYING || serverNow >= shell.endsAt)
+    return undefined;
+  return { keys: shell.keys, seconds: Math.ceil((shell.endsAt - serverNow) / 1000) };
+}
+
 export function bellBreakAt(
   snapshot: GameSnapshot,
   serverNow: number,
@@ -553,6 +577,7 @@ export function toGameView(input: GameViewInput): GameView {
     targeting: targetingOf(input, skills),
     bellMove: bellMoveAt(snapshot, input.serverNow),
     bellBreak: bellBreakAt(snapshot, input.serverNow),
+    shell: shellAt(snapshot, input.serverNow),
     hackKey:
       input.skills?.gameId === snapshot.gameId && snapshot.status === GameStatus.PLAYING
         ? (input.skills.hackKey ?? undefined)

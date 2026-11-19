@@ -16,17 +16,28 @@ interface BellProps {
   state: BellState;
   pileCount: number;
   disabled: boolean;
-  onRing: () => void;
+  onRing: (bell?: number) => void;
   /** 종 옮기기 진행 중이면 옮겨진 자리와 새 키 */
   moved?: BellMoveView;
   /** 종 부수기로 부서져 있으면 복구까지 남은 시간 */
   broken?: { seconds: number };
   /** 해킹당했으면 새 종 치기 키 */
   hackKey?: string;
+  /** 종 야바위 중이면 종마다의 단축키(번호 순서)와 남은 시간 */
+  shell?: { keys: string[]; seconds: number };
 }
 
 /** 테이블 가운데 종과 종 아래 보관 스택 수. 판정 결과에 따라 라임(정답)·핑크(오발) 링이 켜진다 */
-export function Bell({ state, pileCount, disabled, onRing, moved, broken, hackKey }: BellProps) {
+export function Bell({
+  state,
+  pileCount,
+  disabled,
+  onRing,
+  moved,
+  broken,
+  hackKey,
+  shell,
+}: BellProps) {
   const keyChip = hackKey ?? moved?.key;
   const glow = state.kind === 'success' || state.kind === 'misfire' ? state.kind : null;
   const icon =
@@ -69,13 +80,43 @@ export function Bell({ state, pileCount, disabled, onRing, moved, broken, hackKe
           ))}
         </div>
       )}
+      {shell && (
+        <div className="bell-shell" role="group" aria-label={`종 야바위 ${shell.seconds}초`}>
+          {shell.keys.map((key, index) => {
+            const angle = (index / shell.keys.length) * Math.PI * 2 - Math.PI / 2;
+            return (
+              <button
+                key={index}
+                type="button"
+                className="bell-shell-bell"
+                aria-label={`${index + 1}번 종 · ${key} 키`}
+                aria-keyshortcuts={key}
+                disabled={disabled}
+                style={
+                  {
+                    '--shell-x': `${Math.cos(angle) * 150}px`,
+                    '--shell-y': `${Math.sin(angle) * 120}px`,
+                  } as CSSProperties
+                }
+                onClick={() => onRing(index)}
+              >
+                <img src={bellIcon} alt="" />
+                <kbd>{key}</kbd>
+              </button>
+            );
+          })}
+          <p className="bell-shell-time" role="timer">
+            종 야바위 · {shell.seconds}초
+          </p>
+        </div>
+      )}
       <button
         type="button"
         className={glow ? 'bell-button glow' : 'bell-button'}
         aria-label="종 누르기"
         aria-keyshortcuts={keyChip ?? 'Space'}
-        disabled={disabled}
-        onClick={onRing}
+        disabled={disabled || !!shell}
+        onClick={() => onRing()}
       >
         <img src={icon} alt="" />
       </button>
