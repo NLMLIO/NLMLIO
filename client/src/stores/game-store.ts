@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { GameStatus } from '@nlmlio/shared';
+import { GameStatus, SkillId } from '@nlmlio/shared';
 import type {
   GameAction,
   GameActionEvent,
@@ -143,9 +143,15 @@ export const gameActions = {
         });
         break;
       case 'skill':
-        useGameStore.setState({
+        useGameStore.setState(() => ({
           lastSkill: { id: nextId++, action: event, castAt: Date.now() },
-        });
+          // 안해·도르마무는 테이블을 비우거나 판정 전으로 되돌리므로 지난 카드 공개·종 판정 표시를 지운다.
+          ...(event.skillId === SkillId.RESET
+            ? { lastBell: null, lastCards: {} }
+            : event.skillId === SkillId.DORMAMMU
+              ? { lastBell: null }
+              : {}),
+        }));
         break;
       case 'departed':
         break;

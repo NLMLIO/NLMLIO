@@ -1009,7 +1009,7 @@ body:has(.scene-switcher) .skill-shot-text {
 .bell-shell-time {
   position: absolute;
   left: 50%;
-  top: -34px;
+  top: calc(50% + 188px);
   margin: 0;
   color: var(--accent-primary);
   font: 700 14px/1 var(--font-mono);
