@@ -61,6 +61,24 @@ export function GamePreviewPage({
     scenery && leaveError
       ? { ...scenery, banner: { tone: 'danger', messages: [`나가지 못했습니다 · ${leaveError}`] } }
       : scenery;
+  // 판정 장면의 고정 예시: 첫 손 아래에 두 번째 손이 쌓인 모습을 확인한다.
+  const firstHand = view?.verdict
+    ? Math.max(
+        0,
+        view.players.findIndex((player) => player.nickname === view.verdict!.ringer.nickname),
+      )
+    : -1;
+  const previewHands =
+    firstHand >= 0 && view && view.players.length > 1
+      ? { turnSeq: 1, userIds: [firstHand + 1, ((firstHand + 1) % view.players.length) + 1] }
+      : undefined;
+  const boardView =
+    previewHands && view
+      ? {
+          ...view,
+          players: view.players.map((player, index) => ({ ...player, id: String(index + 1) })),
+        }
+      : view;
   const actions: GameActions = {
     onPlayCard: () => {},
     onRingBell: () => {},
@@ -80,8 +98,8 @@ export function GamePreviewPage({
   return (
     <>
       <GameFrame>
-        {view ? (
-          <GameBoard view={view} actions={actions} leaving={leaving} />
+        {boardView ? (
+          <GameBoard view={boardView} actions={actions} leaving={leaving} hands={previewHands} />
         ) : (
           <GameResult ranking={PREVIEW_RANKING} onLobby={onExit} onWaitingRoom={onWaitingRoom} />
         )}

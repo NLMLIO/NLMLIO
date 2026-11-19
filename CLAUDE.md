@@ -195,7 +195,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `server/src/common/security/`: Argon2id, JWT, HTTP Guard, Redis Refresh 세션. Refresh는 HttpOnly 쿠키에 저장하고 Redis에는 기기 세션마다(`refresh:{userId}:{sid}`) 토큰의 SHA-256 지문을 저장한다.
 - `server/src/domain/user/`: 인프라와 독립적인 계정 타입, 누적 통계 계산 객체.
 - `server/src/domain/game/game-settlement.ts`: 저장 전 확정 순위·기록 검증.
-- `server/src/domain/card/deck.ts`, `domain/player/game-player.ts`, `domain/game/game.ts`, `table.ts`: 카드·셔플·분배, 보유 카드, 테이블, 턴·종·벌칙·탈락·순위를 캡슐화한 순수 TS 객체. 종 판정 후 1.8초 동안 서버도 카드 내기를 막고 `roundResumeAt`을 공개한다.
+- `server/src/domain/card/deck.ts`, `domain/player/game-player.ts`, `domain/game/game.ts`, `table.ts`, `bell-hands.ts`: 서버 접수 후 200ms 이내 손 순서와 판정 종료까지의 표시, 카드·셔플·분배, 보유 카드, 테이블, 턴·종·벌칙·탈락·순위를 캡슐화한 순수 TS 객체. 종 판정 후 1.8초 동안 서버도 카드 내기를 막고 `roundResumeAt`을 공개한다.
 - `server/src/modules/game/`: 게임 Gateway, 서비스, 서버 셔플 팩토리, 타이머, 브로드캐스트, 결과 저장. `infra/game-state/room-queue.ts`가 인증·타이머·이탈·정산을 방별 접수 순서로 직렬화한다.
 - `server/src/infra/redis/game-state.repository.ts`: 첨부 Redis 명세의 미러, 종 예약과 정산 후 삭제. `shared/src/game-events.ts`는 공개 스냅샷과 소켓 계약이다.
 - `server/src/modules/room/room-game.lifecycle.ts`: Room→Game 모듈 순환 참조 없이 시작·이탈·방 종료를 게임 큐에 연결한다.
@@ -209,7 +209,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `server/src/modules/chat/`: Socket.io 인증·방 소속 검증, 텍스트/이모티콘 DTO, Redis Pub/Sub 전달과 사용자별 전송 제한. 방 소속 정보는 `RoomService`만 조회한다.
 - `shared/src/events.ts`: 채팅 Socket.io 이벤트 이름, 페이로드, 허용 이모티콘과 Ack 타입.
 - `client/src/pages/game/`, `styles/game.css`, `assets/game/`: Figma NLML_design 「03 · 게임」 화면(FUNC-005). `GamePage`(`#game`)가 `stores/game-store.ts`의 서버 스냅샷을 `to-game-view.ts`로 `GameView`(화면 모델)에 옮겨 그리고, 카드 내기·종·결과 확인은 `socket.ts`의 `sendGameIntent`로 보낸다. 게임이 시작되거나 진행 중인 게임에 다시 연결되면 `App`이 `#game`으로 옮긴다. 개발 서버에서는 고정 장면 미리보기(`#game-preview/<장면>`, `preview-scenes.ts`)도 볼 수 있다. 1440×900 좌표계로 그리고 `hooks/use-fit-scale.ts`로 창에 맞춘다. 단축키는 `hooks/use-game-shortcuts.ts`(J 카드 내기, Space 종). `pages/game/game-input-sequence.ts`는 카드 요청 중 종 입력을 응답 뒤 최신 스냅샷으로 보낸다.
-- `client/src/stores/game-store.ts`: `game:state`·`game:action`의 거울. 같은 게임의 낮은 revision은 버리고, 스냅샷의 `serverTime`으로 서버 시계 차이를 추정한다. 플레이어별 마지막 카드 공개(`lastCards`)로 뒤집기 key와 '자동' 표시를 유지한다. 게임 진행 로그는 채팅과 같은 순서로 `room-store` 로그에 쌓는다.
+- `client/src/stores/game-store.ts`: `game:state`·`game:action`의 거울. 같은 게임의 낮은 revision은 버리고, 스냅샷의 `serverTime`으로 서버 시계 차이를 추정한다. 손 목록은 서버 스냅샷의 `bellHands`를 그대로 그리며 로컬 입력으로 손을 미리 올리지 않는다. 플레이어별 마지막 카드 공개(`lastCards`)로 뒤집기 key와 '자동' 표시를 유지한다. 게임 진행 로그는 채팅과 같은 순서로 `room-store` 로그에 쌓는다.
 - `client/src/audio/sounds.ts`, `public/sounds/`: Howler 효과음(FUNC-005-14). 앱 시작 시 preload, 첫 입력에서 오디오 활성화, 음소거는 localStorage. 효과음은 `client/scripts/generate-sounds.mjs`로 합성한 자체 제작물이다(`public/sounds/LICENSES.md`).
 - `server/src/infra/database/*repository.ts`: Prisma 타입·쿼리와 트랜잭션을 캡슐화. `RankingRepository`는 전체 경기의 승패를 SQL에서 집계해 목록과 내 순위를 같은 기준으로 계산한다.
 - `client/src/pages/auth`, `mypage`, `ranking`: 요청 이미지에 맞춘 화면. `api/http.ts`는 단일 Refresh 요청과 한 번의 HTTP 재시도를 담당한다.
@@ -267,7 +267,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### 6.2 종 치기 — 체감은 즉시, 판정은 서버
 
 - **종소리(Howler.js)는 클라이언트에서 누르는 즉시 재생**한다. 서버 응답을 기다리지 않는다(체감 지연 0).
-- 단, **승패·카드 이동과 그 효과음(성공·오발)은 낙관적으로 처리하지 않는다.** 서버의 판정 이벤트를 받은 뒤에만 화면을 바꾸고 소리를 낸다.
+- 단, **승패·카드 이동·손 모션과 그 효과음(성공·오발)은 낙관적으로 처리하지 않는다.** 서버의 판정 이벤트를 받은 뒤에만 화면을 바꾸고 소리를 낸다.
 - 효과음은 앱 시작 시 미리 로드(preload)하고, 브라우저 자동재생 정책 때문에 첫 사용자 입력 시점에 오디오를 활성화한다. 로드에 실패해도 게임은 계속 진행된다.
 - 음소거 상태는 클라이언트 설정이다(localStorage). 서버에 보내지 않는다.
 

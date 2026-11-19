@@ -17,7 +17,7 @@ import { useRoomStore } from '../../stores/room-store';
 import { GameBoard, type GameActions } from './GameBoard';
 import { GameFrame } from './GameFrame';
 import { GameResult } from './GameResult';
-import { GameInputSequence } from './game-input-sequence';
+import { GameInputSequence, canJoinBellHandWindow } from './game-input-sequence';
 import { toGameView, toRanking } from './to-game-view';
 
 /** 의도 실패 안내를 띄워 두는 시간 */
@@ -47,8 +47,6 @@ export function GamePage({
   const emojis = useRoomStore((state) => state.emojis);
 
   const [now, setNow] = useState(() => Date.now());
-  const [strike, setStrike] = useState<{ id: number; playerId: string }>();
-  const strikeId = useRef(0);
   const [error, setError] = useState('');
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -72,8 +70,6 @@ export function GamePage({
 
   useEffect(() => {
     if (!lastBell) return;
-    if (lastBell.action.userId !== user.id || rungSeq.current === null)
-      setStrike({ id: ++strikeId.current, playerId: String(lastBell.action.userId) });
     setNow(Date.now());
   }, [lastBell, user.id]);
 
@@ -96,6 +92,8 @@ export function GamePage({
   const myTurn = canAct && snapshot?.turnUserId === user.id;
   const judging = showingFinalBell || (live && (snapshot?.roundResumeAt ?? 0) > now + clockOffset);
 
+  const joiningHandWindow = canJoinBellHandWindow(snapshot, user.id, now + clockOffset);
+
   function isPaused() {
     const current = useGameStore.getState();
     return (current.snapshot?.roundResumeAt ?? 0) > Date.now() + current.clockOffset;
@@ -115,21 +113,25 @@ export function GamePage({
   }
 
   async function ringBell() {
-    if (!snapshot || !canAct || isPaused()) return;
+    const atPress = useGameStore.getState();
+    const joining = canJoinBellHandWindow(
+      atPress.snapshot,
+      user.id,
+      Date.now() + atPress.clockOffset,
+    );
+    if (!snapshot || ((!canAct || isPaused()) && !joining)) return;
     playSound('bell');
-    setStrike({ id: ++strikeId.current, playerId: String(user.id) });
     // J 직후 Space를 눌러도 이전 공개 테이블 순번을 보내지 않는다.
     await inputs.current.beforeBell();
-    const latest = useGameStore.getState().snapshot;
-    if (
-      !latest ||
-      latest.gameId !== snapshot.gameId ||
-      latest.status !== GameStatus.PLAYING ||
-      latest.players.find((player) => player.userId === user.id)?.status !==
-        GamePlayerStatus.ACTIVE ||
-      isPaused()
-    )
-      return;
+    const current = useGameStore.getState();
+    const latest = current.snapshot;
+    const mayJoin = canJoinBellHandWindow(latest, user.id, Date.now() + current.clockOffset);
+    const mayRing =
+      latest?.status === GameStatus.PLAYING &&
+      latest.players.find((player) => player.userId === user.id)?.status ===
+        GamePlayerStatus.ACTIVE &&
+      !isPaused();
+    if (!latest || latest.gameId !== snapshot.gameId || (!mayRing && !mayJoin)) return;
     // 같은 공개 테이블에 대한 종은 서버가 한 번만 판정하므로 다시 보내지 않는다.
     const key = `${latest.gameId}:${latest.turnSeq}`;
     if (rungSeq.current === key) {
@@ -191,7 +193,7 @@ export function GamePage({
           : !canAct && !leaving
             ? actions.onLeave
             : undefined,
-    space: canAct && !confirmLeave && !judging ? ringBell : undefined,
+    space: !confirmLeave && ((canAct && !judging) || joiningHandWindow) ? ringBell : undefined,
   });
 
   if (!snapshot)
@@ -233,7 +235,14 @@ export function GamePage({
   });
   return (
     <GameFrame>
-      <GameBoard view={view} actions={actions} leaving={leaving} playing={playing} strike={strike}>
+      <GameBoard
+        view={view}
+        actions={actions}
+        leaving={leaving}
+        playing={playing}
+        hands={judging ? (snapshot.bellHands ?? undefined) : undefined}
+        canJoinHandWindow={joiningHandWindow}
+      >
         {confirmLeave && (
           <LeaveConfirm
             leaving={leaving}

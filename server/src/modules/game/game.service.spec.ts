@@ -70,6 +70,39 @@ describe('GameService 방 큐·타이머·정산 재시도', () => {
   });
   const state = () => service.sync(1)!;
 
+  it('인증·첫 판정 전에는 손을 방송하지 않고 뒤 손은 점수와 카드 이동을 반복하지 않는다', async () => {
+    const input = { gameId: state().gameId, turnSeq: state().turnSeq };
+    const receivedAt = Date.now();
+    let verified!: () => void;
+    const authorization = new Promise<void>((resolve) => {
+      verified = resolve;
+    });
+    const first = service.bell(1, input, receivedAt, () => authorization);
+    const second = service.bell(2, input, receivedAt + 200);
+    await Promise.resolve();
+    expect(state().bellHands).toBeNull();
+    expect(events.action).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(500);
+    verified();
+    expect(await first).toBe(true);
+    const afterVerdict = store.get(room.code)!.game.checkpoint();
+    expect(await second).toBe(false);
+    expect(state().bellHands?.userIds).toEqual([1, 2]);
+    expect(store.get(room.code)!.game.checkpoint()).toEqual(afterVerdict);
+    expect(events.action).toHaveBeenCalledTimes(1);
+    expect(state().bellHands?.displayUntil).toBe(receivedAt + 1800);
+  });
+
+  it('첫 서버 접수 후 201ms의 손은 방송하지 않고 중복 손도 추가하지 않는다', async () => {
+    const input = { gameId: state().gameId, turnSeq: state().turnSeq };
+    const now = Date.now();
+    await service.bell(1, input, now);
+    const before = state();
+    expect(await service.bell(2, input, now + 201)).toBe(false);
+    expect(await service.bell(1, input, now + 100)).toBe(false);
+    expect(state()).toEqual(before);
+  });
+
   it('게임 중 늦게 입장한 관전자도 마지막 탭이 끊긴 뒤 60초 후 방에서 정리한다', async () => {
     room.join({ userId: 3, nickname: '관전' });
     await service.connected(3, 'observer-one');

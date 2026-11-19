@@ -5,6 +5,8 @@ import type { ErrorCode } from './errors';
 export const TURN_TIME_MS = 10_000;
 /** 종 판정 결과를 함께 확인하는 동안 카드 내기를 멈춘다. */
 export const ROUND_RESULT_MS = 1800;
+/** 첫 종 요청이 서버에 도착한 뒤 다른 손을 함께 표시하는 접수 구간 */
+export const BELL_HAND_WINDOW_MS = 200;
 /** 게임 중 연결이 끊긴 뒤 이탈 처리까지 기다리는 시간(FUNC-003-07) */
 export const GAME_RECONNECT_GRACE_MS = 5_000;
 
@@ -54,6 +56,15 @@ export interface GameResultEntry {
   bellFail: number;
   reactionSumMs: number;
 }
+export interface BellHandsView {
+  turnSeq: number;
+  windowClosesAt: number;
+  displayUntil: number;
+  /** 첫 판정 직전 생존 참가자. 관전자와 이미 탈락한 사람은 제외 */
+  eligibleUserIds: number[];
+  /** 서버 접수 순서. 첫 손이 판정자이며 뒤의 손은 시각 효과만 갖는다 */
+  userIds: number[];
+}
 export interface GameSnapshot {
   gameId: string;
   roomCode: string;
@@ -69,6 +80,7 @@ export interface GameSnapshot {
   turnDeadline: number | null;
   /** 이 서버 시각까지 종 판정 결과 표시 중. null이면 바로 카드 내기가 가능하다. */
   roundResumeAt: number | null;
+  bellHands?: BellHandsView | null;
   lastPlayAt: number | null;
   startedAt: number;
   endedAt: number | null;
@@ -95,7 +107,8 @@ export type GameAction =
   | { kind: 'departed'; userId: number }
   | { kind: 'connection'; userId: number; connected: boolean };
 export type GameActionEvent = GameAction & { gameId: string; revision: number };
-export type GameAck = { ok: true; ignored?: boolean } | { ok: false; code: ErrorCode };
+export type GameAck =
+  { ok: true; ignored?: boolean; handAccepted?: boolean } | { ok: false; code: ErrorCode };
 export interface GameClientToServerEvents {
   'game:sync': (payload: Record<string, never>, ack: (result: GameAck) => void) => void;
   'card:play': (payload: CardPlayRequest, ack: (result: GameAck) => void) => void;

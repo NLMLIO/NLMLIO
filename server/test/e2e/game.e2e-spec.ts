@@ -308,6 +308,11 @@ describe('게임 서버 Socket.io / Redis / PostgreSQL (FUNC-005)', () => {
       [host, guest].map((auth) => redis.hget(`game:${gameId}:stat:${auth.user.id}`, 'bellSuccess')),
     );
     expect(stats.reduce((sum, count) => sum + Number(count), 0)).toBe(1);
+    const winner = [host, guest][stats.findIndex((count) => Number(count) === 1)].user.id;
+    expect(snapshot().bellHands?.userIds[0]).toBe(winner);
+    expect(new Set(snapshot().bellHands?.userIds)).toEqual(new Set([host.user.id, guest.user.id]));
+    const observerHands = await waitState(c, (state) => state.bellHands?.userIds.length === 2);
+    expect(observerHands.bellHands).toEqual(snapshot().bellHands);
     expect(await redis.ttl(`game:${gameId}:bell:${turnSeq}`)).toBeGreaterThan(0);
     expect(snapshot().players.reduce((sum, player) => sum + player.handCount, 0)).toBe(56);
     expect(snapshot().fruitTotals.STRAWBERRY).toBe(0);

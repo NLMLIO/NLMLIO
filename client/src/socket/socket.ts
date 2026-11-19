@@ -295,7 +295,10 @@ async function emitIntent(
     }
     if (!result.ok && attempt === 0 && AUTH_ERRORS.includes(result.code))
       if (await reauthenticate(current)) continue;
-    if (result.ok && 'ignored' in result && result.ignored) return messages.ignored ?? null;
+    if (result.ok && 'ignored' in result && result.ignored) {
+      if ('handAccepted' in result && result.handAccepted) return null;
+      return messages.ignored ?? null;
+    }
     return ackMessage(result);
   }
 }
