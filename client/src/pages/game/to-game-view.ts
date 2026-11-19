@@ -253,8 +253,10 @@ function skillCastOf(input: GameViewInput): SkillCastView | undefined {
   return {
     key: cast.id,
     caster: nicknameOf(input, action.userId),
+    casterId: String(action.userId),
     skillId: action.skillId,
     target: action.targetUserId === null ? null : nicknameOf(input, action.targetUserId),
+    targetId: action.targetUserId === null ? null : String(action.targetUserId),
   };
 }
 
@@ -272,7 +274,11 @@ function targetingOf(
     skillId: entry.skillId,
     targetIds: input.snapshot.players
       .filter(
-        (player) => player.status === GamePlayerStatus.ACTIVE && player.userId !== input.userId,
+        (player) =>
+          player.status === GamePlayerStatus.ACTIVE &&
+          player.userId !== input.userId &&
+          // 러시안 룰렛은 테이블에 카드를 내둔 사람만 맞출 수 있다
+          (entry.skillId !== SkillId.RUSSIAN_ROULETTE || player.tableCount > 0),
       )
       .map((player) => String(player.userId)),
   };
@@ -287,6 +293,15 @@ export function skillUsable(snapshot: GameSnapshot, userId: number, skillId: Ski
   const skill = skillById(skillId);
   const me = snapshot.players.find((player) => player.userId === userId);
   const role = me?.status === GamePlayerStatus.ACTIVE ? SkillUser.PLAYER : SkillUser.SPECTATOR;
+  // 쥐새끼는 종 밑 보관 스택에 카드가 있어야 쓰고, 러시안 룰렛은 테이블에 카드를 내둔 사람이 있어야 쓴다.
+  if (skillId === SkillId.RAT && snapshot.pileCount === 0) return false;
+  if (
+    skillId === SkillId.RUSSIAN_ROULETTE &&
+    !snapshot.players.some(
+      (player) => player.status === GamePlayerStatus.ACTIVE && player.tableCount > 0,
+    )
+  )
+    return false;
   // 숫자 바꾸기는 과일 개수를 늘릴 수 있는 내 테이블 카드가 있어야 쓴다.
   if (skillId === SkillId.NUMBER_SHIFT) {
     const card = me?.topCard;

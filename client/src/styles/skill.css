@@ -824,3 +824,102 @@ body:has(.scene-switcher) .seat-flame {
   border-radius: 999px;
   font: 700 12px/1.2 var(--font-mono);
 }
+
+/* 쥐새끼: 쥐가 종 밑에서 카드를 물고 쓴 사람의 자리로 달려간다 */
+.skill-rat {
+  position: absolute;
+  z-index: 6;
+  color: #4fa3ff;
+  font-family: 'Noto Emoji', var(--font-text);
+  font-size: 44px;
+  font-weight: 700;
+  line-height: 1;
+  text-shadow: 0 0 14px rgba(79, 163, 255, 0.6);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  animation: rat-run 1.4s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+@keyframes rat-run {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.6);
+  }
+  15% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--rat-dx)), calc(-50% + var(--rat-dy))) scale(1);
+  }
+}
+
+/* 러시안 룰렛: 대상 좌석에 총알이 맞는다 */
+.skill-shot {
+  position: absolute;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 140px;
+  height: 140px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.skill-shot-ring {
+  position: absolute;
+  inset: 20px;
+  border: 4px solid var(--status-danger);
+  border-radius: 50%;
+  box-shadow: 0 0 24px rgba(255, 79, 139, 0.6);
+  animation: shot-ring 0.9s ease-out both;
+}
+.skill-shot-text {
+  color: var(--status-danger);
+  font-family: var(--font-display);
+  font-size: 46px;
+  font-weight: 400;
+  line-height: 1;
+  text-shadow: 0 0 14px rgba(255, 79, 139, 0.7);
+  animation: shot-text 1.2s ease-out both;
+}
+@keyframes shot-ring {
+  0% {
+    opacity: 1;
+    transform: scale(0.2);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+@keyframes shot-text {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  15% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-14px);
+  }
+}
+
+/* 개발 서버 미리보기에서는 한 장면으로 보여 준다 */
+body:has(.scene-switcher) .skill-rat {
+  opacity: 1;
+  animation: none;
+}
+body:has(.scene-switcher) .skill-shot-ring,
+body:has(.scene-switcher) .skill-shot-text {
+  animation: none;
+}

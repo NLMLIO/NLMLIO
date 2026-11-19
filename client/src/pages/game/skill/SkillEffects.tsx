@@ -92,3 +92,46 @@ const SPIT_DRIPS = [
   { x: 700, y: 560, h: 105, delay: '90ms' },
   { x: 820, y: 560, h: 145, delay: '180ms' },
 ];
+
+/** 쥐새끼(FUNC-009-05): 쥐가 종 밑에서 카드를 물고 쓴 사람의 자리로 달려간다 */
+export function SkillRat({
+  from,
+  to,
+}: {
+  /** 출발(종 자리)과 도착(쓴 사람의 좌석) 중심, 보드 좌표 */
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+}) {
+  return (
+    <>
+      <span
+        className="skill-rat"
+        aria-hidden="true"
+        style={
+          {
+            left: from.x,
+            top: from.y,
+            '--rat-dx': `${to.x - from.x}px`,
+            '--rat-dy': `${to.y - from.y}px`,
+          } as CSSProperties
+        }
+      >
+        🐭
+      </span>
+      <p className="skill-hint rat-hint" style={hintStyle(SkillId.RAT)} role="status">
+        <b>쥐새끼</b>
+        <span>쥐가 종 밑에서 카드를 물고 옴</span>
+      </p>
+    </>
+  );
+}
+
+/** 러시안 룰렛(FUNC-009-05): 관전석에서 조준한 총이 대상 좌석에 맞는다 */
+export function SkillShot({ at }: { at: { x: number; y: number } }) {
+  return (
+    <span className="skill-shot" aria-hidden="true" style={{ left: at.x, top: at.y }}>
+      <i className="skill-shot-ring" />
+      <b className="skill-shot-text">탕!</b>
+    </span>
+  );
+}

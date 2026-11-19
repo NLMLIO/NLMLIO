@@ -10,7 +10,14 @@ import { seatPlacements, type GameView } from './game-view';
 import { PlayerSeat, playerColorStyle } from './PlayerSeat';
 import { SkillPick } from './skill/SkillPick';
 import { SkillCast, SkillTargetHint } from './skill/SkillCast';
-import { SkillBurnedHint, SkillSpit, SkillTimeStop } from './skill/SkillEffects';
+import {
+  SkillBurnedHint,
+  SkillRat,
+  SkillShot,
+  SkillSpit,
+  SkillTimeStop,
+} from './skill/SkillEffects';
+import { SkillId } from '@nlmlio/shared';
 import { SkillDock } from './skill/SkillSlot';
 import type { SkillPickHandler } from './skill/skill-view';
 import { VerdictOverlay } from './VerdictOverlay';
@@ -53,6 +60,13 @@ export function GameBoard({
   const [me, ...others] = view.players;
   const spectating = view.myPhase === 'spectating';
   const muted = useMuted();
+  /** 좌석 id로 그 자리의 중심(보드 좌표). 앉은 자리가 없으면 null */
+  const seatPoint = (id: string) => {
+    const index = seatedPlayers.findIndex((player) => player.id === id);
+    if (index < 0) return null;
+    const { seat } = placements[index];
+    return { x: seat.x, y: seat.y - 40 };
+  };
   return (
     <div className="game-screen">
       <main className="game-board">
@@ -206,6 +220,18 @@ export function GameBoard({
           />
         )}
         {view.skillCast && <SkillCast cast={view.skillCast} />}
+        {view.skillCast?.skillId === SkillId.RAT && seatPoint(view.skillCast.casterId) && (
+          <SkillRat
+            key={view.skillCast.key}
+            from={{ x: 550, y: 440 }}
+            to={seatPoint(view.skillCast.casterId)!}
+          />
+        )}
+        {view.skillCast?.skillId === SkillId.RUSSIAN_ROULETTE &&
+          view.skillCast.targetId &&
+          seatPoint(view.skillCast.targetId) && (
+            <SkillShot key={view.skillCast.key} at={seatPoint(view.skillCast.targetId)!} />
+          )}
         {view.spit && <SkillSpit key={view.spit.key} />}
         {view.frozen === 'amaterasu' && <SkillBurnedHint />}
         {view.targeting && <SkillTargetHint targeting={view.targeting} />}

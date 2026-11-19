@@ -156,9 +156,13 @@ export interface SkillCastView {
   /** 새 알림마다 달라지는 값. 바뀌면 알림 애니메이션을 다시 튼다 */
   key: number;
   caster: string;
+  /** 쓴 사람의 좌석 id(PlayerView.id). 자리가 없는 관전자면 그 id */
+  casterId: string;
   skillId: SkillId;
   /** 대상 한 명을 지정했으면 그 닉네임, 아니면 null(전원·나에게) */
   target: string | null;
+  /** 대상의 좌석 id. 대상이 없으면 null */
+  targetId: string | null;
 }
 
 export interface SkillTargeting {
