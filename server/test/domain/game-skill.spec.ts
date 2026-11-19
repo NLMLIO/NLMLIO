@@ -246,8 +246,11 @@ describe('Game 스킬 선택 연결(FUNC-009-01)', () => {
   });
 });
 
-/** 후보 3칸이 모두 아직 효과를 구현하지 않은 스킬(쥐새끼)이 되는 난수: 등급 ⭐⭐⭐, 그 등급의 넷째 */
-const unavailableRandom = () => () => 0.9;
+/** 후보 3칸이 모두 아직 효과를 구현하지 않은 스킬(지뢰)이 되는 난수: 등급 ⭐⭐, 그 등급의 여섯째 */
+const unavailableRandom = () => {
+  let index = 0;
+  return () => (index++ % 2 === 0 ? 0.6 : 0.9);
+};
 /** 후보 3칸이 모두 반짝반짝한 카드가 되도록 등급(⭐)·스킬(둘째)을 고르는 난수 */
 const sparkleRandom = () => {
   let index = 0;
@@ -313,9 +316,9 @@ describe('Game 스킬 사용 틀(FUNC-009-04)', () => {
   it('효과를 아직 구현하지 않은 스킬은 쓸 수 없고 칸에서 사라지지도 않는다', () => {
     const game = start(2, unavailableRandom());
     const at = holdSkills(game);
-    expect(game.skillState(1).slots).toEqual([SkillId.RAT]);
+    expect(game.skillState(1).slots).toEqual([SkillId.MINE]);
     expectRule(() => game.useSkill(1, 0, undefined, at + 1), ErrorCode.SKILL_UNAVAILABLE);
-    expect(game.skillState(1).slots).toEqual([SkillId.RAT]);
+    expect(game.skillState(1).slots).toEqual([SkillId.MINE]);
   });
 
   it('빈 칸·잘못된 칸 번호·필요 없는 대상은 거부한다', () => {
@@ -739,5 +742,102 @@ describe('스킬 효과: 해킹(FUNC-009-05)', () => {
     expectRule(() => game.useSkill(1, 0, 1, at + 1), ErrorCode.VALIDATION_FAILED);
     expectRule(() => game.useSkill(1, 0, 99, at + 1), ErrorCode.VALIDATION_FAILED);
     expect(game.skillState(1).slots).toEqual([SkillId.HACK]);
+  });
+});
+
+/** 쥐새끼: ⭐⭐⭐ 넷째 / 러시안 룰렛(관전자 풀의 ⭐⭐⭐⭐) */
+const ratRandom = () => pickRandom(0.9, 0.9);
+const rouletteRandom = () => pickRandom(0.9, 0);
+
+describe('스킬 효과: 쥐새끼(FUNC-009-05)', () => {
+  it('종 밑 보관 스택 전부를 내 덱 아래로 가져온다', () => {
+    const game = start(2, ratRandom());
+    const at = holdSkills(game);
+    expect(game.skillState(1).slots).toEqual([SkillId.RAT]);
+    game.play(1, game.turnId, at + 1);
+    // 오발: 2번의 덱 카드 1장이 종 밑 보관 스택으로 간다
+    expect(game.ring(2, game.turnSeq, at + 2)).toMatchObject({ success: false });
+    expect(game.snapshot().pileCount).toBe(1);
+    const before = game.checkpoint().players[0].hand.length;
+    expect(game.useSkill(1, 0, undefined, at + 3)).toMatchObject({
+      kind: 'skill',
+      skillId: SkillId.RAT,
+      targetUserId: null,
+    });
+    expect(game.snapshot().pileCount).toBe(0);
+    const hand = game.checkpoint().players[0].hand;
+    expect(hand.length).toBe(before + 1);
+    expect(hand.at(-1)).toBe('S3');
+  });
+
+  it('보관 스택이 비어 있으면 쓸 수 없고 스킬은 그대로다', () => {
+    const game = start(2, ratRandom());
+    const at = holdSkills(game);
+    expect(game.snapshot().pileCount).toBe(0);
+    expectRule(() => game.useSkill(1, 0, undefined, at + 1), ErrorCode.SKILL_UNAVAILABLE);
+    expect(game.skillState(1).slots).toEqual([SkillId.RAT]);
+  });
+});
+
+describe('스킬 효과: 러시안 룰렛(FUNC-009-05)', () => {
+  /** 관전자(9번)가 러시안 룰렛을 들고, 두 플레이어는 카드를 내지 않은 상태 */
+  const setup = () => {
+    const game = start(2, rouletteRandom());
+    const opensAt = succeed(game, 5) + ROUND_RESULT_MS;
+    game.openSkillPick([9], opensAt);
+    for (const id of [1, 2, 9]) game.chooseSkill(id, { slot: 0 }, opensAt + 10);
+    expect(game.skillState(9).slots).toEqual([SkillId.RUSSIAN_ROULETTE]);
+    return { game, at: opensAt + 20 };
+  };
+  const fill = (game: Game, rounds: number, from: number) => {
+    let t = from;
+    for (let round = 0; round < rounds; round++) {
+      game.play(1, game.turnId, (t += 1));
+      game.play(2, game.turnId, (t += 1));
+    }
+    return t;
+  };
+
+  it('대상의 테이블 맨 위부터 5장이 종 밑 보관 스택으로 간다', () => {
+    const { game, at } = setup();
+    const t = fill(game, 6, at);
+    expect(game.snapshot().players[1].tableCount).toBe(6);
+    const before = totalCards(game);
+    const seq = game.turnSeq;
+    expect(game.useSkill(9, 0, 2, t + 1)).toEqual({
+      kind: 'skill',
+      userId: 9,
+      skillId: SkillId.RUSSIAN_ROULETTE,
+      targetUserId: 2,
+    });
+    expect(game.snapshot().players[1].tableCount).toBe(1);
+    expect(game.snapshot().pileCount).toBe(5);
+    expect(game.snapshot().players[0].tableCount).toBe(6);
+    expect(totalCards(game)).toBe(before);
+    // 테이블이 바뀌었으므로 종 요청 순번이 올라간다
+    expect(game.turnSeq).toBe(seq + 1);
+    expect(game.skillState(9).slots).toEqual([]);
+  });
+
+  it('테이블 카드가 5장보다 적으면 있는 만큼만 보낸다', () => {
+    const { game, at } = setup();
+    const t = fill(game, 3, at);
+    game.useSkill(9, 0, 1, t + 1);
+    expect(game.snapshot().players[0].tableCount).toBe(0);
+    expect(game.snapshot().players[0].topCard).toBeNull();
+    expect(game.snapshot().pileCount).toBe(3);
+  });
+
+  it('테이블 카드가 없는 사람은 대상이 될 수 없고 스킬은 그대로다', () => {
+    const { game, at } = setup();
+    expectRule(() => game.useSkill(9, 0, 2, at + 1), ErrorCode.VALIDATION_FAILED);
+    expect(game.skillState(9).slots).toEqual([SkillId.RUSSIAN_ROULETTE]);
+  });
+
+  it('관전자 전용이라 플레이어는 쓸 수 없다', () => {
+    const { game, at } = setup();
+    expect(game.skillState(1).slots).not.toContain(SkillId.RUSSIAN_ROULETTE);
+    // 플레이어는 관전자 전용 스킬을 후보로도 받지 못하므로 어떤 칸도 쓸 수 없다
+    expectRule(() => game.useSkill(1, 1, 2, at + 1), ErrorCode.SKILL_UNAVAILABLE);
   });
 });

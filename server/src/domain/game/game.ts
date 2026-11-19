@@ -21,6 +21,7 @@ import {
   BELL_MOVE_KEYS,
   BELL_MOVE_MS,
   BELL_MOVE_POSITIONS,
+  ROULETTE_CARDS,
   RoomRole,
   TIME_STOP_MS,
   SkillId,
@@ -445,6 +446,9 @@ export class Game {
         !this.activePlayerOrNull(targetUserId)
       )
         throw new GameRuleError(ErrorCode.VALIDATION_FAILED);
+      // 러시안 룰렛은 테이블에 내둔 카드가 있는 사람만 대상이 된다.
+      if (skillId === SkillId.RUSSIAN_ROULETTE && this.table.cards(targetUserId).length === 0)
+        throw new GameRuleError(ErrorCode.VALIDATION_FAILED);
     } else if (targetUserId !== undefined) throw new GameRuleError(ErrorCode.VALIDATION_FAILED);
     // 효과마다 쓸 수 있는 상태가 아니면(예: 숫자 바꾸기는 테이블에 걸 수 있는 내 카드가 있어야 한다) 거부한다.
     if (!this.effectUsable(skillId, userId)) throw new GameRuleError(ErrorCode.SKILL_UNAVAILABLE);
@@ -635,6 +639,19 @@ export class Game {
           BELL_MOVE_KEYS[pickIndex(this.random, BELL_MOVE_KEYS.length)],
         );
         break;
+      case SkillId.RAT: {
+        // 종 밑 보관 스택 전부를 내 덱 아래로 가져온다.
+        const player = this.players.find((entry) => entry.userId === userId)!;
+        player.take(this.pile.splice(0));
+        // 카드가 다시 생겼으므로 '덱을 다 냈다'는 기록에서 뺀다.
+        this.emptied = this.emptied.filter((id) => id !== userId);
+        break;
+      }
+      case SkillId.RUSSIAN_ROULETTE:
+        // 대상의 테이블 맨 위부터 5장(있는 만큼)이 종 밑 보관 스택으로 간다. 테이블이 바뀌므로 종 요청 순번을 올린다.
+        this.pile.push(...this.table.shoot(targetUserId!, ROULETTE_CARDS));
+        this.sequence++;
+        break;
       case SkillId.SPIT:
         // 대상 화면에만 보이는 연출이라 서버가 바꾸는 상태가 없다(사용 알림만 간다).
         break;
@@ -706,6 +723,8 @@ export class Game {
   }
   private effectUsable(skillId: SkillId, userId: number): boolean {
     if (skillId === SkillId.NUMBER_SHIFT) return this.table.cards(userId)[0]?.canBoost ?? false;
+    // 쥐새끼는 종 밑 보관 스택에 카드가 있어야 쓴다.
+    if (skillId === SkillId.RAT) return this.pile.length > 0;
     return true;
   }
   /** 종이 부서져 있나 */

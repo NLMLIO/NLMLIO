@@ -28,6 +28,8 @@ export const SPIT_DRIP_MS = 3_000;
 /** 종 부수기(009-05): 종이 부서져 아무도 못 치는 시간(10~30초 중 서버가 정한다) */
 export const BELL_BREAK_MIN_MS = 10_000;
 export const BELL_BREAK_MAX_MS = 30_000;
+/** 러시안 룰렛(009-05): 총을 맞은 사람의 테이블에서 종 밑으로 보내는 카드 수 */
+export const ROULETTE_CARDS = 5;
 /** 후보 칸 수와 보유 칸 수(009-02, 009-03) */
 export const SKILL_CANDIDATE_COUNT = 3;
 export const SKILL_SLOT_COUNT = 3;
@@ -227,7 +229,7 @@ export const SKILLS: readonly SkillDefinition[] = [
     timing: SkillTiming.ANYTIME,
     user: SkillUser.PLAYER,
     target: 'none',
-    available: false,
+    available: true,
     description: '쥐를 보내 종 밑에 깔린 카드를 몰래 가져온다.',
   },
   {
@@ -257,7 +259,7 @@ export const SKILLS: readonly SkillDefinition[] = [
     timing: SkillTiming.ANYTIME,
     user: SkillUser.SPECTATOR,
     target: 'one',
-    available: false,
+    available: true,
     description: '총을 맞은 유저는 자신이 낸 카드의 맨 위부터 5장을 종 밑에 넣는다.',
   },
   {
