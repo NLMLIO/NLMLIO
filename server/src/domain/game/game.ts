@@ -181,6 +181,7 @@ export class Game {
     this.resolvedSequence = sequence;
     player.bell(success, this.playedAt === null ? 0 : now - this.playedAt);
     let movedCards: number;
+    let penaltyCards = 0;
     if (success) {
       const cards = [...this.table.collect(), ...this.pile];
       this.pile = [];
@@ -188,12 +189,19 @@ export class Game {
       movedCards = cards.length;
       this.current = userId;
     } else {
-      const penalty = player.penalty();
+      // 오발자를 제외한 생존 플레이어에게 참가 순서대로 1장씩 덱 아래에 준다.
+      for (const opponent of this.players) {
+        if (!opponent.active || opponent.userId === userId) continue;
+        const cards = player.penalty();
+        if (!cards.length) break;
+        opponent.take(cards);
+        penaltyCards += cards.length;
+      }
       // 벌칙으로 덱이 떨어진 사람은 마지막에 카드를 «낸» 사람이 아니므로 가장 앞(낮은 순위)에 둔다.
-      if (penalty.length && player.handCount === 0) this.emptied.unshift(userId);
-      // 오발은 본인 카드 1장만 보관한다. 다른 플레이어의 공개 카드는 유지한다.
-      this.pile.push(...penalty);
-      movedCards = penalty.length;
+      if (penaltyCards && player.handCount === 0) this.emptied.unshift(userId);
+      const cards = this.table.collect();
+      this.pile.push(...cards);
+      movedCards = cards.length;
     }
     this.eliminateEmpty();
     if (this.current === null || !this.canPlay(this.current))
@@ -204,7 +212,14 @@ export class Game {
     this.deadline = this.resumeAt + TURN_TIME_MS;
     this.finishIfNeeded(now);
     this.revision++;
-    return { kind: 'bell', userId, success, movedCards, totals };
+    return {
+      kind: 'bell',
+      userId,
+      success,
+      movedCards,
+      totals,
+      ...(!success ? { penaltyCards } : {}),
+    };
   }
 
   /**

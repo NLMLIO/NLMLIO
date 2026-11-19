@@ -121,16 +121,74 @@ describe('Game (FUNC-005-01~13,15,16)', () => {
     expect(game.snapshot().pileCount).toBe(0);
     expect(total(game)).toBe(8);
   });
-  it('합이 5가 아니면 자기 카드 1장만 보관하고 공개 테이블을 유지한다', () => {
+  it('합이 5가 아니면 상대에게 벌칙 1장을 주고 공개 테이블 전체를 보관한다', () => {
     const game = start(eight());
     game.play(1, game.turnId, 10);
     const oldTurn = game.turnId;
-    expect(game.ring(1, game.turnSeq, 20)).toMatchObject({ success: false, movedCards: 1 });
-    expect(game.checkpoint().pile).toEqual(['B1']);
-    expect(game.snapshot().players.map((player) => player.tableCount)).toEqual([1, 0]);
+    expect(game.ring(1, game.turnSeq, 20)).toMatchObject({
+      success: false,
+      movedCards: 1,
+      penaltyCards: 1,
+    });
+    expect(game.checkpoint().pile).toEqual(['S2']);
+    expect(game.checkpoint().players[1].hand.at(-1)).toBe('B1');
+    expect(game.snapshot().players.map((player) => player.tableCount)).toEqual([0, 0]);
     expect(game.checkpoint().players[0]).toMatchObject({ bellFail: 1 });
     expect(game.play(2, oldTurn, 21)).toBeNull();
     expect(total(game)).toBe(8);
+  });
+  it('오발은 각 플레이어의 맨 위뿐 아니라 아래에 쌓인 카드까지 전부 모은다', () => {
+    const game = start(eight());
+    for (const [index, id] of [1, 2, 1, 2].entries()) game.play(id, game.turnId, index + 1);
+    expect(game.snapshot().players.map((player) => player.tableCount)).toEqual([2, 2]);
+    const sequence = game.turnSeq;
+    expect(game.ring(1, sequence, 10)).toMatchObject({
+      success: false,
+      movedCards: 4,
+      penaltyCards: 1,
+    });
+    expect(game.checkpoint().pile).toEqual(['B1', 'S2', 'B2', 'S3']);
+    expect(game.checkpoint().players[1].hand.at(-1)).toBe('L1');
+    expect(
+      game.snapshot().players.every((player) => player.tableCount === 0 && player.topCard === null),
+    ).toBe(true);
+    expect(Object.values(game.snapshot().fruitTotals)).toEqual([0, 0, 0, 0]);
+    const after = game.checkpoint();
+    expect(game.ring(2, sequence, 11)).toBeNull();
+    expect(game.checkpoint()).toEqual(after);
+    expect(total(game)).toBe(8);
+  });
+  it('오발자의 덱이 이미 0장이면 벌칙 카드는 더하지 않고 테이블 전체만 모은다', () => {
+    const game = start(new Deck([card(Fruit.STRAWBERRY, 1), card(Fruit.BANANA, 1)]));
+    game.play(1, game.turnId, 1);
+    game.play(2, game.turnId, 2);
+    expect(game.ring(1, game.turnSeq, 3)).toMatchObject({ success: false, movedCards: 2 });
+    expect(game.snapshot().pileCount).toBe(2);
+    expect(
+      game.snapshot().players.every((player) => player.tableCount === 0 && player.topCard === null),
+    ).toBe(true);
+    expect(total(game)).toBe(2);
+  });
+  it('오발하면 자신을 제외한 생존 플레이어 모두에게 덱 아래로 1장씩 준다', () => {
+    const game = start(Deck.standard(), 4);
+    expect(game.ring(1, 0, 1)).toMatchObject({ success: false, movedCards: 0, penaltyCards: 3 });
+    expect(game.snapshot().players.map((player) => player.handCount)).toEqual([11, 15, 15, 15]);
+    expect(game.snapshot().pileCount).toBe(0);
+    expect(total(game)).toBe(56);
+  });
+  it('이탈한 플레이어에게는 벌칙 카드를 주지 않는다', () => {
+    const game = start(Deck.standard(), 4);
+    game.depart(2, 1);
+    expect(game.ring(1, 0, 2)).toMatchObject({ success: false, penaltyCards: 2 });
+    expect(game.snapshot().players.map((player) => player.handCount)).toEqual([12, 0, 15, 15]);
+    expect(total(game)).toBe(56);
+  });
+  it('벌칙 카드는 부족하면 참가 순서대로 가진 만큼만 주며 카드를 생성하지 않는다', () => {
+    const game = start(new Deck(Array.from({ length: 4 }, () => card(Fruit.BANANA, 1))), 4);
+    expect(game.ring(1, 0, 1)).toMatchObject({ success: false, movedCards: 0, penaltyCards: 1 });
+    expect(game.snapshot().players.map((player) => player.handCount)).toEqual([0, 2, 1, 1]);
+    expect(game.snapshot().players[0].status).toBe(GamePlayerStatus.ELIMINATED);
+    expect(total(game)).toBe(4);
   });
   it('과일 합이 6이면 성공으로 판정하지 않는다', () => {
     const game = start(new Deck(Array.from({ length: 8 }, () => card(Fruit.STRAWBERRY, 3))));
@@ -152,17 +210,28 @@ describe('Game (FUNC-005-01~13,15,16)', () => {
     expect(game.snapshot().roundResumeAt).toBeNull();
     expect(total(game)).toBe(8);
   });
-  it('오발 직후 중복 종은 벌칙을 반복하지 않고 다음 정상 종은 테이블과 벌칙 카드를 받는다', () => {
-    const game = start(eight());
+  it('오발 직후 중복 종은 벌칙을 반복하지 않고 다음 정상 종은 테이블과 보관 카드 전체를 받는다', () => {
+    const game = start(
+      new Deck([
+        card(Fruit.STRAWBERRY, 2),
+        card(Fruit.STRAWBERRY, 5),
+        card(Fruit.BANANA, 1),
+        card(Fruit.BANANA, 2),
+        card(Fruit.LIME, 1),
+        card(Fruit.LIME, 2),
+        card(Fruit.PLUM, 1),
+        card(Fruit.PLUM, 1),
+      ]),
+    );
     game.play(1, game.turnId, 10);
     game.ring(1, game.turnSeq, 20);
     expect(game.ring(2, game.turnSeq, 21)).toBeNull();
     expect(game.snapshot().pileCount).toBe(1);
-    expect(game.snapshot().players[0].topCard).toEqual({ fruit: Fruit.STRAWBERRY, count: 2 });
+    expect(game.snapshot().players[0].topCard).toBeNull();
     game.play(2, game.turnId, 20 + ROUND_RESULT_MS);
     expect(game.ring(2, game.turnSeq, 21 + ROUND_RESULT_MS)).toMatchObject({
       success: true,
-      movedCards: 3,
+      movedCards: 2,
     });
     expect(game.snapshot().pileCount).toBe(0);
     expect(total(game)).toBe(8);
@@ -277,7 +346,8 @@ describe('Game (FUNC-005-01~13,15,16)', () => {
   });
   it('오발 벌칙으로 0장이 되면 탈락하고 남은 플레이어가 승리한다', () => {
     const game = start(new Deck([card(Fruit.LIME, 5), card(Fruit.PLUM, 1)]));
-    expect(game.ring(1, 0, 10)).toMatchObject({ success: false, movedCards: 1 });
+    expect(game.ring(1, 0, 10)).toMatchObject({ success: false, movedCards: 0, penaltyCards: 1 });
+    expect(game.snapshot().players[1].handCount).toBe(2);
     expect(game.snapshot().status).toBe('ENDED');
     expect(game.snapshot().results[0].userId).toBe(2);
     expect(total(game)).toBe(2);

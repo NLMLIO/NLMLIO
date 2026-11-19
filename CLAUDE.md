@@ -208,7 +208,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `client/src/pages/lobby/LobbyPage.tsx`, `CreateRoomPage.tsx`, `pages/room/WaitingRoomPage.tsx`, `RoomChat.tsx`(채팅·이모티콘·방 안내): 로비(`#lobby`, 기본 화면), 방 만들기(`#create-room`), 대기실(`#room`, 상단 메뉴 없이 전체 화면).
 - `server/src/modules/chat/`: Socket.io 인증·방 소속 검증, 텍스트/이모티콘 DTO, Redis Pub/Sub 전달과 사용자별 전송 제한. 방 소속 정보는 `RoomService`만 조회한다.
 - `shared/src/events.ts`: 채팅 Socket.io 이벤트 이름, 페이로드, 허용 이모티콘과 Ack 타입.
-- `client/src/pages/game/`, `styles/game.css`, `assets/game/`: Figma NLML_design 「03 · 게임」 화면(FUNC-005). `GamePage`(`#game`)가 `stores/game-store.ts`의 서버 스냅샷을 `to-game-view.ts`로 `GameView`(화면 모델)에 옮겨 그리고, 카드 내기·종·결과 확인은 `socket.ts`의 `sendGameIntent`로 보낸다. 게임이 시작되거나 진행 중인 게임에 다시 연결되면 `App`이 `#game`으로 옮긴다. 개발 서버에서는 고정 장면 미리보기(`#game-preview/<장면>`, `preview-scenes.ts`)도 볼 수 있다. 1440×900 좌표계로 그리고 `hooks/use-fit-scale.ts`로 창에 맞춘다. 단축키는 `hooks/use-game-shortcuts.ts`(J 카드 내기, Space 종).
+- `client/src/pages/game/`, `styles/game.css`, `assets/game/`: Figma NLML_design 「03 · 게임」 화면(FUNC-005). `GamePage`(`#game`)가 `stores/game-store.ts`의 서버 스냅샷을 `to-game-view.ts`로 `GameView`(화면 모델)에 옮겨 그리고, 카드 내기·종·결과 확인은 `socket.ts`의 `sendGameIntent`로 보낸다. 게임이 시작되거나 진행 중인 게임에 다시 연결되면 `App`이 `#game`으로 옮긴다. 개발 서버에서는 고정 장면 미리보기(`#game-preview/<장면>`, `preview-scenes.ts`)도 볼 수 있다. 1440×900 좌표계로 그리고 `hooks/use-fit-scale.ts`로 창에 맞춘다. 단축키는 `hooks/use-game-shortcuts.ts`(J 카드 내기, Space 종). `pages/game/game-input-sequence.ts`는 카드 요청 중 종 입력을 응답 뒤 최신 스냅샷으로 보낸다.
 - `client/src/stores/game-store.ts`: `game:state`·`game:action`의 거울. 같은 게임의 낮은 revision은 버리고, 스냅샷의 `serverTime`으로 서버 시계 차이를 추정한다. 플레이어별 마지막 카드 공개(`lastCards`)로 뒤집기 key와 '자동' 표시를 유지한다. 게임 진행 로그는 채팅과 같은 순서로 `room-store` 로그에 쌓는다.
 - `client/src/audio/sounds.ts`, `public/sounds/`: Howler 효과음(FUNC-005-14). 앱 시작 시 preload, 첫 입력에서 오디오 활성화, 음소거는 localStorage. 효과음은 `client/scripts/generate-sounds.mjs`로 합성한 자체 제작물이다(`public/sounds/LICENSES.md`).
 - `server/src/infra/database/*repository.ts`: Prisma 타입·쿼리와 트랜잭션을 캡슐화. `RankingRepository`는 전체 경기의 승패를 SQL에서 집계해 목록과 내 순위를 같은 기준으로 계산한다.
@@ -240,7 +240,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | 보관 스택 | 종 아래에 모아 두는 카드(분배 후 남은 카드, 탈락·이탈자의 카드). 다음에 정당하게 종을 친 승자가 가져간다 |
 | 종 누르기 | 테이블 위 같은 과일 합이 **정확히 5개**일 때 누르는 행동 |
 | 선착순 판정 | 여러 명이 거의 동시에 종을 쳤을 때 **서버 도착 시각 기준 1명**만 인정 |
-| 오발 벌칙 | 오발자 카드 1장만 종 아래 보관 스택으로 옮기고 테이블은 유지(2026-11-12 피드백) |
+| 오발 벌칙 | 오발자가 다른 생존 플레이어에게 보유 카드 1장씩 지급, 테이블 전체는 종 아래 보관(2026-11-19 수정) |
 | 탈락 / 이탈 | 덱 0장인 채로 종 판정이 끝나 빠짐(순위 정상) / 나가기·연결 끊김 5초·턴 시간 초과 3회로 빠짐(맨 아래, 패배). 둘 다 관전자가 된다 |
 | 턴 제한 시간 | 차례마다 10초. 넘기면 서버가 대신 카드를 낸다 |
 | 라운드 | 카드를 차례로 내다가 종 판정이 나거나 탈락자가 생기면 끝나는 단위 |
