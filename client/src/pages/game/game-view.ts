@@ -1,4 +1,5 @@
-import type { Fruit } from '@nlmlio/shared';
+import type { Fruit, SkillId } from '@nlmlio/shared';
+import type { SkillsView } from './skill/skill-view';
 
 /**
  * 게임 화면이 그리는 상태. 서버가 확정해 보낸 값을 그대로 담는 그릇이고, 여기서 규칙을 계산하지 않는다.
@@ -10,7 +11,14 @@ export type PlayerColor = 'strawberry' | 'banana' | 'lime' | 'plum' | 'white' | 
 
 export interface CardFace {
   fruit: Fruit;
-  count: 1 | 2 | 3 | 4 | 5;
+  /** 6은 과일 6개 카드(스킬)뿐이다 */
+  count: 1 | 2 | 3 | 4 | 5 | 6;
+  /** 과일 6개 카드: 판정이 나면 성공·오발과 상관없이 사라진다 */
+  special?: boolean;
+  /** 숫자 바꾸기로 과일 개수가 1 늘었다(`count`는 늘어난 값) */
+  boosted?: boolean;
+  /** 반짝반짝한 카드(꾸미기). 판정으로 옮겨지면 사라진다 */
+  gilded?: boolean;
 }
 
 /**
@@ -36,6 +44,8 @@ export interface PlayerView {
   /** offline일 때 화면에 보여 줄 남은 유예 시간(초). 모르면 비워 둔다 */
   offlineSeconds?: number;
   isTurn: boolean;
+  /** 아마테라스: 검은 불꽃에 휩싸여 다음 판정까지 카드·종이 불가 */
+  burning?: boolean;
   /** 차례인 사람의 남은 턴 시간(초, FUNC-005-15) */
   turnSeconds?: number;
   /** 맨 위 카드가 바뀔 때마다 달라지는 값. 바뀌면 카드 뒤집기 애니메이션을 다시 튼다 */
@@ -105,6 +115,69 @@ export interface GameView {
   banner?: Banner;
   verdict?: Verdict;
   log: LogEntry[];
+  /** 스킬 슬롯과 선택 창(FUNC-009). 스킬이 없는 화면은 비워 둔다 */
+  skills?: SkillsView;
+  /** 지뢰가 깔려 있다(다음 종 판정까지). 모두에게 흐릿하게 보인다 */
+  mine?: boolean;
+  /** 내 손이 부서져 다음 종 판정까지 종을 칠 수 없다 */
+  smashed?: boolean;
+  /** 방금 쓴 스킬 알림(화면 위쪽, 1.6초) */
+  skillCast?: SkillCastView;
+  /** 대상 지정 중: 누를 수 있는 좌석 */
+  targeting?: SkillTargeting;
+  /** 종 옮기기가 진행 중이면 옮겨진 종의 자리와 새 키 */
+  bellMove?: BellMoveView;
+  /** 시간 정지 중 */
+  timeStop?: TimeStopView;
+  /** 종 부수기: 종이 부서져 돌아올 때까지 남은 시간(초) */
+  bellBreak?: { seconds: number };
+  /** 종 야바위 중: 종마다의 단축키(순서가 종 번호)와 남은 시간 */
+  shell?: { keys: string[]; seconds: number };
+  /** 해킹당했을 때 Space 대신 쓰는 새 종 치기 키(나에게만 보인다). 다음 판정까지 */
+  hackKey?: string;
+  /** 내가 지금 카드·종을 못 한다(시간 정지 중 쓴 사람이 아님, 또는 아마테라스) */
+  frozen?: 'time-stop' | 'amaterasu';
+  /** 침 뱉기를 맞았다: 내 화면이 가려졌다가 흘러내린다 */
+  spit?: { key: number };
+}
+
+export interface TimeStopView {
+  caster: string;
+  /** 내가 쓴 사람이다(나만 움직일 수 있다) */
+  byMe: boolean;
+  /** 남은 시간(초) */
+  seconds: number;
+}
+
+export interface BellMoveView {
+  /** 옮겨 간 자리(0~3) */
+  position: number;
+  /** 새 종 치기 키(Space 대신). 예: 'K' */
+  key: string;
+  /** 옮겨지는 중이라 종 입력을 무시하는 동안 */
+  locked: boolean;
+}
+
+export interface SkillCastView {
+  /** 새 알림마다 달라지는 값. 바뀌면 알림 애니메이션을 다시 튼다 */
+  key: number;
+  caster: string;
+  /** 쓴 사람의 좌석 id(PlayerView.id). 자리가 없는 관전자면 그 id */
+  casterId: string;
+  skillId: SkillId;
+  /** 대상 한 명을 지정했으면 그 닉네임, 아니면 null(전원·나에게) */
+  target: string | null;
+  /** 대상의 좌석 id. 대상이 없으면 null */
+  targetId: string | null;
+  /** 무지개 반사로 막아 낸 사람의 닉네임. 있으면 target은 쓴 사람 자신이다 */
+  reflectedBy?: string;
+}
+
+export interface SkillTargeting {
+  slot: number;
+  skillId: SkillId;
+  /** 대상으로 고를 수 있는 플레이어 id(PlayerView.id) */
+  targetIds: string[];
 }
 
 export interface RankingEntry {

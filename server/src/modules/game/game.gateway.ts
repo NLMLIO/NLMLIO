@@ -17,7 +17,7 @@ import { socketUser } from '../../common/socket-user';
 import { WsAckFilter } from '../../common/ws-ack.filter';
 import { wsValidationPipe } from '../../common/ws-validation.pipe';
 import { UserRepository } from '../../infra/database/user.repository';
-import { CardPlayDto, BellRingDto, EmptyGameDto } from './dto/game.dto';
+import { CardPlayDto, BellRingDto, EmptyGameDto, SkillPickDto, SkillUseDto } from './dto/game.dto';
 import { GameEvents, stamped } from './game.events';
 import { GameService } from './game.service';
 
@@ -41,6 +41,7 @@ export class GameGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       .connected(userId, socket.id)
       .then(() => {
         socket.emit(GameServerEvent.STATE, stamped(this.games.sync(userId)));
+        socket.emit(GameServerEvent.SKILLS, this.games.skillsFor(userId));
       })
       .catch(() => this.logger.warn('Game connection sync failed'));
   }
@@ -90,8 +91,30 @@ export class GameGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     @MessageBody() _input: EmptyGameDto,
   ): Promise<GameAck> {
     await this.authorize(socket);
-    socket.emit(GameServerEvent.STATE, stamped(this.games.sync(socketUser(socket).userId)));
+    const { userId } = socketUser(socket);
+    socket.emit(GameServerEvent.STATE, stamped(this.games.sync(userId)));
+    socket.emit(GameServerEvent.SKILLS, this.games.skillsFor(userId));
     return { ok: true };
+  }
+  @SubscribeMessage(GameClientEvent.SKILL_PICK)
+  async skillPick(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() input: SkillPickDto,
+  ): Promise<GameAck> {
+    const accepted = await this.games.pickSkill(socketUser(socket).userId, input, Date.now(), () =>
+      this.authorize(socket),
+    );
+    return { ok: true, ...(!accepted ? { ignored: true } : {}) };
+  }
+  @SubscribeMessage(GameClientEvent.SKILL_USE)
+  async skillUse(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() input: SkillUseDto,
+  ): Promise<GameAck> {
+    const accepted = await this.games.useSkill(socketUser(socket).userId, input, Date.now(), () =>
+      this.authorize(socket),
+    );
+    return { ok: true, ...(!accepted ? { ignored: true } : {}) };
   }
   @SubscribeMessage(GameClientEvent.RETURN)
   async returnToRoom(
@@ -100,6 +123,7 @@ export class GameGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   ): Promise<GameAck> {
     await this.games.returnToRoom(socketUser(socket).userId, () => this.authorize(socket));
     socket.emit(GameServerEvent.STATE, null);
+    socket.emit(GameServerEvent.SKILLS, null);
     return { ok: true };
   }
   private async authorize(socket: Socket): Promise<void> {

@@ -196,6 +196,27 @@ describe('게임 서버 Socket.io / Redis / PostgreSQL (FUNC-005)', () => {
     expect(state.players[0]).not.toHaveProperty('hand');
     expect(await emit(a, RoomClientEvent.START)).toEqual({ ok: false, code: 'ROOM_IN_GAME' });
   });
+  it('스킬 선택 요청: 열린 선택이 없으면 무시하고 형식·소속이 틀리면 거부한다(FUNC-009)', async () => {
+    expect(await emit(a, GameClientEvent.SKILL_PICK, { gameId, choice: { slot: 0 } })).toEqual({
+      ok: true,
+      ignored: true,
+    });
+    expect(await emit(a, GameClientEvent.SKILL_PICK, { gameId, choice: 'x' })).toEqual({
+      ok: false,
+      code: 'VALIDATION_FAILED',
+    });
+    expect(
+      await emit(a, GameClientEvent.SKILL_PICK, { gameId, choice: { slot: 0 }, userId: 1 }),
+    ).toEqual({ ok: false, code: 'VALIDATION_FAILED' });
+    expect(await emit(d, GameClientEvent.SKILL_PICK, { gameId, choice: { slot: 0 } })).toEqual({
+      ok: false,
+      code: 'NOT_IN_ROOM',
+    });
+    expect(
+      await emit(a, GameClientEvent.SKILL_PICK, { gameId: 'previous-game', choice: { slot: 0 } }),
+    ).toEqual({ ok: false, code: 'GAME_NOT_FOUND' });
+    expect(snapshot()).toMatchObject({ skillSuccesses: 0, skillPick: null });
+  });
   it('다른 방·관전자의 플레이와 클라이언트 조작 필드를 차단한다', async () => {
     const input = { gameId, turnId: snapshot().turnId };
     expect(await emit(d, GameClientEvent.PLAY, input)).toEqual({ ok: false, code: 'NOT_IN_ROOM' });

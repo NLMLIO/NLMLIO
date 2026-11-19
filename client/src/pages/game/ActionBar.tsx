@@ -36,6 +36,8 @@ interface ActionBarProps {
   playing?: boolean;
   /** 방 나가기 요청을 보내는 중 */
   leaving: boolean;
+  /** 종 옮기기 중이면 Space 대신 쓰는 새 키 */
+  bellKey?: string;
   onPlayCard: () => void;
   onLeave: () => void;
 }
@@ -51,6 +53,7 @@ export function ActionBar({
   emoteKey,
   playing = false,
   leaving,
+  bellKey,
   onPlayCard,
   onLeave,
 }: ActionBarProps) {
@@ -103,7 +106,15 @@ export function ActionBar({
       </div>
       <span className="action-bar-divider" aria-hidden="true" />
       <p className="action-bar-control bell-hint">
-        종 <Key label="SPACE" />
+        종{' '}
+        {bellKey ? (
+          <>
+            <kbd className="key struck">SPACE</kbd>
+            <kbd className="key moved">{bellKey}</kbd>
+          </>
+        ) : (
+          <Key label="SPACE" />
+        )}
       </p>
     </section>
   );

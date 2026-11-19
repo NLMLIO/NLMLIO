@@ -1,14 +1,24 @@
 import { create } from 'zustand';
-import { GameStatus } from '@nlmlio/shared';
+import { GameStatus, SkillId } from '@nlmlio/shared';
 import type {
   GameAction,
   GameActionEvent,
   GameCard,
   GameSnapshot,
   GameStateEvent,
+  SkillStateEvent,
 } from '@nlmlio/shared';
 
 type BellAction = Extract<GameAction, { kind: 'bell' }>;
+type SkillAction = Extract<GameAction, { kind: 'skill' }>;
+
+/** 서버가 알린 스킬 사용. 화면 위쪽 알림을 잠깐 띄우는 데 쓴다 */
+export interface SkillCastEvent {
+  id: number;
+  action: SkillAction;
+  /** 이 브라우저가 받은 시각 */
+  castAt: number;
+}
 
 /** 서버가 보낸 종 판정. 판정 직전 테이블(서버가 보낸 공개 카드)을 함께 기억해 화면이 근거를 보여 준다. */
 export interface BellEvent {
@@ -28,12 +38,15 @@ export interface CardEvent {
 interface GameState {
   snapshot: GameSnapshot | null;
   lastBell: BellEvent | null;
+  lastSkill: SkillCastEvent | null;
   /** 플레이어별 마지막 카드 공개. 그 플레이어가 새 카드를 낼 때만 바뀐다 */
   lastCards: Record<number, CardEvent>;
   /** 연결이 끊긴 플레이어별로 끊김 이벤트를 받은 이 브라우저 시각 */
   offlineSince: Record<number, number>;
   /** 서버 시각 − 이 브라우저 시각 추정치(스냅샷의 serverTime으로 잰다). 턴 마감 시각을 남은 초로 바꿀 때 쓴다 */
   clockOffset: number;
+  /** 내 보유 스킬과 선택 후보(`game:skills`, 본인에게만 온다) */
+  skills: SkillStateEvent | null;
   /** 결과 확인 뒤 대기실로 돌아간 게임. 이 게임의 종료 스냅샷이 늦게 와도 다시 띄우지 않는다 */
   returnedGameId: string | null;
 }
@@ -47,9 +60,11 @@ let nextId = 1;
 export const useGameStore = create<GameState>(() => ({
   snapshot: null,
   lastBell: null,
+  lastSkill: null,
   lastCards: {},
   offlineSince: {},
   clockOffset: 0,
+  skills: null,
   returnedGameId: null,
 }));
 
@@ -62,8 +77,10 @@ export const gameActions = {
         return {
           snapshot: null,
           lastBell: null,
+          lastSkill: null,
           lastCards: {},
           offlineSince: {},
+          skills: null,
           returnedGameId: prev?.status === GameStatus.ENDED ? prev.gameId : state.returnedGameId,
         };
       }
@@ -83,9 +100,15 @@ export const gameActions = {
         snapshot: next,
         clockOffset,
         offlineSince,
-        ...(sameGame ? {} : { lastBell: null, lastCards: {}, returnedGameId: null }),
+        ...(sameGame
+          ? {}
+          : { lastBell: null, lastSkill: null, lastCards: {}, skills: null, returnedGameId: null }),
       };
     });
+  },
+  /** `game:skills`. 내 보유 스킬과 후보. null이면 스킬 상태가 없다 */
+  skills(event: SkillStateEvent | null) {
+    useGameStore.setState({ skills: event });
   },
   /** `game:action`. 받아들였으면 true(효과음·로그에 쓴다), 지난 이벤트면 false */
   action(event: GameActionEvent): boolean {
@@ -120,6 +143,17 @@ export const gameActions = {
             offlineSince: event.connected ? rest : { ...rest, [event.userId]: Date.now() },
           };
         });
+        break;
+      case 'skill':
+        useGameStore.setState(() => ({
+          lastSkill: { id: nextId++, action: event, castAt: Date.now() },
+          // 안해·도르마무는 테이블을 비우거나 판정 전으로 되돌리므로 지난 카드 공개·종 판정 표시를 지운다.
+          ...(event.skillId === SkillId.RESET
+            ? { lastBell: null, lastCards: {} }
+            : event.skillId === SkillId.DORMAMMU
+              ? { lastBell: null }
+              : {}),
+        }));
         break;
       case 'departed':
         break;

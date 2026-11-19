@@ -8,17 +8,35 @@ import { EmptyCardSlot, FruitCard } from './FruitCard';
 import { GameChat } from './GameChat';
 import { seatPlacements, type GameView } from './game-view';
 import { PlayerSeat, playerColorStyle } from './PlayerSeat';
+import { SkillPick } from './skill/SkillPick';
+import { SkillCast, SkillTargetHint } from './skill/SkillCast';
+import {
+  SkillBurnedHint,
+  SkillRat,
+  SkillShot,
+  SkillSpit,
+  SkillTimeStop,
+} from './skill/SkillEffects';
+import { SkillId } from '@nlmlio/shared';
+import { SkillDock } from './skill/SkillSlot';
+import type { SkillPickHandler } from './skill/skill-view';
 import { VerdictOverlay } from './VerdictOverlay';
 
 export interface GameActions {
   onPlayCard: () => void;
-  onRingBell: () => void;
+  onRingBell: (bell?: number) => void;
   onLeave: () => void;
   onSendChat: (text: string) => Promise<string | null> | void;
   onSendEmote: (emote: ChatEmojiCode) => Promise<string | null> | void;
+  /** 스킬 후보 선택(FUNC-009-03). 없으면 선택 창은 보기만 한다 */
+  onPickSkill?: SkillPickHandler;
+  /** 슬롯의 스킬 사용(FUNC-009-04). 대상 지정 스킬이면 먼저 대상을 고르게 한다 */
+  onUseSkill?: (slot: number) => void;
+  /** 대상 지정 중 좌석을 눌러 대상으로 고른다 */
+  onPickTarget?: (userId: number) => void;
 }
 
-/** 게임 화면(06·15·18·19·05B·07A·07B·16): 테이블·자리·종·내 상태 바와 채팅 패널 */
+/** 게임 화면(06·15·18·19·05B·07A·07B·16·21·22): 테이블·자리·종·내 상태 바와 채팅 패널 */
 export function GameBoard({
   view,
   actions,
@@ -44,6 +62,13 @@ export function GameBoard({
   const [me, ...others] = view.players;
   const spectating = view.myPhase === 'spectating';
   const muted = useMuted();
+  /** 좌석 id로 그 자리의 중심(보드 좌표). 앉은 자리가 없으면 null */
+  const seatPoint = (id: string) => {
+    const index = seatedPlayers.findIndex((player) => player.id === id);
+    if (index < 0) return null;
+    const { seat } = placements[index];
+    return { x: seat.x, y: seat.y - 40 };
+  };
   return (
     <div className="game-screen">
       <main className="game-board">
@@ -118,11 +143,32 @@ export function GameBoard({
           state={view.bell}
           pileCount={view.pileCount}
           disabled={
-            !canJoinHandWindow &&
-            (spectating || view.myPhase === 'judging' || view.bell.kind === 'countdown')
+            (!canJoinHandWindow &&
+              (spectating || view.myPhase === 'judging' || view.bell.kind === 'countdown')) ||
+            !!view.skills?.pick ||
+            !!view.bellMove?.locked ||
+            !!view.bellBreak ||
+            !!view.smashed ||
+            !!view.frozen
           }
           onRing={actions.onRingBell}
+          moved={view.bellMove}
+          broken={view.bellBreak}
+          hackKey={view.hackKey}
+          shell={view.shell}
         />
+        {view.bellMove && <span className="bell-ghost" aria-hidden="true" />}
+        {view.smashed && (
+          <p className="skill-hint smashed-hint" role="status">
+            <b>손이 부서졌어요</b>
+            <span>다음 종 판정까지 종을 칠 수 없어요</span>
+          </p>
+        )}
+        {view.mine && (
+          <span className="skill-mine" role="img" aria-label="지뢰가 깔려 있어요">
+            ✸
+          </span>
+        )}
         {seatedPlayers.map((player, index) => {
           const handIndex = hands?.userIds.indexOf(Number(player.id)) ?? -1;
           return (
@@ -165,6 +211,11 @@ export function GameBoard({
               player={player}
               growsUp={seatGrowsUp}
               style={{ left: seat.x, top: seat.y }}
+              onSelect={
+                view.targeting?.targetIds.includes(player.id) && actions.onPickTarget
+                  ? () => actions.onPickTarget?.(Number(player.id))
+                  : undefined
+              }
             />
           );
         })}
@@ -185,13 +236,46 @@ export function GameBoard({
           emoteKey={me.emoteKey}
           playing={playing}
           leaving={leaving}
+          bellKey={view.hackKey ?? view.bellMove?.key}
           onPlayCard={actions.onPlayCard}
           onLeave={actions.onLeave}
         />
+        {view.skills && (
+          <SkillDock
+            slots={view.skills.slots}
+            armed={view.targeting?.slot ?? null}
+            onUse={actions.onUseSkill}
+          />
+        )}
+        {view.skillCast && <SkillCast cast={view.skillCast} />}
+        {view.skillCast?.skillId === SkillId.RAT && seatPoint(view.skillCast.casterId) && (
+          <SkillRat
+            key={view.skillCast.key}
+            from={{ x: 550, y: 440 }}
+            to={seatPoint(view.skillCast.casterId)!}
+          />
+        )}
+        {view.skillCast?.skillId === SkillId.RUSSIAN_ROULETTE &&
+          view.skillCast.targetId &&
+          seatPoint(view.skillCast.targetId) && (
+            <SkillShot key={view.skillCast.key} at={seatPoint(view.skillCast.targetId)!} />
+          )}
+        {view.spit && <SkillSpit key={view.spit.key} />}
+        {view.frozen === 'amaterasu' && <SkillBurnedHint />}
+        {view.targeting && <SkillTargetHint targeting={view.targeting} />}
         {view.verdict && <VerdictOverlay verdict={view.verdict} />}
         {children}
       </main>
       <GameChat log={view.log} onSendChat={actions.onSendChat} onSendEmote={actions.onSendEmote} />
+      {view.timeStop && <SkillTimeStop stop={view.timeStop} />}
+      {view.skills?.pick && (
+        <SkillPick
+          key={view.skills.pick.successCount}
+          pick={view.skills.pick}
+          slots={view.skills.slots}
+          onChoose={(choice) => actions.onPickSkill?.(choice)}
+        />
+      )}
     </div>
   );
 }

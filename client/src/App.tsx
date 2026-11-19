@@ -16,6 +16,7 @@ import { RankingPage } from './pages/ranking/RankingPage';
 import { WaitingRoomPage } from './pages/room/WaitingRoomPage';
 import './styles/app.css';
 import './styles/game.css';
+import './styles/skill.css';
 
 const PAGES = [
   'lobby',

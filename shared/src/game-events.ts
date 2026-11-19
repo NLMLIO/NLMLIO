@@ -1,5 +1,16 @@
 import type { Fruit } from './domain';
 import type { ErrorCode } from './errors';
+import type {
+  BellBreakPublic,
+  BellMovePublic,
+  BellShellPublic,
+  SkillId,
+  SkillPickPublic,
+  SkillPickRequest,
+  SkillStateEvent,
+  SkillUseRequest,
+  TimeStopPublic,
+} from './skills';
 
 /** 차례마다 카드를 낼 수 있는 시간(FUNC-005-15). 넘기면 서버가 대신 낸다. */
 export const TURN_TIME_MS = 10_000;
@@ -20,15 +31,28 @@ export const GamePlayerStatus = {
 export type GamePlayerStatus = (typeof GamePlayerStatus)[keyof typeof GamePlayerStatus];
 export interface GameCard {
   fruit: Fruit;
-  count: 1 | 2 | 3 | 4 | 5;
+  /** 6은 과일 6개 카드(스킬)뿐이다 */
+  count: 1 | 2 | 3 | 4 | 5 | 6;
+  /** 과일 6개 카드: 판정이 나면 성공·오발과 상관없이 사라진다 */
+  special?: true;
+  /** 숫자 바꾸기로 과일 개수가 1 늘었다(`count`는 늘어난 값). 카드가 테이블을 떠나면 원래대로 돌아온다 */
+  boosted?: true;
+  /** 반짝반짝한 카드(꾸미기, 판정에 영향 없음). 판정으로 옮겨지면 사라진다 */
+  gilded?: true;
 }
 export const GameClientEvent = {
   SYNC: 'game:sync',
   PLAY: 'card:play',
   BELL: 'bell:ring',
   RETURN: 'game:return',
+  SKILL_PICK: 'skill:pick',
+  SKILL_USE: 'skill:use',
 } as const;
-export const GameServerEvent = { STATE: 'game:state', ACTION: 'game:action' } as const;
+export const GameServerEvent = {
+  STATE: 'game:state',
+  ACTION: 'game:action',
+  SKILLS: 'game:skills',
+} as const;
 export interface CardPlayRequest {
   gameId: string;
   turnId: number;
@@ -36,6 +60,8 @@ export interface CardPlayRequest {
 export interface BellRingRequest {
   gameId: string;
   turnSeq: number;
+  /** 종 야바위 중 누른 종의 번호(`shell.keys` 순서). 야바위가 아닐 때는 보내지 않는다 */
+  bell?: number;
 }
 export interface GamePlayerView {
   userId: number;
@@ -89,6 +115,28 @@ export interface GameSnapshot {
   fruitTotals: Record<Fruit, number>;
   results: GameResultEntry[];
   settled: boolean;
+  /** 종 성공 누적 횟수(스킬 선택은 5번마다, FUNC-009-01) */
+  skillSuccesses: number;
+  /** 스킬 선택 중이면 진행 현황. 선택 중에는 카드 내기·종·턴 타이머가 멈춘다 */
+  skillPick: SkillPickPublic | null;
+  /** 종 옮기기가 진행 중이면 새 자리·새 키(끝났어도 다음 변경까지 남을 수 있어 `endsAt`으로 판단한다) */
+  bellMove: BellMovePublic | null;
+  /** 시간 정지 중이면 쓴 사람과 끝나는 시각. 쓴 사람만 카드를 낼 수 있고 나머지는 카드·종이 모두 불가다 */
+  timeStop: TimeStopPublic | null;
+  /** 종 부수기: 종이 돌아올 때까지 아무도 종을 칠 수 없다 */
+  bellBreak: BellBreakPublic | null;
+  /** 아마테라스에 걸린 사람들. 다음 종 판정(또는 탈락)까지 카드 내기·종 치기가 불가다 */
+  burning: number[];
+  /** 종 야바위 중이면 종마다의 단축키와 끝나는 시각 */
+  shell: BellShellPublic | null;
+  /** 도르마무로 되돌릴 수 있는 마감 시각(방금 종 판정이 났고 결과를 보여 주는 동안). 아니면 null */
+  rewindUntil: number | null;
+  /** 방금 종 판정이 났다: 이 시각까지 다른 플레이어가 손 개 쌔게 내려치기로 종을 친 사람을 칠 수 있다 */
+  smashWindow: { userId: number; endsAt: number } | null;
+  /** 손이 부서진 사람들. 다음 종 판정(또는 탈락)까지 종을 칠 수 없다 */
+  smashed: number[];
+  /** 지뢰가 깔려 있다(누가 깔았는지는 알리지 않는다). 다음 종 판정까지 */
+  mine: boolean;
 }
 /** `game:state` 페이로드. 보낼 때의 서버 시각을 붙여 클라이언트가 시계 차이를 잰다. */
 export type GameStateEvent = GameSnapshot & { serverTime: number };
@@ -103,8 +151,22 @@ export type GameAction =
       /** 오발자가 다른 생존 플레이어에게 1장씩 나눠 준 총 벌칙 카드 수 */
       penaltyCards?: number;
       totals: Record<Fruit, number>;
+      /** 지뢰가 터졌다: 5개를 맞췄지만 카드가 모두 종 밑으로 갔다. 성공도 오발도 아니다 */
+      mined?: true;
+      /** 종 야바위 중 가짜 종을 눌러 오발로 처리됐다 */
+      fake?: true;
     }
   | { kind: 'departed'; userId: number }
+  /** 스킬 사용 알림. `targetUserId`가 null이면 대상 없음(전원·나에게) */
+  | {
+      kind: 'skill';
+      userId: number;
+      skillId: SkillId;
+      /** 효과를 받은 사람. 무지개 반사가 일어났다면 쓴 사람 자신이다 */
+      targetUserId: number | null;
+      /** 무지개 반사로 막아 낸 사람(원래 대상) */
+      reflectedBy?: number;
+    }
   | { kind: 'connection'; userId: number; connected: boolean };
 export type GameActionEvent = GameAction & { gameId: string; revision: number };
 export type GameAck =
@@ -114,8 +176,12 @@ export interface GameClientToServerEvents {
   'card:play': (payload: CardPlayRequest, ack: (result: GameAck) => void) => void;
   'bell:ring': (payload: BellRingRequest, ack: (result: GameAck) => void) => void;
   'game:return': (payload: Record<string, never>, ack: (result: GameAck) => void) => void;
+  'skill:pick': (payload: SkillPickRequest, ack: (result: GameAck) => void) => void;
+  'skill:use': (payload: SkillUseRequest, ack: (result: GameAck) => void) => void;
 }
 export interface GameServerToClientEvents {
   'game:state': (state: GameStateEvent | null) => void;
   'game:action': (action: GameActionEvent) => void;
+  /** 본인에게만. 보유 스킬과 선택 후보 */
+  'game:skills': (state: SkillStateEvent | null) => void;
 }

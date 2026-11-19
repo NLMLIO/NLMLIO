@@ -114,6 +114,7 @@ export function connectSocket(): void {
   });
   raw(current).on(GameServerEvent.STATE, receiveGameState);
   raw(current).on(GameServerEvent.ACTION, receiveGameAction);
+  raw(current).on(GameServerEvent.SKILLS, gameActions.skills);
   current.on(RoomServerEvent.NOTICE, roomActions.notice);
   current.on(RoomServerEvent.KICKED, roomActions.kicked);
   raw(current).on(ChatEvent.MESSAGE, (message: ChatMessageEvent) => roomActions.chat(message));

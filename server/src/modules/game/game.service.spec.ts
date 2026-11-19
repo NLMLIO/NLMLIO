@@ -21,7 +21,7 @@ describe('GameService 방 큐·타이머·정산 재시도', () => {
   let room: Room;
   let snapshots: { save: jest.Mock; claimBell: jest.Mock; clear: jest.Mock };
   let results: { settle: jest.Mock };
-  let events: { state: jest.Mock; action: jest.Mock; sync: jest.Mock };
+  let events: { state: jest.Mock; action: jest.Mock; sync: jest.Mock; skills: jest.Mock };
   beforeEach(async () => {
     jest.useFakeTimers({ now: new Date('2026-11-04T00:00:00Z') });
     room = Room.create({ code: '123456', name: '타이머', host: { userId: 1, nickname: '하나' } });
@@ -44,7 +44,7 @@ describe('GameService 방 큐·타이머·정산 재시도', () => {
       clear: jest.fn().mockResolvedValue(undefined),
     };
     results = { settle: jest.fn().mockResolvedValue({ saved: true }) };
-    events = { state: jest.fn(), action: jest.fn(), sync: jest.fn() };
+    events = { state: jest.fn(), action: jest.fn(), sync: jest.fn(), skills: jest.fn() };
     timers = new GameTimers();
     store = new GameStore();
     lifecycle = new RoomGameLifecycle();

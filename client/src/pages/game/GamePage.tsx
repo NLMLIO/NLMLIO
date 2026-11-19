@@ -7,7 +7,8 @@ import {
   RoomStatus,
   ROUND_RESULT_MS,
 } from '@nlmlio/shared';
-import type { PublicUser } from '@nlmlio/shared';
+import { skillById } from '@nlmlio/shared';
+import type { PublicUser, SkillChoice } from '@nlmlio/shared';
 import { ApiError, api, errorMessage } from '../../api/http';
 import { playSound } from '../../audio/sounds';
 import { useGameShortcuts } from '../../hooks/use-game-shortcuts';
@@ -18,7 +19,15 @@ import { GameBoard, type GameActions } from './GameBoard';
 import { GameFrame } from './GameFrame';
 import { GameResult } from './GameResult';
 import { GameInputSequence, canJoinBellHandWindow } from './game-input-sequence';
-import { toGameView, toRanking } from './to-game-view';
+import {
+  bellBreakAt,
+  bellMoveAt,
+  shellAt,
+  skillUsable,
+  timeStopAt,
+  toGameView,
+  toRanking,
+} from './to-game-view';
 
 /** 의도 실패 안내를 띄워 두는 시간 */
 const ERROR_MS = 2500;
@@ -41,6 +50,8 @@ export function GamePage({
   const lastCards = useGameStore((state) => state.lastCards);
   const offlineSince = useGameStore((state) => state.offlineSince);
   const clockOffset = useGameStore((state) => state.clockOffset);
+  const skills = useGameStore((state) => state.skills);
+  const skillCast = useGameStore((state) => state.lastSkill);
   const room = useRoomStore((state) => state.room);
   const roomSynced = useRoomStore((state) => state.synced);
   const log = useRoomStore((state) => state.log);
@@ -48,6 +59,8 @@ export function GamePage({
 
   const [now, setNow] = useState(() => Date.now());
   const [error, setError] = useState('');
+  /** 대상 지정 스킬을 골라 좌석을 누르길 기다리는 슬롯 */
+  const [targetingSlot, setTargetingSlot] = useState<number | null>(null);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -91,16 +104,36 @@ export function GamePage({
   const canAct = live && me?.status === GamePlayerStatus.ACTIVE;
   const myTurn = canAct && snapshot?.turnUserId === user.id;
   const judging = showingFinalBell || (live && (snapshot?.roundResumeAt ?? 0) > now + clockOffset);
+  // 스킬 선택 중에는 게임이 멈춘다(FUNC-009-01). 카드 내기·종은 서버도 무시한다.
+  const picking = live && !!snapshot?.skillPick;
+  const bellMoved = snapshot ? bellMoveAt(snapshot, now + clockOffset) : undefined;
+  const bellBroken = snapshot ? bellBreakAt(snapshot, now + clockOffset) : undefined;
+  // 해킹(내 키)이 종 옮기기(모두의 키)보다 우선한다. 둘 다 Space 대신 이 키로만 종을 친다.
+  const hackKey = skills?.gameId === snapshot?.gameId ? skills?.hackKey : null;
+  const shell = snapshot ? shellAt(snapshot, now + clockOffset) : undefined;
+  // 종 야바위 중에는 종마다의 키로만 치고 Space·해킹·종 옮기기 키는 쓰지 않는다.
+  const ringKey = shell ? null : (hackKey ?? bellMoved?.key ?? null);
+  // 시간 정지 중에는 쓴 사람만 카드를 내고(차례와 무관), 아마테라스에 걸린 사람은 카드·종이 모두 불가다.
+  const timeStop = snapshot ? timeStopAt(snapshot, now + clockOffset) : undefined;
+  const stopByMe = timeStop?.userId === user.id;
+  const burnedSelf = !!snapshot?.burning.includes(user.id);
+  // 손이 부서진 사람은 카드는 낼 수 있지만 다음 종 판정까지 종을 못 친다.
+  const smashedSelf = !!snapshot?.smashed.includes(user.id);
+  const frozen = canAct && (burnedSelf || (!!timeStop && !stopByMe));
+  const canPlayNow = canAct && !burnedSelf && (timeStop ? stopByMe : myTurn);
 
   const joiningHandWindow = canJoinBellHandWindow(snapshot, user.id, now + clockOffset);
 
   function isPaused() {
     const current = useGameStore.getState();
-    return (current.snapshot?.roundResumeAt ?? 0) > Date.now() + current.clockOffset;
+    return (
+      (current.snapshot?.roundResumeAt ?? 0) > Date.now() + current.clockOffset ||
+      !!current.snapshot?.skillPick
+    );
   }
 
   async function playCard() {
-    if (!snapshot || !myTurn || inputs.current.playing || isPaused()) return;
+    if (!snapshot || !canPlayNow || inputs.current.playing || isPaused()) return;
     setPlaying(true);
     const failure = await inputs.current.play(() =>
       sendGameIntent(GameClientEvent.PLAY, {
@@ -112,7 +145,7 @@ export function GamePage({
     if (failure) setError(failure);
   }
 
-  async function ringBell() {
+  async function ringBell(bell?: number) {
     const atPress = useGameStore.getState();
     const joining = canJoinBellHandWindow(
       atPress.snapshot,
@@ -120,6 +153,12 @@ export function GamePage({
       Date.now() + atPress.clockOffset,
     );
     if (!snapshot || ((!canAct || isPaused()) && !joining)) return;
+    // 아마테라스·시간 정지·부서진 손은 종을 칠 수 없고 접수 순서에도 끼지 못한다.
+    if (frozen || smashedSelf) return;
+    // 종이 부서져 있는 동안은 아무도 종을 칠 수 없다(종 부수기).
+    if (bellBreakAt(snapshot, Date.now() + atPress.clockOffset)) return;
+    // 종이 옮겨지는 중(처음 300ms)에는 종 입력을 무시한다(종 옮기기).
+    if (bellMoveAt(snapshot, Date.now() + atPress.clockOffset)?.locked) return;
     playSound('bell');
     // J 직후 Space를 눌러도 이전 공개 테이블 순번을 보내지 않는다.
     await inputs.current.beforeBell();
@@ -142,11 +181,54 @@ export function GamePage({
     void sendGameIntent(GameClientEvent.BELL, {
       gameId: latest.gameId,
       turnSeq: latest.turnSeq,
+      ...(bell !== undefined ? { bell } : {}),
     }).then((failure) => {
       if (!failure) return;
       setError(failure);
       if (rungSeq.current === key) rungSeq.current = null;
     });
+  }
+
+  /** 후보 칸 선택(FUNC-009-03): 결과는 서버가 보내는 상태로만 화면에 반영한다 */
+  /**
+   * 슬롯의 스킬 사용(FUNC-009-04). 대상이 필요 없으면 바로 보내고, 대상 지정 스킬이면 좌석을 눌러
+   * 대상을 고르게 한다. 쓸 수 있는지는 서버가 다시 검사한다.
+   */
+  function useSkillSlot(slot: number) {
+    const id = skills?.slots[slot];
+    if (!snapshot || !id || !skillUsable(snapshot, user.id, id)) return;
+    if (skillById(id).target === 'one') {
+      setTargetingSlot((current) => (current === slot ? null : slot));
+      return;
+    }
+    setTargetingSlot(null);
+    void sendGameIntent(GameClientEvent.SKILL_USE, { gameId: snapshot.gameId, slot }).then(
+      (failure) => {
+        if (failure) setError(failure);
+      },
+    );
+  }
+
+  function pickTarget(targetUserId: number) {
+    if (!snapshot || targetingSlot === null) return;
+    const slot = targetingSlot;
+    setTargetingSlot(null);
+    void sendGameIntent(GameClientEvent.SKILL_USE, {
+      gameId: snapshot.gameId,
+      slot,
+      targetUserId,
+    }).then((failure) => {
+      if (failure) setError(failure);
+    });
+  }
+
+  function pickSkill(choice: SkillChoice) {
+    if (!snapshot) return;
+    void sendGameIntent(GameClientEvent.SKILL_PICK, { gameId: snapshot.gameId, choice }).then(
+      (failure) => {
+        if (failure) setError(failure);
+      },
+    );
   }
 
   async function leaveRoom() {
@@ -181,19 +263,69 @@ export function GamePage({
     onLeave: () => (canAct ? setConfirmLeave(true) : void leaveRoom()),
     onSendChat: (text) => sendChat('message', text),
     onSendEmote: (emoji) => sendChat('emoji', emoji),
+    onPickSkill: pickSkill,
+    onUseSkill: useSkillSlot,
+    onPickTarget: pickTarget,
   };
 
   const ended = snapshot?.status === GameStatus.ENDED;
+  // 선택 창이 뜨거나 게임이 끝나면 대상 지정을 취소하고, Esc로도 취소한다.
+  const targetingActive = targetingSlot !== null;
+  useEffect(() => {
+    if (!targetingActive) return;
+    if (picking || !live) {
+      setTargetingSlot(null);
+      return;
+    }
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setTargetingSlot(null);
+    };
+    window.addEventListener('keydown', escape);
+    return () => window.removeEventListener('keydown', escape);
+  }, [targetingActive, picking, live]);
+
   useGameShortcuts({
+    skill: confirmLeave || ended ? undefined : useSkillSlot,
     j:
-      confirmLeave || ended || judging
+      confirmLeave || ended || judging || picking
         ? undefined
-        : myTurn
+        : canPlayNow
           ? actions.onPlayCard
           : !canAct && !leaving
             ? actions.onLeave
             : undefined,
-    space: !confirmLeave && ((canAct && !judging) || joiningHandWindow) ? ringBell : undefined,
+    // 종 옮기기·해킹 중에는 Space 대신 새 키로만 종을 친다.
+    space:
+      !confirmLeave &&
+      ((canAct && !judging) || joiningHandWindow) &&
+      !picking &&
+      !frozen &&
+      !smashedSelf &&
+      !bellBroken &&
+      !shell &&
+      !ringKey
+        ? () => ringBell()
+        : undefined,
+    bell:
+      !confirmLeave &&
+      ((canAct && !judging) || joiningHandWindow) &&
+      !picking &&
+      !frozen &&
+      !smashedSelf &&
+      !bellBroken &&
+      ringKey
+        ? { code: `Key${ringKey}`, run: () => ringBell() }
+        : undefined,
+    bells:
+      shell &&
+      !confirmLeave &&
+      ((canAct && !judging) || joiningHandWindow) &&
+      !picking &&
+      !frozen &&
+      !smashedSelf &&
+      !bellBroken
+        ? shell.keys.map((key, index) => ({ code: `Key${key}`, run: () => ringBell(index) }))
+        : undefined,
   });
 
   if (!snapshot)
@@ -226,6 +358,9 @@ export function GamePage({
     room,
     log,
     emojis,
+    skills,
+    skillCast,
+    targetingSlot,
     bell: judging ? lastBell : null,
     lastCards,
     offlineSince,

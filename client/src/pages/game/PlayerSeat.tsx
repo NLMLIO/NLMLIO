@@ -50,19 +50,38 @@ export function PlayerSeat({
   player,
   growsUp,
   style,
+  onSelect,
 }: {
   player: PlayerView;
   growsUp: boolean;
   style: CSSProperties;
+  /** 대상 지정 중이면 이 자리를 눌러 대상으로 고른다 */
+  onSelect?: () => void;
 }) {
   const badge = seatBadge(player);
   return (
     <div
-      className={`player-seat ${player.state}${player.isTurn ? ' is-turn' : ''}${growsUp ? ' grows-up' : ''}`}
+      className={`player-seat ${player.state}${player.isTurn ? ' is-turn' : ''}${growsUp ? ' grows-up' : ''}${onSelect ? ' is-targetable' : ''}${player.burning ? ' is-burning' : ''}`}
       style={style}
+      {...(onSelect
+        ? {
+            role: 'button',
+            tabIndex: 0,
+            'aria-label': `${player.nickname}을(를) 대상으로 고르기`,
+            onClick: onSelect,
+            onKeyDown: (event: React.KeyboardEvent) => {
+              if (event.key === 'Enter') onSelect();
+            },
+          }
+        : {})}
     >
       <div className="player-seat-avatar">
         <PlayerAvatar nickname={player.nickname} color={player.color} />
+        {player.burning && (
+          <span className="seat-flame" role="img" aria-label="아마테라스: 검은 불꽃">
+            🔥
+          </span>
+        )}
         {player.emote && (
           <span key={player.emoteKey ?? player.emote} className="player-emote">
             {player.emote}

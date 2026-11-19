@@ -3,10 +3,28 @@ import {
   GAME_RECONNECT_GRACE_MS,
   GamePlayerStatus,
   GameStatus,
+  RoomRole,
+  BELL_MOVE_INPUT_LOCK_MS,
+  BELL_MOVE_MS,
+  SKILL_CAST_MS,
+  SKILL_PICK_TIME_MS,
+  SKILL_SLOT_COUNT,
+  SkillId,
+  SPIT_COVER_MS,
+  SPIT_DRIP_MS,
+  SkillTiming,
+  SkillUser,
   TURN_TIME_MS,
+  skillById,
 } from '@nlmlio/shared';
-import type { ChatEmojiCode, Fruit, GameSnapshot, RoomResponse } from '@nlmlio/shared';
-import type { BellEvent, CardEvent } from '../../stores/game-store';
+import type {
+  ChatEmojiCode,
+  Fruit,
+  GameSnapshot,
+  RoomResponse,
+  SkillStateEvent,
+} from '@nlmlio/shared';
+import type { BellEvent, CardEvent, SkillCastEvent } from '../../stores/game-store';
 import type { LogEntry as RoomLogEntry } from '../../stores/room-store';
 import { colorOf } from '../room/member-color';
 import { noticeText } from '../room/RoomChat';
@@ -17,9 +35,13 @@ import {
   type LogEntry,
   type PlayerColor,
   type PlayerView,
+  type BellMoveView,
   type RankingEntry,
+  type SkillCastView,
+  type SkillTargeting,
   type Verdict,
 } from './game-view';
+import type { SkillsView } from './skill/skill-view';
 
 /**
  * 서버 스냅샷 → 화면 모델 변환. 판정·순위·카드 수는 서버가 보낸 값을 그대로 옮기고,
@@ -36,6 +58,12 @@ export interface GameViewInput {
   bell: BellEvent | null;
   lastCards: Record<number, CardEvent>;
   offlineSince: Record<number, number>;
+  /** 서버가 본인에게 보낸 보유 스킬·선택 후보 */
+  skills: SkillStateEvent | null;
+  /** 방금 서버가 알린 스킬 사용 */
+  skillCast: SkillCastEvent | null;
+  /** 대상 지정 중인 슬롯. 아니면 null */
+  targetingSlot: number | null;
   /** 서버 시각으로 맞춘 지금 */
   serverNow: number;
   /** 이 브라우저 시각 */
@@ -67,6 +95,20 @@ function verdictOf(input: GameViewInput, bell: BellEvent): Verdict {
     nickname: ringer?.nickname ?? '',
     color: playerColor(input.snapshot, input.room, action.userId),
   };
+  if (action.fake)
+    return {
+      tone: 'misfire',
+      ringer: ringerView,
+      formula: '가짜 종!',
+      detail: `잘못 눌렀어요 · 내 덱 ${action.movedCards}장만 종 아래로`,
+    };
+  if (action.mined)
+    return {
+      tone: 'misfire',
+      ringer: ringerView,
+      formula: '지뢰 폭발!',
+      detail: `성공도 오발도 아니에요 · 카드 ${action.movedCards}장이 모두 종 아래로`,
+    };
   if (action.success) {
     const fruit = FRUIT_ORDER.find((name) => action.totals[name] === 5) ?? 'STRAWBERRY';
     const counts = tableBefore
@@ -134,6 +176,22 @@ function logOf(input: GameViewInput): LogEntry[] {
         };
       case 'card':
         return { kind: 'system', id, text: `${nickname}님이 카드를 냈어요` };
+      case 'skill': {
+        const target =
+          action.targetUserId === null
+            ? null
+            : snapshot.players.find((player) => player.userId === action.targetUserId)?.nickname;
+        const reflected = action.reflectedBy
+          ? snapshot.players.find((player) => player.userId === action.reflectedBy)?.nickname
+          : undefined;
+        return {
+          kind: 'event',
+          id,
+          tone: 'success',
+          nickname,
+          text: `${skillById(action.skillId).name} 사용${target ? ` → ${target}` : ''}${reflected ? ` · ${reflected}님의 무지개 반사!` : ''}`,
+        };
+      }
     }
   });
 }
@@ -199,6 +257,186 @@ function bannerOf(input: GameViewInput, seated: boolean): Banner | undefined {
   return undefined;
 }
 
+const nicknameOf = (input: GameViewInput, userId: number): string =>
+  input.snapshot.players.find((player) => player.userId === userId)?.nickname ??
+  input.room?.members.find((member) => member.userId === userId)?.nickname ??
+  '';
+
+/** 방금 쓴 스킬 알림. 1.6초가 지나면 사라진다(Figma Skill Cast Banner) */
+function skillCastOf(input: GameViewInput): SkillCastView | undefined {
+  const cast = input.skillCast;
+  if (!cast || input.now - cast.castAt >= SKILL_CAST_MS) return undefined;
+  const { action } = cast;
+  return {
+    key: cast.id,
+    caster: nicknameOf(input, action.userId),
+    casterId: String(action.userId),
+    skillId: action.skillId,
+    target: action.targetUserId === null ? null : nicknameOf(input, action.targetUserId),
+    targetId: action.targetUserId === null ? null : String(action.targetUserId),
+    ...(action.reflectedBy !== undefined
+      ? { reflectedBy: nicknameOf(input, action.reflectedBy) }
+      : {}),
+  };
+}
+
+/** 대상 지정 스킬을 골랐으면 누를 수 있는 좌석(나를 뺀 플레이 중인 사람) */
+function targetingOf(
+  input: GameViewInput,
+  skills: ReturnType<typeof skillsOf>,
+): SkillTargeting | undefined {
+  const slot = input.targetingSlot;
+  const entry = slot === null ? undefined : skills?.slots[slot];
+  if (slot === null || !entry?.skillId || !entry.usable) return undefined;
+  if (skillById(entry.skillId).target !== 'one') return undefined;
+  return {
+    slot,
+    skillId: entry.skillId,
+    targetIds: input.snapshot.players
+      .filter(
+        (player) =>
+          player.status === GamePlayerStatus.ACTIVE &&
+          player.userId !== input.userId &&
+          // 러시안 룰렛은 테이블에 카드를 내둔 사람만 맞출 수 있다
+          (entry.skillId !== SkillId.RUSSIAN_ROULETTE || player.tableCount > 0),
+      )
+      .map((player) => String(player.userId)),
+  };
+}
+
+/**
+ * 지금 이 스킬을 쓸 수 있어 보이는가. 진짜 판단은 서버가 하고(`SKILL_UNAVAILABLE`),
+ * 화면은 흐리게 보일지·누르게 할지를 같은 기준으로 미리 정한다.
+ */
+export function skillUsable(
+  snapshot: GameSnapshot,
+  userId: number,
+  skillId: SkillId,
+  serverNow: number = Date.now(),
+): boolean {
+  if (snapshot.status !== GameStatus.PLAYING || snapshot.skillPick !== null) return false;
+  const skill = skillById(skillId);
+  const me = snapshot.players.find((player) => player.userId === userId);
+  const role = me?.status === GamePlayerStatus.ACTIVE ? SkillUser.PLAYER : SkillUser.SPECTATOR;
+  // 쥐새끼는 종 밑 보관 스택에 카드가 있어야 쓰고, 러시안 룰렛은 테이블에 카드를 내둔 사람이 있어야 쓴다.
+  if (skillId === SkillId.RAT && snapshot.pileCount === 0) return false;
+  if (
+    skillId === SkillId.RUSSIAN_ROULETTE &&
+    !snapshot.players.some(
+      (player) => player.status === GamePlayerStatus.ACTIVE && player.tableCount > 0,
+    )
+  )
+    return false;
+  // 도르마무는 판정 결과를 보여 주는 동안(되돌릴 수 있는 마감 전)에만 쓴다.
+  if (
+    skillId === SkillId.DORMAMMU &&
+    (snapshot.rewindUntil === null || serverNow >= snapshot.rewindUntil)
+  )
+    return false;
+  // 손 개 쌔게 내려치기는 종 판정이 난 지 2초 안에, 판정을 낸 사람이 아닌 플레이어만 쓴다.
+  if (skillId === SkillId.HAND_SMASH) {
+    const window = snapshot.smashWindow;
+    if (
+      !window ||
+      serverNow > window.endsAt ||
+      window.userId === userId ||
+      me?.status !== GamePlayerStatus.ACTIVE
+    )
+      return false;
+  }
+  // 숫자 바꾸기는 과일 개수를 늘릴 수 있는 내 테이블 카드가 있어야 쓴다.
+  if (skillId === SkillId.NUMBER_SHIFT) {
+    const card = me?.topCard;
+    if (!card || card.special || card.boosted || card.count >= 6) return false;
+  }
+  return (
+    skill.available &&
+    skill.timing !== SkillTiming.AUTOMATIC &&
+    (skill.user === SkillUser.BOTH || skill.user === role)
+  );
+}
+
+/** 시간 정지 중이면 쓴 사람과 끝나는 시각. 아니면 undefined */
+export function timeStopAt(
+  snapshot: GameSnapshot,
+  serverNow: number,
+): { userId: number; endsAt: number } | undefined {
+  const stop = snapshot.timeStop;
+  return stop && snapshot.status === GameStatus.PLAYING && serverNow < stop.endsAt
+    ? stop
+    : undefined;
+}
+
+/** 종 부수기로 종이 부서져 있으면 돌아올 때까지 남은 시간(초). 아니면 undefined */
+/** 종 야바위 중이면 종마다의 단축키와 남은 시간. 아니면 undefined */
+export function shellAt(
+  snapshot: GameSnapshot,
+  serverNow: number,
+): { keys: string[]; seconds: number } | undefined {
+  const shell = snapshot.shell;
+  if (!shell || snapshot.status !== GameStatus.PLAYING || serverNow >= shell.endsAt)
+    return undefined;
+  return { keys: shell.keys, seconds: Math.ceil((shell.endsAt - serverNow) / 1000) };
+}
+
+export function bellBreakAt(
+  snapshot: GameSnapshot,
+  serverNow: number,
+): { seconds: number } | undefined {
+  const broken = snapshot.bellBreak;
+  if (!broken || snapshot.status !== GameStatus.PLAYING || serverNow >= broken.endsAt)
+    return undefined;
+  return { seconds: Math.ceil((broken.endsAt - serverNow) / 1000) };
+}
+
+/** 종 옮기기가 진행 중이면 옮겨진 자리·새 키. 끝나는 시각은 서버가 정하고 화면은 서버 시각으로 센다 */
+export function bellMoveAt(snapshot: GameSnapshot, serverNow: number): BellMoveView | undefined {
+  const move = snapshot.bellMove;
+  if (!move || snapshot.status !== GameStatus.PLAYING || serverNow >= move.endsAt) return undefined;
+  return {
+    position: move.position,
+    key: move.key,
+    // 옮겨지는 연출 중 처음 300ms는 종 입력을 무시한다
+    locked: serverNow < move.endsAt - BELL_MOVE_MS + BELL_MOVE_INPUT_LOCK_MS,
+  };
+}
+
+/** 서버가 보낸 내 스킬 상태 → 슬롯과 선택 창. 아직 못 받았거나 다른 게임의 것이면 만들지 않는다 */
+function skillsOf(input: GameViewInput): SkillsView | undefined {
+  const { snapshot, skills } = input;
+  if (snapshot.status !== GameStatus.PLAYING || !skills || skills.gameId !== snapshot.gameId)
+    return undefined;
+  const slots = Array.from({ length: SKILL_SLOT_COUNT }, (_, index) => {
+    const skillId = skills.slots[index] ?? null;
+    return {
+      skillId,
+      usable: skillId === null || skillUsable(snapshot, input.userId, skillId, input.serverNow),
+    };
+  });
+  const open = snapshot.skillPick;
+  const pick = skills.pick;
+  if (!open || !pick) return { slots };
+  const chosen = pick.candidate !== null || pick.declined;
+  return {
+    slots,
+    pick: {
+      role: pick.role === RoomRole.SPECTATOR ? 'spectator' : 'player',
+      successCount: open.successCount,
+      pickNo: open.pickNo,
+      candidates: pick.candidates,
+      chosenCandidate: pick.candidate,
+      placedSlot: pick.slot,
+      declined: pick.declined,
+      secondsLeft: secondsLeft(open.deadline, input.serverNow, SKILL_PICK_TIME_MS / 1000),
+      // 나를 뺀 다른 사람들의 선택 진행
+      progress: {
+        done: Math.max(0, open.done - (chosen ? 1 : 0)),
+        total: Math.max(0, open.total - 1),
+      },
+    },
+  };
+}
+
 export function toGameView(input: GameViewInput): GameView {
   const { snapshot, userId, bell } = input;
   const seat = snapshot.players.findIndex((player) => player.userId === userId);
@@ -233,6 +471,7 @@ export function toGameView(input: GameViewInput): GameView {
           ? secondsLeft(since + GAME_RECONNECT_GRACE_MS, input.now, GAME_RECONNECT_GRACE_MS / 1000)
           : undefined,
       isTurn,
+      burning: snapshot.burning.includes(player.userId),
       turnSeconds: isTurn ? turnSeconds : undefined,
       cardKey: card?.id,
       autoPlayed: card?.automatic ?? false,
@@ -240,9 +479,11 @@ export function toGameView(input: GameViewInput): GameView {
       emoteKey: emoji?.id,
       outcome:
         bell && ringer
-          ? bell.action.success
-            ? { tone: 'win', label: `WIN +${bell.action.movedCards}` }
-            : { tone: 'misfire', label: '오발' }
+          ? bell.action.mined
+            ? { tone: 'misfire', label: '지뢰!' }
+            : bell.action.success
+              ? { tone: 'win', label: `WIN +${bell.action.movedCards}` }
+              : { tone: 'misfire', label: '오발' }
           : undefined,
     };
   });
@@ -261,7 +502,10 @@ export function toGameView(input: GameViewInput): GameView {
     });
 
   const me = snapshot.players[seat];
-  const myPhase =
+  const stop = timeStopAt(snapshot, input.serverNow);
+  const stopByMe = stop?.userId === userId;
+  const burnedSelf = snapshot.burning.includes(userId);
+  const basePhase =
     !me || me.status !== GamePlayerStatus.ACTIVE
       ? 'spectating'
       : bell
@@ -269,7 +513,32 @@ export function toGameView(input: GameViewInput): GameView {
         : snapshot.turnUserId === userId
           ? 'turn'
           : 'waiting';
+  // 시간 정지 중에는 쓴 사람만 카드를 낼 수 있고(차례와 무관), 아마테라스에 걸리면 못 낸다.
+  const myPhase =
+    basePhase === 'spectating' || basePhase === 'judging'
+      ? basePhase
+      : burnedSelf
+        ? 'waiting'
+        : stop
+          ? stopByMe
+            ? 'turn'
+            : 'waiting'
+          : basePhase;
+  const frozen =
+    basePhase === 'spectating'
+      ? undefined
+      : burnedSelf
+        ? 'amaterasu'
+        : stop && !stopByMe
+          ? 'time-stop'
+          : undefined;
+  const cast = input.skillCast;
+  const spitHit =
+    cast?.action.skillId === SkillId.SPIT &&
+    cast.action.targetUserId === userId &&
+    input.now - cast.castAt < SPIT_COVER_MS + SPIT_DRIP_MS;
   const turnPlayer = snapshot.players.find((player) => player.userId === snapshot.turnUserId);
+  const skills = skillsOf(input);
   return {
     roomName: snapshot.roomName,
     players,
@@ -294,6 +563,8 @@ export function toGameView(input: GameViewInput): GameView {
     turnNickname: turnPlayer?.nickname,
     myTurnSeconds: myPhase === 'turn' ? turnSeconds : undefined,
     pileCount: snapshot.pileCount,
+    mine: snapshot.mine || undefined,
+    smashed: snapshot.smashed.includes(userId) || undefined,
     bell: bell
       ? { kind: bell.action.success ? 'success' : 'misfire' }
       : playing && snapshot.turnUserId === null
@@ -302,6 +573,23 @@ export function toGameView(input: GameViewInput): GameView {
     banner: bannerOf(input, seated),
     verdict: bell ? verdictOf(input, bell) : undefined,
     log: logOf(input),
+    skills,
+    skillCast: skillCastOf(input),
+    targeting: targetingOf(input, skills),
+    bellMove: bellMoveAt(snapshot, input.serverNow),
+    bellBreak: bellBreakAt(snapshot, input.serverNow),
+    shell: shellAt(snapshot, input.serverNow),
+    hackKey:
+      input.skills?.gameId === snapshot.gameId && snapshot.status === GameStatus.PLAYING
+        ? (input.skills.hackKey ?? undefined)
+        : undefined,
+    timeStop: stop && {
+      caster: nicknameOf(input, stop.userId),
+      byMe: stopByMe,
+      seconds: secondsLeft(stop.endsAt, input.serverNow, 99),
+    },
+    frozen,
+    spit: spitHit && cast ? { key: cast.id } : undefined,
   };
 }
 
