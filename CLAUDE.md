@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 이 저장소에서 작업하는 Claude Code(및 다른 코딩 에이전트)를 위한 안내서다. 작업을 시작하기 전에 끝까지 읽고 아래 규칙을 따른다.
 
-> **현재 상태**: 개발 환경 뼈대만 있다(서버 `GET /api/health`, 클라이언트 첫 화면, 공유 에러 코드). 기능 코드와 Prisma 모델은 아직 없다. 3절 폴더 구조에서 아직 없는 폴더는 **계획**이다.
+> **현재 상태**: 인증, 프로필·전적·랭킹, 로비·실시간 대기실·채팅, 게임 서버 엔진(FUNC-005-01~13,15,16)과 실시간 게임 화면·효과음(005-14)을 구현했다. 게임 서버 계약과 Redis 키는 `server/GAME.md`를 본다.
 
 ## 명령어
 
@@ -14,6 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 |---|---|
 | `pnpm install` | 의존성 설치 + `shared` 빌드 + `prisma generate` |
 | `pnpm db:up` / `pnpm db:down` | PostgreSQL·Redis 컨테이너 시작(헬스체크까지 대기) / 정지 |
+| `pnpm tunnel:up` / `pnpm tunnel:down` / `pnpm tunnel:logs` | 팀원 접속용 배포(`compose.tunnel.yaml`) 빌드·시작 / 정지(볼륨 유지) / 로그. `.env`의 `CLOUDFLARE_TUNNEL_TOKEN` 필요. `pnpm tunnel:direct`는 포트포워딩 직접 접속용 Caddy(80·443) 시작 |
 | `pnpm dev` | shared(tsc watch) + server(nest watch) + client(vite) 동시 실행 |
 | `pnpm build` | shared → server, client 빌드 |
 | `pnpm typecheck` / `pnpm lint` / `pnpm format` | 타입 검사 / oxlint / prettier |
@@ -22,6 +23,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | `pnpm db:migrate --name <설명>` | `schema.prisma` 변경으로 마이그레이션 생성·적용(`prisma migrate dev`) |
 | `pnpm db:deploy` | 마이그레이션 적용만(`prisma migrate deploy`) |
 | `pnpm db:studio` | Prisma Studio |
+| `pnpm db:seed` | `DEMO_PASSWORD`로 개발용 계정 4개와 48경기 생성. 기존 경기 중복 지급 없음 |
 
 - 테스트 하나만: `pnpm --filter @nlmlio/server test src/경로/파일.spec.ts` 또는 `pnpm --filter @nlmlio/server test -t "테스트 이름"` (e2e는 `test:e2e`). `--`를 붙이면 Jest가 인자를 못 받는다
 - 패키지 하나에만 명령: `pnpm --filter @nlmlio/<shared|server|client> <script>`
@@ -32,7 +34,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 1. 프로젝트 개요
 
 **낼래말래io** — 할리갈리 규칙의 실시간 온라인 대전 웹 게임. 「(2026) 객체지향프로그래밍」 수업 프로젝트이고, 저장소·노션의 프로젝트명은 NLMLIO다.
-회원이 로그인해 방을 만들거나 참가하고, 대기실·게임 중 채팅을 하며, 여러 명이 동시에 할리갈리(테이블 위 같은 과일 합이 **정확히 5개**일 때 종을 먼저 친 사람이 카드를 가져가는 게임)를 플레이한다. 게임 결과로 포인트가 쌓이고, 포인트 기준 글로벌 랭킹과 개인 전적을 볼 수 있다.
+회원이 로그인해 방을 만들거나 참가하고, 대기실·게임 중 채팅을 하며, 여러 명이 동시에 할리갈리(테이블 위 같은 과일 합이 **정확히 5개**일 때 종을 먼저 친 사람이 카드를 가져가는 게임)를 플레이한다. 게임 결과는 승패 기록으로 쌓이고, 그 기준의 글로벌 랭킹과 개인 전적을 볼 수 있다. 포인트 기능은 없다(2026-11-05 결정, FUNC-006 제외).
 
 - **기능 명세는 [`FUNCTION.md`](FUNCTION.md)에 있다.** 각 기능은 `FUNC-XXX-YY` ID를 가진다. 원본은 노션 「Project ▸ NLMLIO ▸ 자료실 ▸ 기능 명세서」이고, 명세를 바꾸면 `FUNCTION.md`와 노션을 함께 고친다.
 - 이 수업은 **객체지향 설계**를 평가한다. 동작하는 코드만큼 **책임 분리·캡슐화·도메인 모델**이 중요하다.
@@ -60,7 +62,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 |---|---|
 | **NestJS (TypeScript)** | 서버 프레임워크. 기능별 Module · HTTP Controller · Socket.io Gateway · DI |
 | **Socket.io** (`@nestjs/websockets` + `@nestjs/platform-socket.io`) | 방·채팅·게임 실시간 이벤트 |
-| **PostgreSQL** | 영속 데이터 — 회원, 게임 결과(Game/GameResult), 포인트, 랭킹·전적 |
+| **PostgreSQL** | 영속 데이터 — 회원, 게임 결과(Game/GameResult), 랭킹·전적 |
 | **Prisma** (ORM) | PostgreSQL 스키마·마이그레이션·타입 생성 클라이언트. `PrismaService`로 Nest에 주입 |
 | **Redis** | 휘발성·공유 데이터 — Refresh 토큰, 사용 중인 방 코드, 접속·재접속 세션, 채팅 도배 제한 카운터 |
 | **JWT (Access + Refresh)** | 인증. HTTP는 Guard, Socket.io는 handshake에서 검증 |
@@ -69,17 +71,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 | 데이터 | 저장 위치 | 이유 |
 |---|---|---|
-| 회원·게임 결과·포인트 | **PostgreSQL** | 잃으면 안 되는 데이터. 결과 저장 + 포인트 지급은 한 트랜잭션(005-11, 006-01) |
+| 회원·게임 결과 | **PostgreSQL** | 잃으면 안 되는 데이터. `Game`과 참가자별 `GameResult`는 한 트랜잭션으로 저장(005-11) |
 | Refresh 토큰 | **Redis** (TTL = 만료 시간) | 만료 자동 삭제, 로그아웃·재발급 시 즉시 무효화 |
 | 사용 중인 6자리 방 코드 | **Redis** (`SET NX`) | 코드 중복 없이 원자적으로 예약(003-02) |
 | 접속·재접속 대기 정보 | **Redis** (TTL = 재접속 대기 시간) | 끊긴 플레이어를 원래 방으로 복귀(003-07) |
-| 채팅·이모티콘 연속 전송 횟수 | **Redis** (`INCR` + TTL, 토큰과 무관한 사용자별 키) | 도배 방지(004-01, 004-02) |
-| 진행 중인 게임 상태(덱·테이블·차례) | **서버 메모리** (방별 객체) | 종 판정은 밀리초 단위 — 매 이벤트마다 Redis를 왕복하지 않는다. 재접속용 스냅샷만 필요 시 Redis에 |
+| 채팅·이모티콘 연속 전송 횟수 | **Redis** (채팅 `INCR` + TTL 3초, 이모티콘 `SET NX EX 2`, 토큰과 무관한 사용자별 키) | 도배 방지(004-01, 004-02) |
+| 진행 중인 게임 상태(덱·테이블·차례) | **서버 메모리** (방별 객체) + **Redis 미러** | 규칙은 동기 도메인에서 계산하고 방 큐가 `game:{id}:*` 키에 미러링한다. 종 최초 요청은 Redis SET NX EX 10으로 예약한다 |
 
 #### 왜 Prisma인가
 
 - **도메인 순수성**: TypeORM·MikroORM은 데코레이터 엔티티 클래스가 도메인 클래스와 섞이기 쉽다. Prisma는 `schema.prisma`에서 **타입만 생성**하므로 `Game`·`Player` 같은 도메인 클래스를 DB와 분리해 둘 수 있다(6.4).
-- **트랜잭션**: 결과 저장 + 포인트 지급(005-11, 006-01)을 `prisma.$transaction(async (tx) => …)` 하나로 묶는다. 중복 저장은 스키마의 `@@unique`로 막는다.
+- **트랜잭션**: `Game`·`GameResult` 저장(005-11)을 `prisma.$transaction(async (tx) => …)` 하나로 묶는다. 중복 저장은 스키마의 `@@unique`로 막는다.
 - **협업**: 스키마가 한 파일이라 리뷰가 쉽고, `prisma migrate`로 마이그레이션 이력이 남는다.
 - 필요한 쿼리가 CRUD + 랭킹 정렬·페이지 조회 수준이라 SQL 빌더(Drizzle)까지는 필요 없다.
 
@@ -99,6 +101,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 셸 환경 > `.superset/workspace.env`(워크스페이스 포트) > `.env`. 서버는 `server/src/config/env.ts`의 `loadEnvFiles()`, 클라이언트는 `vite.config.ts`, Prisma CLI는 `prisma.config.ts`가 같은 순서로 읽는다.
 - 포트: `CLIENT_PORT`(기본 5173), `SERVER_PORT`(3000), `POSTGRES_PORT`(5432), `REDIS_PORT`(6379)
+  - `CLIENT_PORT`를 지정하지 않으면 5173이 사용 중일 때 Vite가 다음 빈 포트를 쓴다. 지정하면 그 포트만 쓴다(`strictPort`).
 - `DATABASE_URL`·`REDIS_URL`은 비워 두면 위 포트와 `POSTGRES_*` 값으로 만든다(`databaseUrl()`, `redisUrl()`). 코드에서 URL을 직접 조립하지 말고 이 함수를 쓴다.
 - 클라이언트는 Vite 프록시로 `/api`, `/socket.io`를 서버에 넘긴다. 같은 출처로 붙으므로 CORS 설정이 필요 없다.
 
@@ -123,11 +126,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ├── package.json              # 워크스페이스 루트 (공통 스크립트, packageManager: pnpm, devEngines: Node 24)
 ├── pnpm-workspace.yaml       # 패키지 목록, allowBuilds
 ├── compose.yaml              # 개발용 PostgreSQL 18 · Redis 8
+├── compose.tunnel.yaml       # 팀원 접속용 배포: cloudflared 또는 caddy(포트포워딩) → web → server (개발 DB와 분리)
+├── deploy/                   # 배포 이미지: Dockerfile, nginx.conf(정적 파일 + /api·/socket.io 프록시), Caddyfile(HTTPS)
 ├── .env.example              # 환경변수 이름만 (값 금지)
 │
 ├── shared/                   # 프론트·백엔드가 함께 쓰는 타입 — 여기만 고치면 양쪽이 같이 바뀐다
 │   └── src/
 │       ├── events.ts         # Socket 이벤트 이름 상수 + 페이로드 타입 (C→S / S→C)
+│       ├── room-events.ts    # 대기실 Socket 이벤트(room:*) 이름 상수 + 페이로드 타입
 │       ├── domain.ts         # Fruit, RoomStatus, GameStatus 등 enum/유니온
 │       ├── dto.ts            # HTTP 요청·응답 타입 (회원, 랭킹, 전적)
 │       └── index.ts
@@ -146,7 +152,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 │   │   │   ├── user/         #   FUNC-002·008  유저 정보, 마이페이지
 │   │   │   ├── room/         #   FUNC-003  방 생성·참가·나가기·재접속 (gateway + controller(공개 방 목록))
 │   │   │   ├── chat/         #   FUNC-004  채팅·이모티콘 (gateway), 도배 제한
-│   │   │   ├── game/         #   FUNC-005·006  게임 진행 (gateway), 방별 이벤트 큐, 결과 저장 + 포인트 트랜잭션
+│   │   │   ├── game/         #   FUNC-005      게임 진행 (gateway), 방별 이벤트 큐, 결과 저장 트랜잭션
 │   │   │   └── ranking/      #   FUNC-007  랭킹·전적 (controller, 페이지 조회)
 │   │   ├── infra/
 │   │   │   ├── database/     #   PrismaModule·PrismaService(연결·종료 훅), 모듈별 Repository 구현
@@ -158,7 +164,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 │   │   └── config/           # env.ts(환경변수 파일 로드, DB·Redis URL, 포트), @nestjs/config 검증
 │   ├── prisma.config.ts      # Prisma 7 설정: 스키마·마이그레이션 경로, 접속 URL
 │   ├── prisma/
-│   │   ├── schema.prisma     # ⭐ DB 스키마의 유일한 원본 (User, Game, GameResult, PointHistory …)
+│   │   ├── schema.prisma     # ⭐ DB 스키마의 유일한 원본 (User, Game, GameResult …)
 │   │   ├── migrations/       # prisma migrate가 만든 SQL 이력 — 손으로 고치지 않는다
 │   │   └── seed.ts           # 개발용 시드 데이터
 │   └── test/
@@ -183,6 +189,37 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### 의존 방향 (어기면 안 되는 규칙)
 
+#### 현재 구현한 위치
+
+- `shared/src/dto.ts`, `validation.ts`: HTTP 계약과 클라이언트·서버 입력값 규칙.
+- `server/src/common/security/`: Argon2id, JWT, HTTP Guard, Redis Refresh 세션. Refresh는 HttpOnly 쿠키에 저장하고 Redis에는 기기 세션마다(`refresh:{userId}:{sid}`) 토큰의 SHA-256 지문을 저장한다.
+- `server/src/domain/user/`: 인프라와 독립적인 계정 타입, 누적 통계 계산 객체.
+- `server/src/domain/game/game-settlement.ts`: 저장 전 확정 순위·기록 검증.
+- `server/src/domain/card/deck.ts`, `domain/player/game-player.ts`, `domain/game/game.ts`, `table.ts`: 카드·셔플·분배, 보유 카드, 테이블, 턴·종·벌칙·탈락·순위를 캡슐화한 순수 TS 객체. 종 판정 후 1.8초 동안 서버도 카드 내기를 막고 `roundResumeAt`을 공개한다.
+- `shared/src/skills.ts`, `server/src/domain/skill/`: 스킬(FUNC-009). 17개 스킬 목록·등급·확률은 `shared`, 후보 뽑기(`skill-roll.ts`)·보유 칸(`skill-inventory.ts`)·선택 진행(`skill-book.ts`, `skill-selection.ts`)은 순수 도메인이다. `Game`이 종 성공을 세어 5번마다 선택을 열고(`openSkillPick`), 선택 중에는 카드 내기·종·턴 타이머를 멈춘다. 서비스(`GameService`)가 방 큐 타이머(`skill-open`·`skill-settle`)로 열기·마감을 처리하고 `game:skills`를 본인에게만 보낸다. 규칙·계약은 `server/GAME.md`의 「스킬 선택」.
+- `client/src/pages/game/skill/`, `styles/skill.css`, `assets/skills/`: Figma NLML_design 「07 · 스킬」 화면(FUNC-009). `SkillPick`(선택 창, 21·21-1), `SkillDock`·`SkillSlot`(슬롯, 22), `SkillCard`, `SkillGlyph`(Noto Emoji 글리프 또는 SVG 마스크)를 `GameView.skills`로 그린다. 서버 상태(`game:skills`, 스냅샷 `skillPick`)로 그리고(`to-game-view.ts`의 `skillsOf`), 개발 서버에서는 `#game-preview/skill-pick`, `skill-pick-spectator`, `skill-pick-full`(시안 없음), `skill-slots` 장면으로 고정 상태도 볼 수 있다. 선택 중에는 카드 내기·종·단축키를 막는다. 슬롯은 눌러서 또는 Q·W·E로 쓰고(`GamePage.useSkillSlot`), 대상 지정 스킬은 좌석을 눌러 대상을 고른다(`SkillTargeting`, Esc 취소). 사용 알림은 `SkillCast`(1.6초), 금칠 카드는 `FruitCard`의 `gilded`다. 서버는 `SkillDefinition.available`인 스킬(지금은 반짝반짝한 카드·종 옮기기·과일 6개 카드·시간 정지·침 뱉기·아마테라스·숫자 바꾸기·종 부수기·해킹·쥐새끼·러시안 룰렛·지뢰·무지개 반사·손 개 쌔게 내려치기·종 야바위·도르마무·안해, 17개 모두)만 쓰게 한다. 종 야바위는 `Bell`의 `shell`(번호 있는 종 N개)과 `useGameShortcuts`의 `bells`(종마다 키)로 `bell:ring`에 `bell` 번호를 실어 보낸다. 도르마무는 `skillUsable`이 `snapshot.rewindUntil`로 판단한다. 손 개 쌔게 내려치기는 `skillUsable`이 `smashWindow`(2초)로 판단하고, 부서진 손(`smashed`)은 `GamePage`가 종 입력을 막고 안내를 띄운다. 지뢰는 `GameView.mine`(종 옆 `skill-mine`)과 `Verdict`의 "지뢰 폭발!", 무지개 반사는 `SkillCastView.reflectedBy`(알림·로그)로 그린다. 쥐새끼는 `SkillRat`(쥐가 종에서 쓴 사람의 좌석으로, `GameBoard.seatPoint`), 러시안 룰렛은 `SkillShot`(대상 좌석의 "탕!")과 대상 조건(`targetingOf`: 테이블 카드가 있는 사람)으로 그린다. 종 부수기는 `bellBreakAt`과 `Bell`의 `broken`(금 간 종·복구 시간), 해킹은 `game:skills`의 `hackKey`로 Space 대신 새 키를 받고(`GamePage`의 `ringKey`, 종 옮기기보다 우선), 숫자 바꾸기는 `FruitCard`의 `boosted`('+1' 배지)로 그린다. 시간 정지는 `timeStopAt`(to-game-view)과 `SkillTimeStop` 오버레이, 침 뱉기는 대상 본인에게만 `SkillSpit`, 아마테라스는 `PlayerView.burning`(좌석의 검은 불꽃)과 `GameView.frozen`으로 그린다. 시간 정지·아마테라스 중에는 `GamePage`가 카드·종 입력을 막는다. 종 옮기기는 `bellMoveAt`(to-game-view)이 자리·새 키·입력 잠금을 계산하고 `Bell`이 옮겨 그리며 `use-game-shortcuts`의 `bell`이 새 키를 받는다. 과일 6개 카드는 `FruitCard`의 `special`(6칸 배치·6 배지)이다. 시안과 다른 점: 보유 칸은 처음부터 3칸이고 가득 차면 교체·받지 않기를 둔다(명세), 러시안 룰렛은 4성 영웅(명세).
+- `server/src/modules/game/`: 게임 Gateway, 서비스, 서버 셔플 팩토리, 타이머, 브로드캐스트, 결과 저장. `infra/game-state/room-queue.ts`가 인증·타이머·이탈·정산을 방별 접수 순서로 직렬화한다.
+- `server/src/infra/redis/game-state.repository.ts`: 첨부 Redis 명세의 미러, 종 예약과 정산 후 삭제. `shared/src/game-events.ts`는 공개 스냅샷과 소켓 계약이다.
+- `server/src/modules/room/room-game.lifecycle.ts`: Room→Game 모듈 순환 참조 없이 시작·이탈·방 종료를 게임 큐에 연결한다.
+- `server/src/modules/auth`, `user`, `ranking`: 인증, 프로필·대시보드, 개인 전적·리더보드.
+- `server/src/modules/game/game-result.service.ts`: 게임 엔진이 최종 결과를 전달할 서버 내부 진입점. 결과 제출용 HTTP 엔드포인트는 없다.
+- `server/src/domain/room/room.ts`: 방 규칙(입장 순서, 참가자 6·관전자 10 칸, 자리 이동, 추방, 방장 위임·승계, 게임 시작). 진행 중 입장은 항상 관전자로 받고 탈락 참가자를 제외한 새 관전 10석·전체 16명 정원을 지킨다. 규칙 위반은 `RoomRuleError(앱 에러 코드)`로 던지고 서비스가 HTTP·소켓 응답으로 바꾼다.
+- `server/src/modules/room`: HTTP `POST /api/rooms`, `POST /api/rooms/join`(게임 중이면 관전 입장·현재 상태 전송), `GET /api/rooms/me`, `POST /api/rooms/me/leave`와 `RoomGateway`(소켓 인증 미들웨어, 방 의도 이벤트). `RoomEvents`가 소켓 채널 `user:{id}`·`room:{code}`로 상태를 내보낸다. 방은 서버 메모리(`infra/game-state/room.store.ts`), 코드 예약은 Redis `room-code:{code}`(SET NX, TTL 24시간). 모든 방은 비공개다(2026-10-22 결정).
+- `server/src/common/ws-ack.filter.ts`, `ws-validation.pipe.ts`, `socket-user.ts`: 소켓 이벤트 예외를 ack `{ ok: false, code }`로 돌려주고, 페이로드를 HTTP와 같은 규칙으로 검증한다.
+- `client/src/socket/socket.ts`, `stores/room-store.ts`: 로그인한 동안 소켓 하나를 유지하고(토큰 만료 시 재발급 후 재연결), 서버 이벤트로만 방 스토어를 갱신한다. 의도는 `sendIntent`로 보내고 ack를 기다린다. 연결 중 토큰이 만료돼 ack가 `TOKEN_EXPIRED`·`TOKEN_INVALID`면 재발급 → 새 토큰으로 재연결 → 한 번 다시 보낸다.
+- `client/src/pages/lobby/LobbyPage.tsx`, `CreateRoomPage.tsx`, `pages/room/WaitingRoomPage.tsx`, `RoomChat.tsx`(채팅·이모티콘·방 안내): 로비(`#lobby`, 기본 화면), 방 만들기(`#create-room`), 대기실(`#room`, 상단 메뉴 없이 전체 화면).
+- `server/src/modules/chat/`: Socket.io 인증·방 소속 검증, 텍스트/이모티콘 DTO, Redis Pub/Sub 전달과 사용자별 전송 제한. 방 소속 정보는 `RoomService`만 조회한다.
+- `shared/src/events.ts`: 채팅 Socket.io 이벤트 이름, 페이로드, 허용 이모티콘과 Ack 타입.
+- `client/src/pages/game/`, `styles/game.css`, `assets/game/`: Figma NLML_design 「03 · 게임」 화면(FUNC-005). `GamePage`(`#game`)가 `stores/game-store.ts`의 서버 스냅샷을 `to-game-view.ts`로 `GameView`(화면 모델)에 옮겨 그리고, 카드 내기·종·결과 확인은 `socket.ts`의 `sendGameIntent`로 보낸다. 게임이 시작되거나 진행 중인 게임에 다시 연결되면 `App`이 `#game`으로 옮긴다. 개발 서버에서는 고정 장면 미리보기(`#game-preview/<장면>`, `preview-scenes.ts`)도 볼 수 있다. 1440×900 좌표계로 그리고 `hooks/use-fit-scale.ts`로 창에 맞춘다. 단축키는 `hooks/use-game-shortcuts.ts`(J 카드 내기, Space 종).
+- `client/src/stores/game-store.ts`: `game:state`·`game:action`의 거울. 같은 게임의 낮은 revision은 버리고, 스냅샷의 `serverTime`으로 서버 시계 차이를 추정한다. 플레이어별 마지막 카드 공개(`lastCards`)로 뒤집기 key와 '자동' 표시를 유지한다. 게임 진행 로그는 채팅과 같은 순서로 `room-store` 로그에 쌓는다.
+- `client/src/audio/sounds.ts`, `public/sounds/`: Howler 효과음(FUNC-005-14). 앱 시작 시 preload, 첫 입력에서 오디오 활성화, 음소거는 localStorage. 효과음은 `client/scripts/generate-sounds.mjs`로 합성한 자체 제작물이다(`public/sounds/LICENSES.md`).
+- `server/src/infra/database/*repository.ts`: Prisma 타입·쿼리와 트랜잭션을 캡슐화. `RankingRepository`는 전체 경기의 승패를 SQL에서 집계해 목록과 내 순위를 같은 기준으로 계산한다.
+- `client/src/pages/auth`, `mypage`, `ranking`: 요청 이미지에 맞춘 화면. `api/http.ts`는 단일 Refresh 요청과 한 번의 HTTP 재시도를 담당한다.
+- `client/src/components/`, `hooks/`, `styles/`: 통계·페이지네이션·오류 UI와 조회 훅, 공통 스타일.
+- `server/tsconfig.seed.json`: Prisma 7 생성 코드의 `.js` import를 ts-node에서 원본 `.ts`로 해석하는 seed 전용 설정.
+
+위 구현에서 전적의 영속 원본은 PostgreSQL이다. 개인 통계는 전체 `GameResult` 합계로 계산하며 페이지 크기에 영향을 받지 않는다. Redis의 `ranking`·`user:{id}:history`는 이번 구현에 필수 캐시로 추가하지 않는다. 글로벌 랭킹은 승수 내림차순·승률 내림차순, 동률이면 가입일·ID 오름차순으로 계산하고, 목록은 상위 `RANKING_LIMIT`(100)위까지만 준다. 내 순위는 범위 밖이어도 `me`로 함께 준다. 기록이 없으면 0승 0패이며, 중도 이탈은 패배로 센다.
+
 - `server/src/domain` → 아무것도 import하지 않는다(`shared` 타입 제외). `@Injectable` 등 Nest 데코레이터도 붙이지 않는다.
 - Controller·Gateway는 **입력 검증·인증·이벤트 변환만** 하고 Service를 호출한다. 규칙은 Service → domain 클래스에 맡긴다.
 - 모듈끼리는 서로의 Service를 `exports`로 공개한 것만 쓴다. 다른 모듈의 Repository·Redis 키를 직접 건드리지 않는다.
@@ -197,25 +234,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 | 용어 | 뜻 |
 |---|---|
-| 방(Room) | 게임 단위. 공개/비공개, **6자리 방 코드**, 방장, 최대 인원(플레이 인원) |
+| 방(Room) | 게임 단위. **6자리 방 코드**, 방장, 참가자 최대 6명(고정)과 관전자 최대 10명, 전체 정원 16명(`MAX_ROOM_SIZE`). 현재는 모든 방이 비공개 |
 | 대기실 | 게임 시작 전 방 화면. 채팅·참가자 목록·방장 설정 |
-| 플레이어 / 관전자 | 게임 중 카드를 내고 종을 치는 사람 / 탈락·이탈해 보기·채팅만 하는 사람 |
-| 덱 / 보유 카드 | 플레이어마다 뒤집힌 채 쌓인 카드 더미. 0장이 되면 **탈락** |
+| 플레이어(참가자) / 관전자 | 게임 중 카드를 내고 종을 치는 사람 / 대기실 관전석에 앉았거나 탈락·이탈해 보기·채팅만 하는 사람 |
+| 덱 / 보유 카드 | 플레이어마다 뒤집힌 채 쌓인 카드 더미. 0장이 되면 차례에서 빠지고 종만 칠 수 있으며, 다음 종 판정 뒤에도 0장이면 **탈락** |
 | 테이블 카드 | 플레이어가 자기 앞에 낸 카드 중 **맨 위 카드**. 종 판정 기준 |
 | 보관 스택 | 종 아래에 모아 두는 카드(분배 후 남은 카드, 탈락·이탈자의 카드). 다음에 정당하게 종을 친 승자가 가져간다 |
 | 종 누르기 | 테이블 위 같은 과일 합이 **정확히 5개**일 때 누르는 행동 |
 | 선착순 판정 | 여러 명이 거의 동시에 종을 쳤을 때 **서버 도착 시각 기준 1명**만 인정 |
-| 오발 벌칙 | 합이 5가 아닐 때 종을 친 플레이어가 다른 플레이어 각자에게 카드를 1장씩 주는 벌칙 |
-| 탈락 / 이탈 | 카드 0장으로 빠짐(순위·포인트 정상) / 나가기·연결 끊김 5초·턴 시간 초과 3회로 빠짐(맨 아래, 0점). 둘 다 관전자가 된다 |
+| 오발 벌칙 | 오발자 카드 1장만 종 아래 보관 스택으로 옮기고 테이블은 유지(2026-11-12 피드백) |
+| 탈락 / 이탈 | 덱 0장인 채로 종 판정이 끝나 빠짐(순위 정상) / 나가기·연결 끊김 5초·턴 시간 초과 3회로 빠짐(맨 아래, 패배). 둘 다 관전자가 된다 |
 | 턴 제한 시간 | 차례마다 10초. 넘기면 서버가 대신 카드를 낸다 |
 | 라운드 | 카드를 차례로 내다가 종 판정이 나거나 탈락자가 생기면 끝나는 단위 |
-| 포인트 | 게임 결과 순위·성적에 따라 지급. 랭킹 기준 |
 
 ---
 
 ## 5. 기능 범위
 
-기능별 설명·예외 처리·UI/UX, 공통 규칙(인원, 보관 스택, 탈락·이탈), 포인트 지급식, 입력값 제한, 에러 코드, 제외된 기능 목록은 **[`FUNCTION.md`](FUNCTION.md)** 를 본다. 여기에 다시 적지 않는다.
+기능별 설명·예외 처리·UI/UX, 공통 규칙(인원, 보관 스택, 탈락·이탈), 입력값 제한, 에러 코드, 제외된 기능 목록은 **[`FUNCTION.md`](FUNCTION.md)** 를 본다. 여기에 다시 적지 않는다.
 
 - 우선순위 1(핵심)을 먼저 끝내고, 2(부가)와 5(마지막)는 1이 동작한 뒤에 한다.
 - `FUNCTION.md`의 「제외된 기능」은 만들지 않는다. 필요해 보이면 먼저 묻는다.
@@ -263,11 +299,11 @@ Service (모듈별)                          ← 방 관리, 게임 진행, 결�
 PostgreSQL (영속) · Redis (휘발·TTL) · 인메모리 게임 상태
 ```
 
-- 진행 중인 방·게임 상태는 **서버 메모리**에서 관리하고, 끝난 결과만 PostgreSQL에 저장한다(005-11).
-- 결과 저장과 포인트 지급은 **같은 PostgreSQL 트랜잭션**으로 묶는다(005-11, 006-01) — `prisma.$transaction(async (tx) => { … })` 안에서 모두 `tx`로 쓴다. 같은 게임의 중복 저장은 스키마의 유니크 제약으로 막고, 위반(`P2002`)은 «이미 저장됨»으로 처리한다.
+- 진행 중인 방·게임 상태는 **서버 메모리**에서 관리하고 게임 내부 상태는 Redis에 미러링한다. 끝난 결과만 PostgreSQL에 저장한다(005-11). Redis 게임 키는 최신 첨부 명세에 따라 TTL 없이 정산 성공 후 지운다. 프로세스 재시작 자동 복구는 지원하지 않는다.
+- `Game`과 참가자별 `GameResult` 저장은 **같은 PostgreSQL 트랜잭션**으로 묶는다(005-11) — `prisma.$transaction(async (tx) => { … })` 안에서 모두 `tx`로 쓴다. 같은 게임의 중복 저장은 스키마의 유니크 제약으로 막고, 위반(`P2002`)은 «이미 저장됨»으로 처리한다.
 - 스키마 변경은 `schema.prisma` 수정 → `pnpm db:migrate --name <설명>` 으로만 한다. DB에 직접 `ALTER`하지 않는다. 운영/배포 반영은 `prisma migrate deploy`.
-- 랭킹 조회(007-01)는 정렬 컬럼에 인덱스(`@@index`)를 두고 `skip`/`take`(또는 커서)로 페이지 조회한다.
-- Redis 키는 용도별 접두어로 구분하고 반드시 TTL을 단다. 예: `refresh:{userId}`, `room-code:{code}`, `session:{userId}`, `chat-limit:{userId}`(TTL 3초), `emoji-limit:{userId}`(TTL 2초).
+- 랭킹 조회(007-01)는 PostgreSQL에서 전체 승패를 집계하고 윈도 함수로 순위를 부여한 뒤 `LIMIT`/`OFFSET`으로 페이지 조회한다. 목록·내 순위·총 인원은 같은 RepeatableRead 트랜잭션으로 조회한다.
+- Redis 키는 용도별 접두어로 구분하고 저장 키에는 반드시 TTL을 단다. 예: `refresh:{userId}:{sessionId}`, `room-code:{code}`, `session:{userId}`, `chat-limit:{userId}`(TTL 3초), `emoji:cd:{userId}`(TTL 2초). `chat:{code}`는 저장 키가 아닌 Pub/Sub 채널이다.
 - 도배 제한 카운터는 토큰·세션 키 안에 넣지 않는다. 토큰을 재발급해도 카운터가 초기화되지 않아야 하고, 탭이 여러 개여도 사용자 하나로 센다.
 - 에러는 `FUNCTION.md` 「에러 코드」의 앱 에러 코드(`shared/`에 정의)로 보낸다. HTTP는 상태 코드와 앱 에러 코드를 함께, 소켓은 앱 에러 코드만 보낸다.
 - 소켓 이벤트의 DTO도 HTTP와 같이 `class-validator`로 검증한다(Gateway에 `ValidationPipe` 적용).
@@ -293,16 +329,38 @@ PostgreSQL (영속) · Redis (휘발·TTL) · 인메모리 게임 상태
 
 - 기능을 구현하거나 고칠 때 **`FUNCTION.md`에서 해당 `FUNC-ID`를 먼저 확인**하고, «예외 처리»를 빠짐없이 반영한다.
 - 커밋 메시지와 PR 제목에 `FUNC-ID`를 붙인다. 예: `feat(FUNC-005-07): 서버 도착 순서 기준 선착순 판정`
-- 명세에 없는 동작을 정해야 하면 **임의로 정하지 말고 질문**한다. 정해진 규칙(남는 카드, 오발 벌칙, 재접속, 턴 제한, 관전, 포인트, 동점 정렬, 도배 제한, 입력값 제한, 에러 코드)은 모두 `FUNCTION.md`에 있다.
+- 명세에 없는 동작을 정해야 하면 **임의로 정하지 말고 질문**한다. 정해진 규칙(남는 카드, 오발 벌칙, 재접속, 턴 제한, 관전, 동점 정렬, 도배 제한, 입력값 제한, 에러 코드)은 모두 `FUNCTION.md`에 있다.
 - 명세와 코드가 어긋나면 어느 쪽을 고칠지 먼저 알린다. 명세 변경은 `FUNCTION.md`와 노션 기능 명세서에 함께 반영한다.
 - Socket 이벤트를 추가·변경하면 공유 타입과 아래 «이벤트 목록»을 함께 갱신한다.
 
 ### Socket 이벤트 목록 (구현하면서 채운다)
 
+C→S 이벤트는 ack로 `{ ok: true }` 또는 `{ ok: false, code }`를 받는다. 타입은 `shared/src/room-events.ts`.
+
 | 방향 | 이벤트 | 페이로드 | FUNC |
 |---|---|---|---|
-| C→S | | | |
-| S→C | | | |
+| C→S | `room:move` | `{ userId, role }` 본인 또는 (방장) 다른 회원의 자리 이동 | 003-09 |
+| C→S | `room:kick` | `{ userId }` | 003-10 |
+| C→S | `room:delegate` | `{ userId }` | 003-11 |
+| C→S | `room:start` | `{}` | 005-01 |
+| C→S | `card:play` | `{ gameId, turnId }` → `GameAck` | 005-12,13 |
+| C→S | `bell:ring` | `{ gameId, turnSeq, bell? }` (`bell`은 종 야바위 중 누른 종 번호) → `GameAck` | 005-06,07,08 |
+| C→S | `skill:pick` | `{ gameId, choice }` → `GameAck` | 009-03 |
+| C→S | `skill:use` | `{ gameId, slot, targetUserId? }` → `GameAck` | 009-04 |
+| C→S | `game:sync`, `game:return` | `{}` → `GameAck` | 003-07,005-10 |
+| S→C | `game:state` | `GameStateEvent \| null` (숨긴 덱은 개수만, 보낸 서버 시각 `serverTime`) | 005 |
+| S→C | `game:action` | `GameAction` (카드·종·이탈·연결 상태) | 005 |
+| S→C | `game:skills` | `SkillStateEvent \| null` (본인에게만: 보유 스킬·선택 후보) | 009 |
+| S→C | `room:state` | `RoomResponse \| null` 연결 직후와 방이 바뀔 때마다 전체 상태 | 003 |
+| S→C | `room:notice` | 입장·퇴장·이동·추방·방장 변경·게임 시작 안내 | 003 |
+| S→C | `room:kicked` | 없음. 추방당한 회원에게만 | 003-10 |
+| C→S | `chat:join` | `{ code: string }` → `ChatAck` | FUNC-004-01 |
+| C→S | `chat:leave` | 빈 값 → `ChatAck` | FUNC-004-01 |
+| C→S | `chat:send` | `{ message: string }` → `ChatAck` | FUNC-004-01 |
+| C→S | `emoji:send` | `{ emoji: ChatEmojiCode }` → `ChatAck` | FUNC-004-02 |
+| S→C | `chat:message` | `ChatMessageEvent` | FUNC-004-01 |
+| S→C | `emoji:message` | `EmojiMessageEvent` | FUNC-004-02 |
+| S→C | `chat:error` | `{ code: ErrorCode }` | FUNC-004-01/02 |
 
 ### 테스트
 
@@ -312,7 +370,6 @@ PostgreSQL (영속) · Redis (휘발·TTL) · 인메모리 게임 상태
 - Redis: 방 코드 중복 예약, Refresh 토큰 재사용 거부, 도배 제한 TTL 만료를 확인한다.
 - 재접속: 대기실 60초 안 복귀, 게임 중 5초 안 복귀(계속 플레이), 5초 뒤 복귀(관전자로 같은 상태 수신)를 확인한다.
 - 타이머: 10초 초과 시 서버가 대신 내는지, 3회 연속이면 이탈 처리되는지, 차례가 바뀌면 타이머가 취소되는지 확인한다(가짜 타이머 사용).
-- 포인트: `FUNCTION.md` 지급표의 값(2~6명, 이탈자 있는 경우 포함)을 그대로 테스트 케이스로 쓴다.
 
 ### 하지 말 것
 

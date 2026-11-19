@@ -1,0 +1,10 @@
+**/node_modules
+**/dist
+**/coverage
+**/*.tsbuildinfo
+server/src/generated
+.git
+.superset
+.env
+.env.*
+.envrc
