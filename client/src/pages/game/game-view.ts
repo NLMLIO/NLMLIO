@@ -46,6 +46,7 @@ export interface PlayerView {
   isTurn: boolean;
   /** 아마테라스: 검은 불꽃에 휩싸여 다음 판정까지 카드·종이 불가 */
   burning?: boolean;
+  smashed?: boolean;
   /** 차례인 사람의 남은 턴 시간(초, FUNC-005-15) */
   turnSeconds?: number;
   /** 맨 위 카드가 바뀔 때마다 달라지는 값. 바뀌면 카드 뒤집기 애니메이션을 다시 튼다 */
@@ -73,6 +74,7 @@ export type BellState =
   | { kind: 'misfire' };
 
 export interface Verdict {
+  title?: string;
   tone: 'success' | 'misfire';
   ringer: { nickname: string; color: PlayerColor };
   /** 판정 근거. 예: "라임 2 + 3 = 5", "딸기 4 · 바나나 3 · 자두 1" */
@@ -97,6 +99,14 @@ export type LogEntry =
   | { kind: 'event'; id: string; tone: 'success' | 'danger'; nickname: string; text: string }
   | { kind: 'system'; id: string; text: string };
 
+export interface RatView {
+  key: number;
+  phase: 'waiting' | 'stolen' | 'crushed' | 'missed';
+  cardCount: number;
+  /** 성공 결과는 카드를 실제로 받은 본인에게만 전송된다. */
+  recipientId?: string;
+}
+
 export interface GameView {
   roomName: string;
   /** 자리 순서(시계 방향). 첫 번째가 나이고 화면 아래에 앉는다 */
@@ -117,20 +127,19 @@ export interface GameView {
   log: LogEntry[];
   /** 스킬 슬롯과 선택 창(FUNC-009). 스킬이 없는 화면은 비워 둔다 */
   skills?: SkillsView;
-  /** 지뢰가 깔려 있다(다음 종 판정까지). 모두에게 흐릿하게 보인다 */
-  mine?: boolean;
+  rat?: RatView;
   /** 내 손이 부서져 다음 종 판정까지 종을 칠 수 없다 */
   smashed?: boolean;
   /** 방금 쓴 스킬 알림(화면 위쪽, 1.6초) */
-  skillCast?: SkillCastView;
+  skillCasts?: SkillCastView[];
   /** 대상 지정 중: 누를 수 있는 좌석 */
   targeting?: SkillTargeting;
   /** 종 옮기기가 진행 중이면 옮겨진 종의 자리와 새 키 */
   bellMove?: BellMoveView;
   /** 시간 정지 중 */
   timeStop?: TimeStopView;
-  /** 종 부수기: 종이 부서져 돌아올 때까지 남은 시간(초) */
-  bellBreak?: { seconds: number };
+  /** 종 부수기 효과 유지 여부 */
+  bellBreak?: boolean;
   /** 종 야바위 중: 종마다의 단축키(순서가 종 번호)와 남은 시간 */
   shell?: { keys: string[]; seconds: number };
   /** 해킹당했을 때 Space 대신 쓰는 새 종 치기 키(나에게만 보인다). 다음 판정까지 */
@@ -171,6 +180,9 @@ export interface SkillCastView {
   targetId: string | null;
   /** 무지개 반사로 막아 낸 사람의 닉네임. 있으면 target은 쓴 사람 자신이다 */
   reflectedBy?: string;
+  reflectedById?: string;
+  /** 서버가 룰렛 피격자의 덱에서 종 아래로 옮긴 카드 수 */
+  movedCards?: number;
 }
 
 export interface SkillTargeting {
@@ -201,6 +213,20 @@ export const SCREEN_HEIGHT = 900;
 
 /** 보드(채팅 패널 왼쪽 1100×900) 안의 테이블 중심과 자리 배치 반지름 */
 const TABLE_CENTER = { x: 550, y: 440 };
+export const BELL_CENTER = { x: 550, y: 443 };
+const BELL_OFFSETS = [
+  { x: 150, y: -125 },
+  { x: -150, y: -125 },
+  { x: 150, y: 125 },
+  { x: -150, y: 125 },
+];
+
+export function bellCenter(moved?: BellMoveView, shell = false) {
+  if (!moved || shell) return BELL_CENTER;
+  const offset = BELL_OFFSETS[moved.position % BELL_OFFSETS.length];
+  return { x: BELL_CENTER.x + offset.x, y: BELL_CENTER.y + offset.y };
+}
+
 const SEAT_RADIUS = { x: 420, y: 330 };
 const CARD_RADIUS = { x: 180, y: 180 };
 

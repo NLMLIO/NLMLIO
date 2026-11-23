@@ -1,0 +1,247 @@
+/* The path is anchored at the mouse's feet, in the board's own coordinate system. */
+.rat-effect {
+  position: absolute;
+  width: 0;
+  height: 0;
+  z-index: 6;
+  pointer-events: none;
+}
+.rat-path {
+  position: absolute;
+  inset: 0;
+}
+.rat-actor {
+  position: absolute;
+  bottom: 0;
+  left: -52px;
+  width: 104px;
+  transform-origin: 52% 93%;
+}
+.rat-mouse {
+  display: block;
+  width: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 3px 2px #090a10a6);
+}
+.rat-waiting .rat-actor {
+  animation: rat-brace 620ms ease-in-out infinite alternate;
+}
+.rat-waiting .rat-cargo {
+  transform-origin: 68px 48px;
+  animation: rat-heave 620ms ease-in-out infinite alternate;
+}
+.rat-stolen .rat-path {
+  animation: rat-deliver 1.4s cubic-bezier(0.38, 0.02, 0.4, 1) both;
+}
+.rat-stolen .rat-actor {
+  animation: rat-stride 165ms ease-in-out 7 alternate;
+}
+.rat-shoe {
+  transform-origin: 74px 120px;
+}
+.rat-stolen .rat-front-shoe {
+  animation: rat-kick 163ms ease-in-out 7 alternate;
+}
+.rat-stolen .rat-back-shoe {
+  animation: rat-kick 163ms ease-in-out 7 alternate-reverse;
+}
+.rat-reward,
+.rat-squeak,
+.rat-missed-message {
+  position: absolute;
+  display: block;
+  width: max-content;
+  font-family: var(--font-text);
+  font-weight: 800;
+}
+.rat-reward {
+  left: calc(var(--rat-dx) - 76px);
+  top: calc(var(--rat-dy) - 36px);
+  z-index: 1;
+  padding: 4px 14px;
+  color: #58abff;
+  background: #101119;
+  border: 2px solid currentColor;
+  border-radius: 999px;
+  font-size: 21px;
+  animation: rat-score 1.8s both;
+}
+.rat-crushed .rat-actor {
+  animation: rat-flatten 1.15s both;
+}
+.rat-crushed .rat-cargo {
+  transform-origin: center;
+  animation: rat-slip 0.5s 0.3s ease-out both;
+}
+.rat-squeak {
+  left: 24px;
+  bottom: 74px;
+  color: #ffe3ba;
+  font-size: 32px;
+  line-height: 1;
+  letter-spacing: -0.07em;
+  paint-order: stroke fill;
+  -webkit-text-stroke: 4px #19131c;
+  text-shadow: 2px 4px 0 #cf6e34;
+  animation: rat-squeak 1.25s 0.3s both;
+}
+.rat-missed .rat-actor {
+  animation: rat-scurry 0.55s ease-in both;
+}
+.rat-missed .rat-cargo {
+  display: none;
+}
+.rat-missed-message {
+  top: 10px;
+  color: #dedee7;
+  padding: 4px 10px;
+  background: #16161d;
+  border-radius: 6px;
+  font-size: 13px;
+  transform: translateX(-50%);
+}
+.rat-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+@keyframes rat-brace {
+  from {
+    transform: translateY(2px) rotate(-3deg) scaleY(0.96);
+  }
+  to {
+    transform: translateY(-1px) rotate(1deg);
+  }
+}
+@keyframes rat-heave {
+  from {
+    transform: rotate(-3deg);
+  }
+  to {
+    transform: rotate(2deg) translateY(-2px);
+  }
+}
+@keyframes rat-deliver {
+  0%,
+  9% {
+    transform: translate(0, 0);
+    opacity: 1;
+  }
+  19% {
+    transform: translate(-7px, -8px);
+  }
+  82% {
+    transform: translate(var(--rat-dx), var(--rat-dy));
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--rat-dx), var(--rat-dy));
+    opacity: 0;
+  }
+}
+@keyframes rat-stride {
+  from {
+    transform: translateY(2px) rotate(-6deg) scaleY(0.97);
+  }
+  to {
+    transform: translateY(-8px) rotate(4deg) scaleY(1.02);
+  }
+}
+@keyframes rat-kick {
+  from {
+    transform: rotate(-17deg);
+  }
+  to {
+    transform: rotate(20deg);
+  }
+}
+@keyframes rat-score {
+  0%,
+  55% {
+    opacity: 0;
+    transform: translate(-50%, 4px) scale(0.75);
+  }
+  68% {
+    opacity: 1;
+    transform: translate(-50%, -8px) scale(1.12);
+  }
+  78%,
+  93% {
+    opacity: 1;
+    transform: translate(-50%, -8px);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -13px);
+  }
+}
+@keyframes rat-flatten {
+  0%,
+  25% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  29% {
+    transform: scale(1.48, 0.17);
+  }
+  39%,
+  68% {
+    transform: scale(1.32, 0.25);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.35, 0.17);
+    opacity: 0;
+  }
+}
+@keyframes rat-slip {
+  to {
+    transform: translate(-20px, 4px) rotate(-18deg);
+    opacity: 0;
+  }
+}
+@keyframes rat-squeak {
+  from {
+    opacity: 0;
+    transform: translateY(4px) rotate(-13deg) scale(0.4);
+  }
+  12% {
+    opacity: 1;
+    transform: translateY(-6px) rotate(-10deg) scale(1.24);
+  }
+  24%,
+  78% {
+    opacity: 1;
+    transform: translateY(-8px) rotate(-8deg);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-18px) rotate(-6deg);
+  }
+}
+@keyframes rat-scurry {
+  to {
+    transform: translate(54px, 0) scale(0.8);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rat-effect[class] *,
+  .rat-effect[class] *::after {
+    animation: none;
+  }
+  .rat-stolen .rat-path {
+    transform: translate(var(--rat-dx), var(--rat-dy));
+  }
+  .rat-reward {
+    transform: translateX(-50%);
+  }
+  .rat-crushed .rat-actor {
+    transform: scale(1.32, 0.25);
+  }
+  .rat-missed .rat-actor {
+    display: none;
+  }
+}

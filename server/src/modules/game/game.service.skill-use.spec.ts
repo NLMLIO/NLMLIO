@@ -1,4 +1,4 @@
-import { Fruit, ROUND_RESULT_MS } from '@nlmlio/shared';
+import { Fruit } from '@nlmlio/shared';
 import { Card, Deck } from '../../domain/card/deck';
 import { Game } from '../../domain/game/game';
 import { Room } from '../../domain/room/room';
@@ -86,16 +86,7 @@ describe.each([
     jest.useRealTimers();
   });
   const state = () => service.sync(1)!;
-  const round = async () => {
-    const gameId = state().gameId;
-    await service.play(1, { gameId, turnId: state().turnId });
-    await service.play(2, { gameId, turnId: state().turnId });
-    await service.bell(1, { gameId, turnSeq: state().turnSeq });
-    await jest.advanceTimersByTimeAsync(ROUND_RESULT_MS + 100);
-  };
-  /** 종 성공 5번 → 선택에서 둘 다 첫 후보를 고른다 */
   const hold = async () => {
-    for (let index = 0; index < 5; index++) await round();
     const { gameId } = state();
     await service.pickSkill(1, { gameId, choice: { slot: 0 } });
     await service.pickSkill(2, { gameId, choice: { slot: 0 } });
@@ -103,14 +94,13 @@ describe.each([
   };
 
   it('선택 중에는 쓸 수 없다(무시)', async () => {
-    for (let index = 0; index < 5; index++) await round();
     expect(state().skillPick).not.toBeNull();
     expect(await service.useSkill(1, { gameId: state().gameId, slot: 0 })).toBe(false);
   });
 
   it(
     usable
-      ? '쓰면 방 전체에 사용 알림을 보내고 슬롯에서 사라진다'
+      ? '쓰면 사용 액션을 만들고 슬롯에서 사라진다'
       : '쓸 수 없는 스킬은 거부하고 슬롯에 그대로 남는다',
     async () => {
       const gameId = await hold();

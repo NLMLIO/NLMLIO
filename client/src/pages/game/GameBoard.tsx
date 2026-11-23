@@ -2,21 +2,19 @@ import type { CSSProperties, ReactNode } from 'react';
 import type { BellHandsView, ChatEmojiCode } from '@nlmlio/shared';
 import { setMuted, useMuted } from '../../audio/sounds';
 import tableImage from '../../assets/game/table.png';
+import { SpectatorFullscreen } from './SpectatorFullscreen';
 import { ActionBar } from './ActionBar';
 import { Bell } from './Bell';
 import { EmptyCardSlot, FruitCard } from './FruitCard';
 import { GameChat } from './GameChat';
-import { seatPlacements, type GameView } from './game-view';
+import { bellCenter, seatPlacements, type GameView } from './game-view';
 import { PlayerSeat, playerColorStyle } from './PlayerSeat';
+import { SkillShot } from './skill/SkillShot';
 import { SkillPick } from './skill/SkillPick';
+import { FistImpact, SkillMotion } from './skill/SkillMotion';
+import { SkillRat } from './skill/SkillRat';
 import { SkillCast, SkillTargetHint } from './skill/SkillCast';
-import {
-  SkillBurnedHint,
-  SkillRat,
-  SkillShot,
-  SkillSpit,
-  SkillTimeStop,
-} from './skill/SkillEffects';
+import { SkillBurnedHint, SkillSpit, SkillTimeStop } from './skill/SkillEffects';
 import { SkillId } from '@nlmlio/shared';
 import { SkillDock } from './skill/SkillSlot';
 import type { SkillPickHandler } from './skill/skill-view';
@@ -44,6 +42,7 @@ export function GameBoard({
   playing = false,
   hands,
   canJoinHandWindow = false,
+  armedSmashSlot = null,
   children,
 }: {
   view: GameView;
@@ -54,6 +53,7 @@ export function GameBoard({
   playing?: boolean;
   hands?: Pick<BellHandsView, 'turnSeq' | 'userIds'>;
   canJoinHandWindow?: boolean;
+  armedSmashSlot?: number | null;
   /** 보드 위에 띄우는 확인 창 등 */
   children?: ReactNode;
 }) {
@@ -62,6 +62,8 @@ export function GameBoard({
   const [me, ...others] = view.players;
   const spectating = view.myPhase === 'spectating';
   const muted = useMuted();
+  const casts = view.skillCasts ?? [];
+  const bell = bellCenter(view.bellMove, !!view.shell && !view.bellBreak);
   /** 좌석 id로 그 자리의 중심(보드 좌표). 앉은 자리가 없으면 null */
   const seatPoint = (id: string) => {
     const index = seatedPlayers.findIndex((player) => player.id === id);
@@ -77,6 +79,7 @@ export function GameBoard({
             <h1>{view.roomName}</h1>
             <p>진행 방향 ↻ 시계 방향</p>
           </div>
+          {spectating && <SpectatorFullscreen />}
           <button
             type="button"
             className="game-chip sound-toggle"
@@ -143,31 +146,34 @@ export function GameBoard({
           state={view.bell}
           pileCount={view.pileCount}
           disabled={
-            (!canJoinHandWindow &&
+            armedSmashSlot === null &&
+            ((!canJoinHandWindow &&
               (spectating || view.myPhase === 'judging' || view.bell.kind === 'countdown')) ||
-            !!view.skills?.pick ||
-            !!view.bellMove?.locked ||
-            !!view.bellBreak ||
-            !!view.smashed ||
-            !!view.frozen
+              !!view.skills?.pick ||
+              !!view.bellMove?.locked ||
+              !!view.bellBreak ||
+              !!view.smashed ||
+              !!view.frozen)
           }
           onRing={actions.onRingBell}
           moved={view.bellMove}
           broken={view.bellBreak}
+          breakStrike={casts.find((cast) => cast.skillId === SkillId.BELL_BREAK)?.key}
           hackKey={view.hackKey}
           shell={view.shell}
         />
-        {view.bellMove && <span className="bell-ghost" aria-hidden="true" />}
+        {view.bellMove && !view.shell && <span className="bell-ghost" aria-hidden="true" />}
+        {armedSmashSlot !== null && (
+          <p className="smash-ready-hint" role="status">
+            내려치기 준비 ·{' '}
+            <kbd>{view.shell?.keys.join('·') ?? view.hackKey ?? view.bellMove?.key ?? 'SPACE'}</kbd>
+          </p>
+        )}
         {view.smashed && (
           <p className="skill-hint smashed-hint" role="status">
             <b>손이 부서졌어요</b>
             <span>다음 종 판정까지 종을 칠 수 없어요</span>
           </p>
-        )}
-        {view.mine && (
-          <span className="skill-mine" role="img" aria-label="지뢰가 깔려 있어요">
-            ✸
-          </span>
         )}
         {seatedPlayers.map((player, index) => {
           const handIndex = hands?.userIds.indexOf(Number(player.id)) ?? -1;
@@ -186,12 +192,48 @@ export function GameBoard({
               }
               aria-hidden="true"
             >
-              <div className="player-hand">
-                <svg viewBox="0 0 100 140" focusable="false">
-                  <path d="M30 117v-12c-7-6-15-16-20-26l-5-11c-2-5 1-9 5-9 3-1 6 1 9 5l8 10V29c0-5 3-8 7-8s7 3 7 8v32-45c0-5 3-8 7-8s7 3 7 8v45-40c0-5 3-8 7-8s7 3 7 8v43-29c0-5 3-8 7-8s7 3 7 8v44c0 13-3 22-11 30v8Z" />
-                  <path className="hand-crease" d="M28 76c7-1 14 3 17 10M42 70v8m14-10v9m14-8v9" />
-                  <path className="hand-cuff" d="M27 113h48v22H27z" />
-                </svg>
+              <div className="player-hand" data-injured={player.smashed || undefined}>
+                {casts
+                  .filter(
+                    (cast) => cast.skillId === SkillId.HAND_SMASH && cast.targetId === player.id,
+                  )
+                  .map((cast) => (
+                    <FistImpact key={cast.key} />
+                  ))}
+                {armedSmashSlot !== null && player.id === me.id ? (
+                  <svg className="muscle-hand" viewBox="0 0 112 144" focusable="false">
+                    <path
+                      className="hand-skin"
+                      d="M24 132c-11-5-18-18-16-32 1-12 8-23 16-29-1-13 2-30 6-43l-2-11 6-9 8-1 4-4 9 2 6-1 9 7 6 13-3 12-9 6-13-2-2 25c10-6 24-6 35 1 14 8 22 25 17 39-5 16-20 28-39 31z"
+                    />
+                    <path
+                      className="hand-shadow"
+                      d="M15 108c15 14 29 11 41 2 14 7 33-2 42-14-1 15-14 30-33 33l-35-1z"
+                    />
+                    <path
+                      className="hand-crease"
+                      d="M30 94c4-13 12-21 22-23m2 9c11 6 23 3 28-4m-47-53 7 6 7-2m0-11 8 8 6-1m-8-13 8 7"
+                    />
+                    <path className="hand-cuff" d="m22 126 43 4-2 11-40-4z" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 112 144" focusable="false">
+                    <path
+                      className="hand-skin"
+                      d="M34 119c0-7-3-11-8-17L8 78c-4-6-4-12 0-15 4-3 8-2 12 2l14 15-13-47c-2-7 0-12 5-13 5-2 9 1 11 7l10 33-6-46c-1-6 2-11 7-11 6-1 9 3 10 9l6 45 1-39c0-6 3-10 8-10s8 4 8 10l-1 44 6-26c2-6 5-8 10-7 5 2 6 6 5 11l-7 36c-1 8-1 16-4 24-2 7-7 13-8 20l-1 9-45-1z"
+                    />
+                    <path
+                      className="hand-shadow"
+                      d="M33 84c9 6 15 13 17 22-8-8-13-12-21-16zm54-13c0 18-2 30-11 42 4-15 5-31 11-42z"
+                    />
+                    <path
+                      className="hand-crease"
+                      d="M33 76c7 1 15 6 20 14m-3-27 2 7m13-11 1 8m13-4-1 7"
+                    />
+                    <path className="hand-cuff" d="m30 118 54 2-1 20-54-3z" />
+                    <path className="hand-seam" d="m35 124 42 2" />
+                  </svg>
+                )}
               </div>
             </div>
           );
@@ -229,6 +271,8 @@ export function GameBoard({
         <ActionBar
           nickname={me.nickname}
           deckCount={me.deckCount}
+          smashReady={armedSmashSlot !== null}
+          receivedPenalty={me.outcome?.tone === 'receive'}
           phase={view.myPhase}
           turnNickname={view.turnNickname}
           turnSeconds={view.myTurnSeconds}
@@ -236,30 +280,49 @@ export function GameBoard({
           emoteKey={me.emoteKey}
           playing={playing}
           leaving={leaving}
-          bellKey={view.hackKey ?? view.bellMove?.key}
+          bellKey={view.shell ? view.shell.keys.join('·') : (view.hackKey ?? view.bellMove?.key)}
           onPlayCard={actions.onPlayCard}
           onLeave={actions.onLeave}
         />
         {view.skills && (
           <SkillDock
             slots={view.skills.slots}
-            armed={view.targeting?.slot ?? null}
+            armed={armedSmashSlot ?? view.targeting?.slot ?? null}
             onUse={actions.onUseSkill}
           />
         )}
-        {view.skillCast && <SkillCast cast={view.skillCast} />}
-        {view.skillCast?.skillId === SkillId.RAT && seatPoint(view.skillCast.casterId) && (
+        {casts.map((cast) => {
+          const target = cast.targetId ? seatPoint(cast.targetId) : null;
+          if (cast.skillId === SkillId.RUSSIAN_ROULETTE && cast.targetId && target)
+            return (
+              <SkillShot
+                key={cast.key}
+                center={bell}
+                targetId={cast.targetId}
+                targetName={cast.target ?? ''}
+                at={target}
+                movedCards={cast.movedCards}
+              />
+            );
+          return (
+            <SkillMotion
+              key={cast.key}
+              cast={cast}
+              caster={seatPoint(cast.casterId)}
+              target={target}
+              reflector={cast.reflectedById ? seatPoint(cast.reflectedById) : null}
+            />
+          );
+        })}
+        {casts[0] && <SkillCast cast={casts[0]} />}
+        {view.rat && (
           <SkillRat
-            key={view.skillCast.key}
-            from={{ x: 550, y: 440 }}
-            to={seatPoint(view.skillCast.casterId)!}
+            key={`${view.rat.phase}-${view.rat.key}`}
+            rat={view.rat}
+            bell={bell}
+            seat={view.rat.recipientId ? seatPoint(view.rat.recipientId) : null}
           />
         )}
-        {view.skillCast?.skillId === SkillId.RUSSIAN_ROULETTE &&
-          view.skillCast.targetId &&
-          seatPoint(view.skillCast.targetId) && (
-            <SkillShot key={view.skillCast.key} at={seatPoint(view.skillCast.targetId)!} />
-          )}
         {view.spit && <SkillSpit key={view.spit.key} />}
         {view.frozen === 'amaterasu' && <SkillBurnedHint />}
         {view.targeting && <SkillTargetHint targeting={view.targeting} />}
@@ -270,7 +333,7 @@ export function GameBoard({
       {view.timeStop && <SkillTimeStop stop={view.timeStop} />}
       {view.skills?.pick && (
         <SkillPick
-          key={view.skills.pick.successCount}
+          key={view.skills.pick.pickNo}
           pick={view.skills.pick}
           slots={view.skills.slots}
           onChoose={(choice) => actions.onPickSkill?.(choice)}

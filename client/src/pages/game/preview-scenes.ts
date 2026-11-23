@@ -1,4 +1,4 @@
-import { SkillId } from '@nlmlio/shared';
+import { BELL_SHELL_KEYS, SkillId } from '@nlmlio/shared';
 import type { CardFace, GameView, PlayerView, RankingEntry } from './game-view';
 import type { SkillSlotView } from './skill/skill-view';
 
@@ -222,14 +222,14 @@ export const PREVIEW_SCENES = {
   },
   /** 16 · 게임 · 탈락 후 관전 */
   spectating: SPECTATING,
-  /** 21 · 게임 · 스킬 선택 (종 성공 5번마다) */
+  /** 21 · 게임 · 스킬 선택 (시작 시와 3라운드마다) */
   'skill-pick': {
     ...MY_TURN,
     skills: {
       slots: [slot(SkillId.TIME_STOP), EMPTY_SLOT, EMPTY_SLOT],
       pick: {
         role: 'player',
-        successCount: 10,
+        round: 4,
         pickNo: 2,
         candidates: [SkillId.SPIT, SkillId.DORMAMMU, SkillId.RAT],
         chosenCandidate: 2,
@@ -247,7 +247,7 @@ export const PREVIEW_SCENES = {
       slots: [EMPTY_SLOT, EMPTY_SLOT, EMPTY_SLOT],
       pick: {
         role: 'spectator',
-        successCount: 5,
+        round: 1,
         pickNo: 1,
         candidates: [SkillId.SPIT, SkillId.RUSSIAN_ROULETTE, SkillId.SPIT],
         chosenCandidate: 1,
@@ -265,7 +265,7 @@ export const PREVIEW_SCENES = {
       slots: [slot(SkillId.TIME_STOP), slot(SkillId.SPIT), slot(SkillId.RAT)],
       pick: {
         role: 'player',
-        successCount: 20,
+        round: 10,
         pickNo: 4,
         candidates: [SkillId.HACK, SkillId.RESET, SkillId.MINE],
         chosenCandidate: null,
@@ -282,14 +282,16 @@ export const PREVIEW_SCENES = {
     skills: {
       slots: [slot(SkillId.TIME_STOP), slot(SkillId.SPIT), slot(SkillId.RAT)],
     },
-    skillCast: {
-      key: 1,
-      caster: '자두씨',
-      casterId: 'p1',
-      skillId: SkillId.SPIT,
-      target: '과일왕',
-      targetId: 'me',
-    },
+    skillCasts: [
+      {
+        key: 1,
+        caster: '자두씨',
+        casterId: 'p1',
+        skillId: SkillId.SPIT,
+        target: '과일왕',
+        targetId: 'me',
+      },
+    ],
   },
   /** (시안 없음) 대상 지정 스킬을 골라 좌석을 누르기 기다리는 중 */
   'skill-target': {
@@ -314,27 +316,31 @@ export const PREVIEW_SCENES = {
     skills: {
       slots: [slot(SkillId.SPARKLE_CARD), EMPTY_SLOT, EMPTY_SLOT],
     },
-    skillCast: {
-      key: 2,
-      caster: '과일왕',
-      casterId: 'p1',
-      skillId: SkillId.SPARKLE_CARD,
-      target: null,
-      targetId: null,
-    },
+    skillCasts: [
+      {
+        key: 2,
+        caster: '과일왕',
+        casterId: 'p1',
+        skillId: SkillId.SPARKLE_CARD,
+        target: null,
+        targetId: null,
+      },
+    ],
   },
   /** M04 · 종 옮기기: 종이 옮겨졌고 새 키(K)로만 친다 */
   'skill-bell-move': {
     ...MY_TURN,
     skills: { slots: [slot(SkillId.BELL_MOVE), EMPTY_SLOT, EMPTY_SLOT] },
-    skillCast: {
-      key: 3,
-      caster: '자두씨',
-      casterId: 'p1',
-      skillId: SkillId.BELL_MOVE,
-      target: null,
-      targetId: null,
-    },
+    skillCasts: [
+      {
+        key: 3,
+        caster: '자두씨',
+        casterId: 'p1',
+        skillId: SkillId.BELL_MOVE,
+        target: null,
+        targetId: null,
+      },
+    ],
     bellMove: { position: 0, key: 'K', locked: false },
   },
   /** M15 · 과일 6개 카드: 테이블에 놓인 6개짜리 특수 카드 */
@@ -346,28 +352,32 @@ export const PREVIEW_SCENES = {
         : entry,
     ),
     skills: { slots: [slot(SkillId.SIX_FRUIT_CARD), EMPTY_SLOT, EMPTY_SLOT] },
-    skillCast: {
-      key: 4,
-      caster: '과일왕',
-      casterId: 'p1',
-      skillId: SkillId.SIX_FRUIT_CARD,
-      target: null,
-      targetId: null,
-    },
+    skillCasts: [
+      {
+        key: 4,
+        caster: '과일왕',
+        casterId: 'p1',
+        skillId: SkillId.SIX_FRUIT_CARD,
+        target: null,
+        targetId: null,
+      },
+    ],
   },
   /** M02 · 시간 정지: 다른 사람이 쓴 동안 내 화면 */
   'skill-time-stop': {
     ...MY_TURN,
     myPhase: 'waiting',
     skills: { slots: [slot(SkillId.TIME_STOP), EMPTY_SLOT, EMPTY_SLOT] },
-    skillCast: {
-      key: 5,
-      caster: '자두씨',
-      casterId: 'p1',
-      skillId: SkillId.TIME_STOP,
-      target: null,
-      targetId: null,
-    },
+    skillCasts: [
+      {
+        key: 5,
+        caster: '자두씨',
+        casterId: 'p1',
+        skillId: SkillId.TIME_STOP,
+        target: null,
+        targetId: null,
+      },
+    ],
     timeStop: { caster: '자두씨', byMe: false, seconds: 2 },
     frozen: 'time-stop',
   },
@@ -375,28 +385,32 @@ export const PREVIEW_SCENES = {
   'skill-time-stop-mine': {
     ...MY_TURN,
     skills: { slots: [EMPTY_SLOT, EMPTY_SLOT, EMPTY_SLOT] },
-    skillCast: {
-      key: 6,
-      caster: '과일왕',
-      casterId: 'p1',
-      skillId: SkillId.TIME_STOP,
-      target: null,
-      targetId: null,
-    },
+    skillCasts: [
+      {
+        key: 6,
+        caster: '과일왕',
+        casterId: 'p1',
+        skillId: SkillId.TIME_STOP,
+        target: null,
+        targetId: null,
+      },
+    ],
     timeStop: { caster: '과일왕', byMe: true, seconds: 3 },
   },
   /** 24 · 침 뱉기 · 맞은 사람 화면 */
   'skill-spit-hit': {
     ...MY_TURN,
     skills: { slots: [slot(SkillId.TIME_STOP), slot(SkillId.SPIT), slot(SkillId.RAT)] },
-    skillCast: {
-      key: 7,
-      caster: '자두씨',
-      casterId: 'p1',
-      skillId: SkillId.SPIT,
-      target: '과일왕',
-      targetId: 'me',
-    },
+    skillCasts: [
+      {
+        key: 7,
+        caster: '자두씨',
+        casterId: 'p1',
+        skillId: SkillId.SPIT,
+        target: '과일왕',
+        targetId: 'me',
+      },
+    ],
     spit: { key: 7 },
   },
   /** M05 · 아마테라스: 대상 좌석이 검은 불꽃에 휩싸인 모두의 화면 */
@@ -406,14 +420,16 @@ export const PREVIEW_SCENES = {
       entry.id === 'p1' ? { ...entry, burning: true } : entry,
     ),
     skills: { slots: [slot(SkillId.AMATERASU), EMPTY_SLOT, EMPTY_SLOT] },
-    skillCast: {
-      key: 8,
-      caster: '과일왕',
-      casterId: 'p1',
-      skillId: SkillId.AMATERASU,
-      target: '딸기러버',
-      targetId: 'me',
-    },
+    skillCasts: [
+      {
+        key: 8,
+        caster: '과일왕',
+        casterId: 'p1',
+        skillId: SkillId.AMATERASU,
+        target: '딸기러버',
+        targetId: 'me',
+      },
+    ],
   },
   /** M05 · 아마테라스: 내가 걸렸을 때 내 화면(카드도 종도 못 한다) */
   'skill-burned': {
@@ -423,14 +439,16 @@ export const PREVIEW_SCENES = {
       entry.id === 'me' ? { ...entry, burning: true } : entry,
     ),
     skills: { slots: [EMPTY_SLOT, EMPTY_SLOT, EMPTY_SLOT] },
-    skillCast: {
-      key: 9,
-      caster: '자두씨',
-      casterId: 'p1',
-      skillId: SkillId.AMATERASU,
-      target: '과일왕',
-      targetId: 'me',
-    },
+    skillCasts: [
+      {
+        key: 9,
+        caster: '자두씨',
+        casterId: 'p1',
+        skillId: SkillId.AMATERASU,
+        target: '과일왕',
+        targetId: 'me',
+      },
+    ],
     frozen: 'amaterasu',
   },
   /** 숫자 바꾸기: 내 카드의 과일 개수가 1 늘어 모두에게 보인다 */
@@ -442,76 +460,112 @@ export const PREVIEW_SCENES = {
         : entry,
     ),
     skills: { slots: [slot(SkillId.NUMBER_SHIFT), EMPTY_SLOT, EMPTY_SLOT] },
-    skillCast: {
-      key: 10,
-      caster: '과일왕',
-      casterId: 'p1',
-      skillId: SkillId.NUMBER_SHIFT,
-      target: null,
-      targetId: null,
-    },
+    skillCasts: [
+      {
+        key: 10,
+        caster: '과일왕',
+        casterId: 'p1',
+        skillId: SkillId.NUMBER_SHIFT,
+        target: null,
+        targetId: null,
+      },
+    ],
   },
   /** 종 부수기: 종이 부서져 돌아올 때까지 아무도 종을 못 친다 */
   'skill-bell-break': {
     ...MY_TURN,
     skills: { slots: [slot(SkillId.TIME_STOP), EMPTY_SLOT, EMPTY_SLOT] },
-    skillCast: {
-      key: 11,
-      caster: '자두씨',
-      casterId: 'p1',
-      skillId: SkillId.BELL_BREAK,
-      target: null,
-      targetId: null,
-    },
-    bellBreak: { seconds: 17 },
+    skillCasts: [
+      {
+        key: 11,
+        caster: '자두씨',
+        casterId: 'p1',
+        skillId: SkillId.BELL_BREAK,
+        target: null,
+        targetId: null,
+      },
+    ],
+    bellBreak: true,
   },
   /** 해킹: 내 종 치기 키가 바뀌었다(나에게만 보인다) */
   'skill-hacked': {
     ...MY_TURN,
     skills: { slots: [EMPTY_SLOT, EMPTY_SLOT, EMPTY_SLOT] },
-    skillCast: {
-      key: 12,
-      caster: '자두씨',
-      casterId: 'p1',
-      skillId: SkillId.HACK,
-      target: '과일왕',
-      targetId: 'me',
-    },
+    skillCasts: [
+      {
+        key: 12,
+        caster: '자두씨',
+        casterId: 'p1',
+        skillId: SkillId.HACK,
+        target: '과일왕',
+        targetId: 'me',
+      },
+    ],
     hackKey: 'F',
   },
   /** 종 야바위: 종이 4개로 늘어나고 종마다 단축키가 있다 */
   'skill-shell-game': {
     ...MY_TURN,
-    shell: { keys: ['A', 'S', 'K', 'L'], seconds: 7 },
+    shell: { keys: [...BELL_SHELL_KEYS], seconds: 7 },
     skills: { slots: [EMPTY_SLOT, EMPTY_SLOT, EMPTY_SLOT] },
   },
-  /** 쥐새끼: 쥐가 종 밑에서 카드를 물고 쓴 사람(나)의 자리로 달려간다 */
+  'skill-rat-waiting': {
+    ...MY_TURN,
+    pileCount: 5,
+    rat: { key: 1, phase: 'waiting', cardCount: 5 },
+  },
   'skill-rat': {
     ...MY_TURN,
-    pileCount: 4,
-    skills: { slots: [slot(SkillId.RAT), EMPTY_SLOT, EMPTY_SLOT] },
-    skillCast: {
-      key: 13,
-      caster: '과일왕',
-      casterId: 'me',
-      skillId: SkillId.RAT,
-      target: null,
-      targetId: null,
-    },
+    pileCount: 0,
+    rat: { key: 2, phase: 'stolen', cardCount: 5, recipientId: 'me' },
+  },
+  'skill-rat-crushed': {
+    ...MY_TURN,
+    pileCount: 5,
+    rat: { key: 3, phase: 'crushed', cardCount: 5 },
+    bellBreak: true,
+    skillCasts: [
+      {
+        key: 13,
+        caster: '자두씨',
+        casterId: 'p1',
+        skillId: SkillId.BELL_BREAK,
+        target: null,
+        targetId: null,
+      },
+    ],
   },
   /** 러시안 룰렛: 관전자가 쏜 총알이 대상 좌석에 맞는다 */
   'skill-roulette': {
     ...MY_TURN,
     pileCount: 5,
     skills: { slots: [EMPTY_SLOT, EMPTY_SLOT, EMPTY_SLOT] },
-    skillCast: {
-      key: 14,
-      caster: '관전자',
-      casterId: '99',
-      skillId: SkillId.RUSSIAN_ROULETTE,
-      target: '자두씨',
-      targetId: 'p3',
-    },
+    skillCasts: [
+      {
+        key: 14,
+        caster: '관전자',
+        casterId: '99',
+        skillId: SkillId.RUSSIAN_ROULETTE,
+        movedCards: 3,
+        target: '자두씨',
+        targetId: 'p3',
+      },
+    ],
+  },
+  'skill-hand-smash': {
+    ...MY_TURN,
+    players: MY_TURN.players.map((entry) => ({ ...entry, smashed: entry.id === 'me' })),
+    smashed: true,
+    skillCasts: [
+      {
+        key: 15,
+        caster: '딸기러버',
+        casterId: 'p1',
+        skillId: SkillId.HAND_SMASH,
+        target: '과일왕',
+        targetId: 'me',
+      },
+    ],
   },
   /** 22 · 게임 · 스킬 슬롯 */
   'skill-slots': {

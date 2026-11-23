@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 165" fill="none">
+  <g stroke="#2b2114" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M40 3h61l-3 61H44z" fill="#ffcc38"/>
+    <path d="m49 8 2 44m40-44-1 44" stroke="#dc9b28" stroke-width="3"/>
+    <path d="M32 68c7-9 14-13 27-13h28c21 0 35 9 39 29l3 50c1 11-3 17-12 18l-14-1c-7 5-15 4-21 0-7 6-17 5-22 0-7 5-16 4-21-2l-11-11c-5-6-6-12-6-21l1-33z" fill="#ffd044"/>
+    <path d="M99 62c13 3 19 11 21 24" stroke="#edaf2c" stroke-width="6"/>
+    <path d="M22 121c0-11 5-17 13-17 8 0 13 6 13 15v24c0 9-4 14-12 14s-12-5-13-13z" fill="#ffcd3c"/>
+    <rect x="47" y="103" width="25" height="56" rx="12" fill="#ffcf42"/>
+    <rect x="72" y="101" width="24" height="59" rx="12" fill="#ffd347"/>
+    <rect x="96" y="97" width="25" height="54" rx="12" fill="#ffcb35"/>
+    <path d="M17 109c-4-19 2-35 14-44 9-7 21-9 34-4 9 4 18 12 21 19 4 11-3 16-12 16-7 0-13-4-18-6-5-2-9 1-14 6-8 7-17 12-25 13z" fill="#ffdc59"/>
+    <path d="M62 89c-1-5 2-9 7-10 5-1 10 2 12 6" stroke="#c88d28" stroke-width="3"/>
+    <path d="M28 129q5-6 12 0m13 0q6-6 12 0m12-2q6-6 12 0m11-6q6-6 13 0" stroke="#b58126" stroke-width="3"/>
+    <path d="M33 147q3 3 6 2m16 3q4 2 7 0m16 1q4 2 8-1m16-6q3 1 7-1" stroke="#ffed91"/>
+  </g>
+</svg>

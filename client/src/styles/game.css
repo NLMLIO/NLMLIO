@@ -107,6 +107,8 @@
   color: var(--text-primary);
   border-color: var(--text-secondary);
 }
+.game-chip.spectator-fullscreen { left: 802px; width: 100px; }
+.fullscreen-error { position: absolute; top: 73px; right: 194px; font-size: 12px; }
 .game-chip.sound-toggle {
   left: 910px;
   width: 73px;
@@ -616,6 +618,7 @@
 
 /* 종 판정 오버레이 */
 .verdict-overlay {
+  pointer-events: none;
   z-index: 20;
   position: absolute;
   inset: 0;
@@ -872,9 +875,18 @@
   stroke-linejoin: round;
   stroke-linecap: round;
 }
+.player-hand .hand-skin { fill: var(--hand-skin, #f4d5b4); }
+.player-hand .hand-shadow { fill: var(--hand-shadow, #d6ac88); stroke: none; }
+.player-hand[data-injured] {
+  --hand-skin: #ff615e;
+  --hand-shadow: #b62d44;
+  --hand-line: #922634;
+}
+.player-hand[data-injured] > svg { filter: drop-shadow(0 0 6px #ff3e5666); }
+.player-hand .hand-seam { fill: none; stroke: #ffffff80; stroke-width: 2; }
 .player-hand .hand-crease {
   fill: none;
-  stroke: #c7aa8b;
+  stroke: var(--hand-line, #c59a78);
   stroke-width: 2;
 }
 .player-hand .hand-cuff {
@@ -1223,3 +1235,25 @@
   top: 34px;
   left: 0;
 }
+
+.player-hand .muscle-hand {
+  transform: scale(1.15) rotate(-7deg);
+  transform-origin: 50% 90%;
+  filter: drop-shadow(0 0 5px var(--player-color));
+}
+.smash-ready-hint {
+  position: absolute;
+  z-index: 32;
+  bottom: 122px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 7px 15px;
+  margin: 0;
+  border: 1px solid #ffbf41;
+  border-radius: 20px;
+  background: #21190f;
+  color: #ffce69;
+  pointer-events: none;
+}
+.smash-ready-hint kbd { font: inherit; font-weight: 700; }
+.action-bar-name .penalty-credit { color: var(--fruit-lime); }

@@ -1,0 +1,730 @@
+/* Selection cards fan out from one deck. Buttons remain stationary and usable during the deal. */
+.skill-pick {
+  animation: draft-curtain 180ms ease-out;
+}
+.skill-pick-cards {
+  perspective: 1000px;
+}
+.skill-pick-column {
+  --fan-x: 0px;
+  --fan-angle: 0deg;
+  --deal-delay: 55ms;
+}
+.skill-pick-column:first-child {
+  --fan-x: 165px;
+  --fan-angle: 12deg;
+  --deal-delay: 0ms;
+}
+.skill-pick-column:last-child {
+  --fan-x: -165px;
+  --fan-angle: -12deg;
+  --deal-delay: 110ms;
+}
+.skill-pick-column .skill-card {
+  transform-origin: 50% 80%;
+  animation: draft-deal 430ms cubic-bezier(0.16, 0.84, 0.24, 1) var(--deal-delay) backwards;
+}
+.skill-pick-column .skill-card.is-selected {
+  box-shadow:
+    0 0 0 2px var(--grade),
+    0 8px 44px color-mix(in srgb, var(--grade) 35%, transparent);
+}
+@keyframes draft-curtain {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes draft-deal {
+  from {
+    opacity: 0;
+    transform: translate(var(--fan-x), 75px) rotateZ(var(--fan-angle)) rotateY(62deg) scale(0.76);
+  }
+  78% {
+    transform: translateY(-7px) rotateY(-3deg) scale(1.02);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.broken-bell-pieces {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.bell-fragment {
+  position: absolute;
+  top: -13.6px;
+  left: -25.5px;
+  width: 231.2px;
+  height: 231.2px;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  transform: translate(var(--dx), var(--dy)) rotate(var(--spin));
+  filter: grayscale(1) contrast(0.9) brightness(0.86);
+}
+.on-impact .bell-fragment {
+  animation: bell-fracture 1000ms both;
+}
+@keyframes bell-fracture {
+  0%,
+  29% {
+    transform: none;
+    filter: none;
+  }
+  30% {
+    transform: scale(0.96);
+    filter: grayscale(1) brightness(1.45);
+    animation-timing-function: cubic-bezier(0.12, 0.84, 0.26, 1);
+  }
+  50% {
+    transform: translate(calc(var(--dx) * 3.3), calc(var(--dy) * 3.1))
+      rotate(calc(var(--spin) * 2.25));
+  }
+  76% {
+    transform: translate(calc(var(--dx) * 1.45), calc(var(--dy) * 1.4 + 10px))
+      rotate(calc(var(--spin) * 1.25));
+  }
+  100% {
+    transform: translate(var(--dx), var(--dy)) rotate(var(--spin));
+  }
+}
+.bell:has(.on-impact) .bell-broken {
+  animation: broken-label 900ms both;
+}
+@keyframes broken-label {
+  0%,
+  85% {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.bell-impact-word {
+  position: absolute;
+  z-index: 6;
+  left: -72px;
+  top: -72px;
+  color: #ffcd38;
+  font: 900 44px/1 var(--font-display);
+  text-shadow: 3px 3px 0 #201708;
+  animation: bell-impact-word 620ms 300ms both;
+}
+@keyframes bell-impact-word {
+  from {
+    opacity: 0;
+    transform: rotate(-14deg) scale(0.44);
+  }
+  16% {
+    opacity: 1;
+    transform: rotate(-12deg) scale(1.14);
+  }
+  70% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-12px) rotate(-10deg);
+  }
+}
+.fist-impact {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+.fist-impact .impact-fist {
+  position: absolute;
+  width: 146px;
+  height: 172px;
+  max-width: none;
+  top: -158px;
+  left: -73px;
+  filter: drop-shadow(5px 8px 0 #170f1c66);
+  transform-origin: center 88%;
+  animation: fist-slam 1000ms both;
+}
+.player-hand .fist-impact {
+  transform: rotate(calc(-1 * var(--hand-angle)));
+}
+.player-hand-track:has(.fist-impact) {
+  z-index: 40;
+}
+@keyframes fist-slam {
+  0% {
+    opacity: 0;
+    transform: translateY(-215px) scale(0.9);
+  }
+  14% {
+    opacity: 1;
+    transform: translateY(-194px) scale(1.04);
+    animation-timing-function: cubic-bezier(0.64, 0.02, 1, 0.64);
+  }
+  30% {
+    transform: translateY(8px) scale(1.07, 0.9);
+  }
+  39%,
+  55% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  70% {
+    opacity: 1;
+    transform: translateY(-5px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-155px) scale(0.9);
+  }
+}
+.impact-burst,
+.impact-wave {
+  position: absolute;
+  pointer-events: none;
+}
+.impact-burst {
+  width: 174px;
+  height: 110px;
+  top: -54px;
+  left: -87px;
+  background: #ffdd71;
+  clip-path: polygon(
+    0 51%,
+    26% 41%,
+    10% 14%,
+    39% 31%,
+    42% 0,
+    54% 30%,
+    77% 3%,
+    68% 36%,
+    100% 19%,
+    80% 48%,
+    99% 61%,
+    71% 65%,
+    86% 98%,
+    55% 75%,
+    39% 99%,
+    37% 69%,
+    8% 85%,
+    26% 60%
+  );
+  animation: hit-spark 350ms 300ms both;
+}
+.impact-wave {
+  width: 144px;
+  height: 96px;
+  top: -48px;
+  left: -72px;
+  border: 5px solid #ffeeb5;
+  border-radius: 50%;
+  animation: impact-wave 460ms 300ms both;
+}
+@keyframes hit-spark {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  15% {
+    opacity: 0.96;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+}
+@keyframes impact-wave {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  12% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.8);
+  }
+}
+
+/* Arc from caster to target, card manipulation or a five-card rewind at the table. */
+.skill-motion {
+  position: absolute;
+  inset: 0;
+  z-index: 21;
+  overflow: hidden;
+  pointer-events: none;
+}
+.skill-deck-motion {
+  position: absolute;
+  left: 50%;
+  top: 49%;
+  width: 0;
+  height: 0;
+}
+.skill-deck-motion i {
+  position: absolute;
+  left: -27px;
+  top: -36px;
+  width: 54px;
+  height: 72px;
+  border: 2px solid #e6ff94;
+  border-radius: 7px;
+  box-shadow: 3px 5px 10px #15111b99;
+  background: repeating-linear-gradient(45deg, #4e6742 0 3px, #344332 3px 7px);
+  animation: reset-deal 1020ms var(--delay) both;
+}
+.skill-deck-motion.is-rewinding i {
+  border-color: #d9afff;
+  background: repeating-linear-gradient(45deg, #654283 0 3px, #423354 3px 7px);
+  animation-name: rewind-deck;
+}
+@keyframes reset-deal {
+  0% {
+    opacity: 0;
+    transform: translate(calc(var(--index) * 64px), -56px) rotate(calc(var(--index) * 19deg));
+  }
+  18% {
+    opacity: 0.95;
+  }
+  48% {
+    transform: translate(0, -8px) rotateY(180deg);
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(var(--index) * 100px), 100px) rotateZ(calc(var(--index) * 28deg));
+  }
+}
+@keyframes rewind-deck {
+  0% {
+    opacity: 0;
+    transform: rotate(calc(var(--index) * 62deg)) translateY(-180px);
+  }
+  15% {
+    opacity: 0.9;
+  }
+  78% {
+    opacity: 0.96;
+    transform: rotate(-130deg) translateY(-16px);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+}
+.skill-projectile {
+  position: absolute;
+  width: 38px;
+  height: 38px;
+  margin: -19px;
+  animation: skill-travel 870ms both;
+}
+.skill-projectile.cue-spit {
+  border-radius: 70% 35% 55% 65%;
+  background: radial-gradient(circle at 35% 30%, white 7%, #c0e8bf 20%, #659b89 76%);
+  box-shadow: -9px 5px 0 -3px #b0cabc;
+}
+.skill-projectile.cue-amaterasu {
+  border-radius: 75% 4% 60% 50%;
+  background: radial-gradient(ellipse at 40% 69%, #a36cf6, #251428 53%, #09070d 72%);
+  box-shadow: 0 0 17px #9952f7;
+}
+.skill-projectile.cue-hack {
+  width: 54px;
+  height: 26px;
+  background: repeating-linear-gradient(0deg, #40fca9 0 2px, transparent 2px 5px);
+  border-inline: 2px solid #40fca9;
+}
+@keyframes skill-travel {
+  0% {
+    opacity: 0;
+    transform: translate(var(--from-x), var(--from-y)) scale(0.2);
+  }
+  20% {
+    opacity: 1;
+    transform: translate(var(--from-x), calc(var(--from-y) - 22px)) scale(1.2);
+  }
+  62% {
+    transform: translate(0, 0) rotate(20deg) scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.6, 0.65);
+  }
+}
+.skill-card-charge {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  margin: -64px -28px;
+  width: 56px;
+  height: 76px;
+  border: 2px solid currentColor;
+  border-radius: 7px;
+  font: 700 35px/1 var(--font-display);
+  background: #1d1727;
+  box-shadow: 0 0 22px currentColor;
+  animation: card-charge 920ms both;
+}
+.cue-six_fruit_card {
+  color: #ff729a;
+}
+.cue-number_shift {
+  color: #c8f563;
+}
+.cue-sparkle_card {
+  color: #ffd56b;
+}
+@keyframes card-charge {
+  0% {
+    opacity: 0;
+    transform: translateY(20px) rotateY(84deg) rotate(-12deg);
+  }
+  35% {
+    opacity: 1;
+    transform: translateY(-12px) rotateY(-8deg) rotate(8deg);
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-58px) rotate(5deg) scale(0.76);
+  }
+}
+.reflect-arc {
+  position: absolute;
+  width: 108px;
+  height: 108px;
+  margin: -54px;
+  border: 9px solid #ffa1b5;
+  border-color: #ffa1b5 #ffd66e #7ae0c3 #8a95ff;
+  border-radius: 50%;
+  box-shadow: 0 0 24px #f9bcff;
+  animation: reflect-bounce 900ms both;
+}
+@keyframes reflect-bounce {
+  from {
+    transform: scale(0.3) rotate(-90deg);
+    opacity: 0;
+  }
+  35% {
+    opacity: 1;
+    transform: scale(1.24) rotate(20deg);
+  }
+  to {
+    transform: scale(1.6) rotate(110deg);
+    opacity: 0;
+  }
+}
+
+.time-stop::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 49%;
+  width: 360px;
+  height: 360px;
+  margin: -180px;
+  border-radius: 50%;
+  border: 2px solid #b5d9ff;
+  background: repeating-conic-gradient(from -1deg, #ccdef8 0 2deg, transparent 2deg 30deg);
+  mask: radial-gradient(circle, transparent 62%, black 63%);
+  animation: clock-freeze 1.1s cubic-bezier(0.11, 0.84, 0.2, 1) both;
+}
+@keyframes clock-freeze {
+  from {
+    transform: rotate(-130deg) scale(1.55);
+    opacity: 0;
+  }
+  40% {
+    opacity: 0.75;
+  }
+  to {
+    transform: rotate(0) scale(1);
+    opacity: 0.23;
+  }
+}
+.bell-key {
+  animation: key-swap 0.38s ease-out;
+}
+@keyframes key-swap {
+  from {
+    opacity: 0;
+    translate: 8px -10px;
+    rotate: 12deg;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skill-motion,
+  .fist-impact,
+  .time-stop::before,
+  .bell-impact-word {
+    display: none;
+  }
+  .skill-pick,
+  .skill-pick-column .skill-card,
+  .on-impact .bell-fragment,
+  .bell:has(.on-impact) .bell-broken,
+  .bell-key,
+  .skill-cast,
+  .seat-flame,
+  .spit-blob,
+  .spit-drip,
+  .fruit-card-shine {
+    animation: none;
+  }
+  .spit-drip {
+    display: none;
+  }
+  .bell.is-moved {
+    transition: none;
+  }
+}
+.skill-projectile.reflected {
+  animation-name: skill-rebound;
+  animation-duration: 1.25s;
+}
+@keyframes skill-rebound {
+  from {
+    opacity: 0;
+    transform: translate(var(--from-x), var(--from-y)) scale(0.4);
+  }
+  12% {
+    opacity: 1;
+  }
+  48% {
+    transform: translate(0, 0) scale(1.2);
+  }
+  80% {
+    opacity: 1;
+    transform: translate(var(--from-x), var(--from-y)) scale(0.85);
+  }
+  to {
+    opacity: 0;
+    transform: translate(var(--from-x), var(--from-y)) scale(1.6);
+  }
+}
+
+/* 종 한가운데서 나타나 560ms에 사격한다. 덱 카드는 피격 뒤 실제 보관 더미로 들어간다. */
+.roulette-scene {
+  position: absolute;
+  width: 0;
+  height: 0;
+  z-index: 30;
+  pointer-events: none;
+}
+.roulette-axis {
+  position: absolute;
+  width: 0;
+  height: 0;
+  transform: rotate(var(--aim));
+  animation: roulette-aim 540ms cubic-bezier(0.16, 0.78, 0.16, 1) both;
+}
+@keyframes roulette-aim {
+  0%,
+  32% {
+    transform: rotate(var(--initial-aim));
+  }
+  81% {
+    transform: rotate(calc(var(--aim) + 3deg));
+  }
+  to {
+    transform: rotate(var(--aim));
+  }
+}
+.roulette-gun {
+  position: absolute;
+  left: -30px;
+  top: -25px;
+  width: 124px;
+  height: 72px;
+  transform-origin: 30px 25px;
+  filter: drop-shadow(2px 5px 2px #20133188);
+  animation: roulette-recoil 1050ms both;
+}
+.roulette-gun img {
+  width: 100%;
+  height: 100%;
+}
+@keyframes roulette-recoil {
+  0% {
+    opacity: 0;
+    transform: translateX(-35px) scale(0.18);
+  }
+  20% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  32%,
+  53% {
+    transform: none;
+  }
+  56% {
+    transform: translateX(-12px) rotate(-6deg);
+  }
+  70%,
+  76% {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.35);
+  }
+}
+.roulette-flash {
+  position: absolute;
+  top: 4px;
+  left: 95%;
+  width: 62px;
+  height: 44px;
+  transform-origin: left center;
+  background: radial-gradient(ellipse at 14% 50%, #fff 10%, #fff390 42%, #ff9a3e 74%);
+  clip-path: polygon(
+    0 47%,
+    23% 33%,
+    12% 0,
+    49% 26%,
+    83% 7%,
+    67% 35%,
+    100% 49%,
+    65% 61%,
+    78% 91%,
+    41% 76%,
+    14% 100%,
+    23% 65%
+  );
+  animation: roulette-flash 154ms 560ms both;
+}
+@keyframes roulette-flash {
+  from {
+    opacity: 0;
+    transform: scaleX(0.15);
+  }
+  18% {
+    opacity: 1;
+    transform: scale(1.15, 1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.24, 0.64);
+  }
+}
+.roulette-tracer {
+  position: absolute;
+  top: -3px;
+  height: 6px;
+  width: 48px;
+  border-radius: 50%;
+  background: linear-gradient(90deg, transparent, #ffcc45 52%, #fff8dd);
+  animation: roulette-trace 98ms 574ms linear both;
+}
+@keyframes roulette-trace {
+  from {
+    opacity: 0;
+    transform: translateX(92px);
+  }
+  12%,
+  90% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(calc(var(--range) - 48px));
+  }
+}
+.roulette-hit {
+  position: absolute;
+  left: var(--target-x);
+  top: var(--target-y);
+  width: 88px;
+  height: 88px;
+  margin: -44px;
+  border: 5px solid #ffcb49;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 6px #fb678b88,
+    inset 0 0 20px #ffb643;
+  animation: roulette-hit 520ms 650ms both;
+}
+@keyframes roulette-hit {
+  from {
+    opacity: 0;
+    transform: scale(0.18);
+  }
+  16% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.68);
+  }
+}
+.roulette-result {
+  position: absolute;
+  white-space: nowrap;
+  left: var(--target-x);
+  top: calc(var(--target-y) + 34px);
+  padding: 4px 9px;
+  transform: translateX(-50%);
+  color: #fff2cf;
+  background: #352238;
+  border: 2px solid #ffbf65;
+  border-radius: 5px;
+  font-size: 16px;
+  font-weight: 750;
+  animation: roulette-result 220ms 650ms both;
+}
+@keyframes roulette-result {
+  from {
+    opacity: 0;
+    translate: 0 7px;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.roulette-card {
+  position: absolute;
+  width: 27px;
+  height: 37px;
+  left: -13px;
+  top: -18px;
+  border: 2px solid #efe68e;
+  border-radius: 4px;
+  background: repeating-linear-gradient(45deg, #576a44 0 3px, #344335 3px 6px);
+  animation: roulette-return 525ms calc(725ms + var(--card-delay)) both;
+}
+@keyframes roulette-return {
+  from {
+    opacity: 0;
+    transform: translate(var(--deck-x), var(--deck-y)) rotate(-14deg) scale(0.45);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(var(--deck-x), calc(var(--deck-y) - 16px)) rotate(8deg);
+  }
+  78% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translate(0, 0) rotate(35deg) scale(0.65);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .roulette-fx {
+    display: none;
+  }
+  .roulette-result {
+    animation: none;
+  }
+}

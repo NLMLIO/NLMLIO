@@ -12,7 +12,9 @@ export function VerdictOverlay({ verdict }: { verdict: Verdict }) {
           <strong>{verdict.ringer.nickname}</strong>
         </div>
       </div>
-      <p className="verdict-title">{verdict.tone === 'success' ? '정답!' : '오발!'}</p>
+      <p className="verdict-title">
+        {verdict.title ?? (verdict.tone === 'success' ? '정답!' : '오발!')}
+      </p>
       <p className="verdict-formula">{verdict.formula}</p>
       <p className="verdict-detail">{verdict.detail}</p>
     </div>

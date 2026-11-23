@@ -155,29 +155,20 @@ describe('스킬 보유 칸(009-03)', () => {
 });
 
 describe('스킬 선택 시점(009-01)', () => {
-  it('종 성공이 5의 배수일 때마다 선택을 연다. 게임 시작에는 열지 않는다', () => {
+  it('선택 번호는 실제로 열린 선택만 센다', () => {
     const book = new SkillBook(sequence(0));
-    expect(book.selection).toBeNull();
-    for (let count = 1; count <= 4; count++)
-      expect(book.recordSuccess(players(1, 2), count * 1000)).toBe(false);
-    expect(book.recordSuccess(players(1, 2), 5000)).toBe(true);
-    expect(book.successCount).toBe(5);
-    expect(book.selection?.deadline).toBe(5000 + SKILL_PICK_TIME_MS);
-    book.settle(5000 + SKILL_PICK_TIME_MS);
-    for (let count = 6; count <= 9; count++)
-      expect(book.recordSuccess(players(1, 2), 20000)).toBe(false);
-    expect(book.recordSuccess(players(1, 2), 30000)).toBe(true);
-  });
-  it('선택 중에는 새 선택을 열지 않는다', () => {
-    const book = new SkillBook(sequence(0));
-    for (let count = 1; count <= 5; count++) book.recordSuccess(players(1, 2), 0);
-    expect(book.selection).not.toBeNull();
-    expect(() => book.recordSuccess(players(1, 2), 1)).toThrow();
+    expect(book.pickNo).toBe(0);
+    expect(book.open([], 0)).toBe(false);
+    expect(book.open(players(1, 2), 0)).toBe(true);
+    expect(book.pickNo).toBe(1);
+    expect(() => book.open(players(1, 2), 1)).toThrow();
+    book.settle(SKILL_PICK_TIME_MS);
+    expect(book.open(players(1, 2), 30_000)).toBe(true);
+    expect(book.pickNo).toBe(2);
   });
   it('플레이어와 관전자 모두에게 각자의 풀로 후보 3칸을 준다', () => {
     const book = new SkillBook(sequence(0));
-    for (let count = 1; count <= 4; count++) book.recordSuccess([], 0);
-    book.recordSuccess(
+    book.open(
       [
         { userId: 1, role: RoomRole.PLAYER },
         { userId: 2, role: RoomRole.SPECTATOR },
@@ -192,7 +183,7 @@ describe('스킬 선택 시점(009-01)', () => {
 
 const open = (random: () => number, roles = players(1, 2)) => {
   const book = new SkillBook(random);
-  for (let count = 1; count <= 5; count++) book.recordSuccess(count === 5 ? roles : [], 1000);
+  book.open(roles, 1000);
   return book;
 };
 
@@ -252,8 +243,7 @@ describe('스킬 고르기(009-03)', () => {
 function full() {
   const book = new SkillBook(sequence(0));
   for (let pick = 0; pick < 3; pick++) {
-    for (let count = 1; count <= 5; count++)
-      book.recordSuccess(count === 5 ? players(1, 2) : [], 0);
+    book.open(players(1, 2), 0);
     if (pick < 2) {
       book.choose(1, { slot: 0 }, 1);
       book.choose(2, { slot: 0 }, 1);
@@ -263,7 +253,7 @@ function full() {
   book.choose(1, { slot: 0 }, 1);
   book.choose(2, { slot: 0 }, 1);
   // 네 번째 선택: 칸이 가득 찬 상태
-  for (let count = 1; count <= 5; count++) book.recordSuccess(count === 5 ? players(1, 2) : [], 0);
+  book.open(players(1, 2), 0);
   expect(book.inventory(1).isFull).toBe(true);
   return book;
 }
@@ -306,8 +296,7 @@ describe('탈락·초기화(009-05)', () => {
     book.choose(2, { slot: 0 }, 2000);
     book.clear(1);
     expect(book.inventory(1).list()).toHaveLength(0);
-    for (let count = 6; count <= 9; count++) book.recordSuccess([], 5000);
-    book.recordSuccess([{ userId: 1, role: RoomRole.SPECTATOR }], 6000);
+    book.open([{ userId: 1, role: RoomRole.SPECTATOR }], 6000);
     expect(book.selection?.has(1)).toBe(true);
   });
   it('안해로 초기화하면 성공 횟수와 모든 보유 스킬·진행 중 선택이 지워진다', () => {
@@ -317,17 +306,17 @@ describe('탈락·초기화(009-05)', () => {
     book.reset();
     expect(book.successCount).toBe(0);
     expect(book.inventory(1).list()).toHaveLength(0);
-    for (let count = 1; count <= 4; count++) expect(book.recordSuccess(players(1), 0)).toBe(false);
-    expect(book.recordSuccess(players(1), 0)).toBe(true);
+    expect(book.pickNo).toBe(0);
+    expect(book.open(players(1), 0)).toBe(true);
   });
 });
 
 describe('선택 결과 기록과 열기·세기 분리(009-01·009-03)', () => {
   it('성공 횟수는 따로 세고 선택은 나중에 열 수 있다', () => {
     const book = new SkillBook(sequence(0));
-    for (let count = 1; count <= 4; count++) expect(book.countSuccess()).toBe(false);
-    expect(book.countSuccess()).toBe(true);
-    expect(book.pickNo).toBe(1);
+    book.countSuccess();
+    expect(book.successCount).toBe(1);
+    expect(book.pickNo).toBe(0);
     expect(book.selection).toBeNull();
     expect(book.open(players(1, 2), 5000)).toBe(true);
     expect(book.selection?.deadline).toBe(5000 + SKILL_PICK_TIME_MS);

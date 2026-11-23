@@ -191,6 +191,9 @@ describe('게임 서버 Socket.io / Redis / PostgreSQL (FUNC-005)', () => {
     expect(await emit(a, RoomClientEvent.START)).toEqual({ ok: true });
     const state = await waitState(c, (value) => value.status === 'PLAYING');
     gameId = state.gameId;
+    expect(state.skillPick).toMatchObject({pickNo: 1, total: 3});
+    for (const socket of [a, b, c])
+      expect(await emit(socket, GameClientEvent.SKILL_PICK, {gameId, choice: {slot: 0}})).toEqual({ok: true});
     expect(state.players.map((player) => player.userId)).toEqual([host.user.id, guest.user.id]);
     expect(state.players.map((player) => player.handCount)).toEqual([28, 28]);
     expect(state.players[0]).not.toHaveProperty('hand');

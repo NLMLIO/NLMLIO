@@ -46,9 +46,8 @@ export class GamePlayer {
   take(cards: readonly Card[]): void {
     this.hand.push(...cards);
   }
-  penalty(): Card[] {
-    const card = this.hand.shift();
-    return card ? [card] : [];
+  penalty(count = 1): Card[] {
+    return this.hand.splice(0, count);
   }
   eliminate(departed: boolean): Card[] {
     this.state = departed ? GamePlayerStatus.DEPARTED : GamePlayerStatus.ELIMINATED;

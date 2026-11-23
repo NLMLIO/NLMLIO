@@ -63,6 +63,8 @@ describe('GameService 방 큐·타이머·정산 재시도', () => {
     await service.connected(1, 'one');
     await service.connected(2, 'two');
     await service.start(1);
+    for (const id of [1, 2])
+      await service.pickSkill(id, { gameId: service.sync(id)!.gameId, choice: { slot: 0 } });
   });
   afterEach(() => {
     timers.onModuleDestroy();
@@ -198,12 +200,13 @@ describe('GameService 방 큐·타이머·정산 재시도', () => {
     expect(room.snapshot().members).toHaveLength(2);
   });
   it('Redis 미러 저장에 실패해도 확정한 카드를 되돌리지 않고 다음에 같은 상태를 재시도한다', async () => {
+    snapshots.save.mockClear();
     snapshots.save.mockRejectedValueOnce(new Error('Redis unavailable'));
     const id = state().gameId;
     expect(await service.play(1, { gameId: id, turnId: state().turnId })).toBe(true);
     expect(state().turnSeq).toBe(1);
     await jest.advanceTimersByTimeAsync(1000);
-    expect(snapshots.save).toHaveBeenCalledTimes(3);
+    expect(snapshots.save).toHaveBeenCalledTimes(2);
     expect(state().turnSeq).toBe(1);
   });
   it('DB 저장 실패 시 다음 판을 막고 마지막 회원이 나가도 정산을 재시도한다', async () => {
@@ -239,6 +242,8 @@ describe('GameService 방 큐·타이머·정산 재시도', () => {
       },
       deck,
     );
+    game.openSkillPick([], Date.now());
+    for (const id of game.userIds) game.chooseSkill(id, { slot: 0 }, Date.now());
     store.set(game);
     await service.play(1, { gameId: game.id, turnId: game.turnId });
     await service.play(2, { gameId: game.id, turnId: game.turnId });
@@ -269,6 +274,8 @@ describe('GameService 방 큐·타이머·정산 재시도', () => {
       },
       new Deck([new Card(Fruit.BANANA, 1), new Card(Fruit.LIME, 1)]),
     );
+    game.openSkillPick([], Date.now());
+    for (const id of game.userIds) game.chooseSkill(id, { slot: 0 }, Date.now());
     store.set(game);
     await service.play(1, { gameId: game.id, turnId: game.turnId });
     await service.play(2, { gameId: game.id, turnId: game.turnId });

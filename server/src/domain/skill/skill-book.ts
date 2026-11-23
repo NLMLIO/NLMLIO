@@ -1,7 +1,6 @@
 import {
   ErrorCode,
   SKILL_CANDIDATE_COUNT,
-  SKILL_PICK_EVERY,
   SKILL_PICK_TIME_MS,
   SKILL_SLOT_COUNT,
 } from '@nlmlio/shared';
@@ -35,6 +34,7 @@ export class SkillBook {
   private readonly inventories = new Map<number, SkillInventory>();
   private current: SkillSelection | null = null;
   private successes = 0;
+  private selectionsOpened = 0;
 
   constructor(private readonly random: Random) {}
 
@@ -49,15 +49,12 @@ export class SkillBook {
     return this.holding(userId);
   }
 
-  /** 지금까지 선택을 몇 번 열었나(5·10·15…번째 성공마다 한 번) */
   get pickNo(): number {
-    return Math.floor(this.successes / SKILL_PICK_EVERY);
+    return this.selectionsOpened;
   }
 
-  /** 종 성공(오발 제외)을 센다. 누적 횟수가 5의 배수면 선택을 열 차례이므로 true */
-  countSuccess(): boolean {
+  countSuccess(): void {
     this.successes++;
-    return this.successes % SKILL_PICK_EVERY === 0;
   }
 
   /**
@@ -77,13 +74,8 @@ export class SkillBook {
     );
     if (selection.complete) return false;
     this.current = selection;
+    this.selectionsOpened++;
     return true;
-  }
-
-  /** 성공을 세고, 5의 배수면 바로 선택을 연다. 열었으면 true */
-  recordSuccess(participants: SkillParticipant[], now: number): boolean {
-    if (this.current) throw new Error('Skill selection is already open');
-    return this.countSuccess() && this.open(participants, now);
   }
 
   /**
@@ -186,6 +178,7 @@ export class SkillBook {
     this.inventories.clear();
     this.current = null;
     this.successes = 0;
+    this.selectionsOpened = 0;
   }
 
   private validReplace(slot: number): boolean {

@@ -70,8 +70,8 @@ export interface SkillSlotView {
 export interface SkillPickView {
   /** 후보를 받는 역할. 관전자는 관전자용 문구를 보여 준다 */
   role: 'player' | 'spectator';
-  /** 게임 전체 종 성공 누적 횟수(5·10·15…) */
-  successCount: number;
+  /** 다음으로 진행할 라운드 */
+  round: number;
   /** 이번이 몇 번째 선택인지 */
   pickNo: number;
   /** 서버가 정한 후보 3칸 */

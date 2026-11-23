@@ -17,7 +17,7 @@
 
 ## 스킬 선택 (FUNC-009-01~03)
 
-- 종 성공(오발 제외)이 누적 5·10·15…번째가 되면 `Game`이 선택을 열 차례로 표시한다. 결과 표시(`ROUND_RESULT_MS`)가 끝나는 시각에 서비스의 방 큐 타이머(`skill-open:{code}`)가 선택을 열고, 그 판정으로 게임이 끝나면 열지 않는다.
+- 게임 시작 시 첫 선택을 열고 3·6·9라운드 등 세 라운드가 끝날 때마다 다음 선택을 연다. 종 판정으로 라운드가 끝나면 결과 표시(`ROUND_RESULT_MS`) 후 방 큐의 타이머가 선택을 연다. 게임이 종료되면 추가 선택은 없다.
 - 후보를 받는 대상은 게임 중인 플레이어 전원(플레이어 풀)과 방의 관전자 전원(관전자 풀, 탈락·이탈해 관전 중인 사람과 도중에 들어온 관전자 포함)이다. 사람마다 후보 3칸을 서버가 뽑는다.
 - 선택 중에는 `card:play`·`bell:ring`을 무시(`ignored`)하고 `turnDeadline`은 `null`이며 턴 타이머가 멈춘다. 끝나면 멈춘 시점의 남은 턴 시간부터 이어 간다.
 - 마감(`skill-settle:{code}` 타이머, 열린 뒤 10초)이 지나면 못 고른 사람은 서버가 처리한다. 빈 칸이 있으면 후보 중 하나를 무작위로 넣고, 칸이 가득 찼으면 받지 않는다. 전원이 고르면 마감을 기다리지 않고 바로 끝난다.
@@ -27,19 +27,19 @@
 
 ## 스킬 사용 (FUNC-009-04)
 
-- `skill:use { gameId, slot, targetUserId? }`: 보유 칸 `slot`(0~2)의 스킬을 쓴다. 쓰면 칸에서 사라지고 `game:action`으로 `{ kind: 'skill', userId, skillId, targetUserId }`가 방 전체에 가며, 슬롯이 바뀐 사람에게만 `game:skills`를 다시 보낸다.
-- 쓸 수 있는 스킬은 `SkillDefinition.available`이 true인 것뿐이다(현재 반짝반짝한 카드·종 옮기기·과일 6개 카드·시간 정지·침 뱉기·아마테라스·숫자 바꾸기·종 부수기·해킹·쥐새끼·러시안 룰렛·지뢰·무지개 반사·손 개 쌔게 내려치기·종 야바위·도르마무·안해). 나머지는 보유할 수 있어도 `SKILL_UNAVAILABLE`이고 칸에서 사라지지 않는다. 사용 시점은 지금 `ANYTIME`만 지원한다.
+- `skill:use { gameId, slot, targetUserId?, expectedSkillId? }`는 보유 스킬을 사용한다. 필드 스킬의 `game:action`은 방 전체에, 개인 스킬은 시전자·대상·반사자에게만 보낸다. 지뢰 설치는 사용 이벤트를 전송하지 않는다. 바뀐 보유 슬롯은 본인의 `game:skills`로 갱신한다.
+- 쓸 수 있는 스킬은 `SkillDefinition.available`이 true인 것뿐이다(현재 반짝반짝한 카드·종 옮기기·과일 6개 카드·시간 정지·침 뱉기·아마테라스·숫자 바꾸기·종 부수기·해킹·쥐새끼·러시안 룰렛·지뢰·무지개 반사·손 개 쌔게 내려치기·종 야바위·도르마무·안해). 나머지는 보유할 수 있어도 `SKILL_UNAVAILABLE`이고 칸에서 사라지지 않는다. 사용 시점은 스킬의 타이밍과 서버 상태로 검증한다.
 - 플레이 중인 사람은 플레이어, 아니면 관전자로 보고 스킬의 사용 역할과 맞는지 검사한다. 대상 지정 스킬은 플레이 중인 다른 사람만 대상이 된다. 선택 중에는 조용히 무시(`ignored`)한다.
-- 종 야바위: `shell {endsAt, keys, real}`을 만든다(종 3~5개, 키는 서로 다른 `BELL_MOVE_KEYS`). 공개 스냅샷에는 `keys`·`endsAt`만 나가고 `real`은 서버만 안다. `bell:ring`에 `bell`(종 번호)을 보내야 하며, 진행 중에 `bell`이 `real`과 다르거나 없으면 5개여도 오발이고 액션에 `fake: true`가 붙는다.
-- 도르마무: `ring`이 판정 직전 상태(`RewindPoint`: 덱·테이블·보관 스택·차례·종 기록·금칠/개수 증가)를 저장한다. 결과 표시 중(`resumeAt` 전)이고 판정 전후의 플레이 중인 사람이 같을 때만 쓸 수 있고(`rewindUntil`), 되돌리면 종 성공 횟수도 1 줄이고 `skillDue`를 끈다. 순번(`sequence`)과 턴 토큰을 새로 올린다.
-- 안해: 플레이 중인 사람끼리 `Deck.standard().shuffle(random)`로 다시 분배하고 테이블·보관 스택·모든 효과·`SkillBook`(`reset`)·종 기록을 초기화한다. 이전 진행은 결과(전적)로 남지 않는다.
-- 손 개 쌔게 내려치기: `ring`이 끝나면 `smashWindow {userId, endsAt: now+2000}`을 남긴다(공개 스냅샷). 창 안에서 판정을 낸 사람이 아닌 플레이어가 쓰면(`timing=ON_BELL`, 대상 없음) 그 사람을 `smashed`에 넣고 창을 닫는다. `canRing`이 `smashed`를 거부하고 다음 `ring` 판정·탈락·게임 종료에서 비운다.
-- 지뢰: `mine` 플래그를 켠다(공개 스냅샷 `mine`). 다음 `ring`에서 5개가 맞으면 승자 없이 테이블 카드를 모두 `pile`에 넣고 `GameAction.mined`를 보낸다. `GamePlayer.bell`·성공 횟수(`countSuccess`)는 부르지 않는다. 오발·게임 종료·성공 판정 어느 쪽이든 판정이 나면 플래그가 꺼진다.
+- 종 야바위: `shell {endsAt, keys, real}`을 만든다(종 4개, 키는 `BELL_SHELL_KEYS`의 1·2·3·4, 요청 번호는 0~3). 공개 스냅샷에는 `keys`·`endsAt`만 나가고 `real`은 서버만 안다. `bell:ring`에 `bell`(종 번호)을 보내야 하며, 진행 중에 `bell`이 `real`과 다르거나 없으면 5개여도 오발이고 액션에 `fake: true`가 붙는다.
+- 도르마무: `ring`이 판정 직전 상태(`RewindPoint`: 덱·테이블·보관 스택·차례·종 기록·금칠/개수 증가)를 저장한다. 결과 표시 중(`resumeAt` 전)이고 판정 전후의 플레이 중인 사람이 같을 때만 쓸 수 있고(`rewindUntil`), 성공 판정을 되돌리면 성공 횟수도 1 줄이고, 되돌린 라운드의 `skillDue`를 끈다. 순번(`sequence`)과 턴 토큰을 새로 올린다.
+- 안해: 플레이 중인 사람끼리 `Deck.standard().shuffle(random)`로 다시 분배하고 테이블·보관 스택·모든 효과·`SkillBook`(`reset`)·종 기록을 초기화한다. 첫 스킬 선택을 다시 열고 이전 진행은 전적에 남기지 않는다.
+- 손 개 쌔게 내려치기: `ring`이 끝나면 `smashWindow {userId, endsAt: now+2000}`을 남긴다(공개 스냅샷). 클라이언트가 슬롯으로 준비하고 현재 종 키로 사용 의도를 보낸다. 창 안에서 판정을 낸 사람이 아닌 플레이어가 쓰면(`timing=ON_BELL`, 대상 없음) 그 사람을 `smashed`에 넣고 창을 닫는다. `canRing`이 `smashed`를 거부하고 다음 `ring` 판정·탈락·게임 종료에서 비운다.
+- 지뢰: `mine` 플래그를 서버 내부에만 기록한다. 설치 여부와 설치 이벤트는 클라이언트로 보내지 않는다. 다음 `ring`에서 5개가 맞으면 승자 없이 테이블 카드를 모두 `pile`에 넣고 `GameAction.mined`를 보낸다. `GamePlayer.bell`·성공 횟수(`countSuccess`)는 부르지 않는다. 오발·게임 종료·성공 판정 어느 쪽이든 판정이 나면 플래그가 꺼진다.
 - 무지개 반사: `useSkill`에서 단일 지정 스킬의 대상이 플레이어이고 `SkillBook.consumeSkill(target, RAINBOW_REFLECT)`가 성공하면 효과 대상을 쓴 사람으로 바꾸고 `GameAction.reflectedBy`에 원래 대상을 싣는다. 쓴 사람이 관전자면 반사하지 않는다. 직접 사용은 `timing=AUTOMATIC`이라 거부된다.
-- 쥐새끼: `pile`(종 밑 보관 스택) 전부를 쓴 사람의 덱 아래로 옮기고(`GamePlayer.take`) '덱을 다 낸 순서' 기록(`emptied`)에서 뺀다. 보관 스택이 비어 있으면 `SKILL_UNAVAILABLE`이고 스킬은 칸에 남는다.
-- 러시안 룰렛: 관전자가 대상(플레이 중이고 테이블에 카드가 있는 사람)을 지정하면 `Table.shoot`이 그 사람의 테이블 맨 위부터 5장(있는 만큼)을 꺼내 보관 스택에 넣는다. 금칠·개수 증가는 풀리고 과일 6개 카드는 사라진다. 테이블이 바뀌므로 `turnSeq`를 올려 이전 순번의 종 요청이 무시되게 한다.
-- 숫자 바꾸기: 내 테이블 맨 위 카드에 `Card.boost()`(과일 개수 +1)를 건다. `count`가 늘어난 값을 돌려주므로 합계·판정·공개 스냅샷(`topCard.count`, `boosted: true`)이 모두 같은 값을 쓴다. 걸 수 있는 카드(특수 카드·이미 늘어난 카드·6개 카드 제외)가 없으면 `SKILL_UNAVAILABLE`이고 스킬은 칸에 남는다. 카드가 `Table.remove`로 테이블을 떠나면 원복한다.
-- 종 부수기: `bellBreak`(복구 시각 `endsAt`, 10~30초를 1초 단위로 서버가 무작위)로 공개한다. 부서져 있는 동안 `canRing`은 모두 false(조용히 무시)이고 카드 내기는 그대로다. 마지막 종 기회(`current === null`)에 `timeout`이 오면 복구 시각 + `TURN_TIME_MS`로 마감을 미룬다.
+- 쥐새끼: 익명의 `rat`이 종 아래에 2초 머문다. 마감 전에 종을 부수면 `ratCrushed`와 함께 제거하고 카드는 보관 더미에 남는다. 마감에는 출발 시 보관된 장수를 시전자에게 한 번만 지급한다. 시전자는 개인 `ratResult`로 실제 결과를 받는다.
+- 러시안 룰렛: 관전자가 보유 덱이 남은 플레이어를 지정한다. 대상 덱에서 최대 5장을 종 아래 보관 더미로 옮기고 `movedCards`에 실제 장수를 넣어 시전자와 대상에게 보낸다.
+- 숫자 바꾸기: 내 테이블 맨 위 카드에 `Card.boost()`(과일 개수 +1)를 건다. `count`가 늘어난 값을 돌려주므로 합계·판정·공개 스냅샷(`topCard.count`, `boosted: true`)이 모두 같은 값을 쓴다. 테이블 순번과 반응 시간 기준을 갱신해 모든 참가자가 새 테이블에 종을 칠 수 있다. 걸 수 있는 카드(특수 카드·이미 늘어난 카드·6개 카드 제외)가 없으면 `SKILL_UNAVAILABLE`이고 스킬은 칸에 남는다. 카드가 `Table.remove`로 테이블을 떠나면 원복한다.
+- 종 부수기: `bellBreak`(복구 시각 `endsAt`, 10~30초를 1초 단위로 서버가 무작위)로 공개한다. 화면은 복구 카운트다운을 숨긴다. 부서져 있는 동안 `canRing`은 모두 false(조용히 무시)이고 카드 내기는 그대로다. 마지막 종 기회(`current === null`)에 `timeout`이 오면 복구 시각 + `TURN_TIME_MS`로 마감을 미룬다.
 - 해킹: 걸린 사람 → 새 종 키(`BELL_MOVE_KEYS` 중 무작위)를 서버가 들고 있다가 본인의 `game:skills`(`hackKey`)에만 보낸다. 공개 스냅샷에는 없다. 종 판정이나 탈락·이탈로 라운드가 넘어가면 풀린다. 키 제한은 화면이 하고 서버의 `bell:ring` 처리는 그대로다.
 - 시간 정지: `timeStop`(쓴 사람·끝나는 서버 시각 `endsAt`, `TIME_STOP_MS`=3초)으로 공개한다. 정지 중 쓴 사람은 `card:play`의 차례 검사(`NOT_YOUR_TURN`)를 건너뛰고 계속 낼 수 있고(낸 뒤 차례는 그 사람 다음으로 이어진다), 쓴 사람이 아닌 사람의 `card:play`·`bell:ring`은 조용히 무시(`ignored`)한다. 턴 타이머는 멈춘 시간만큼 `deadline`을 뒤로 밀어 멈춘다(별도 타이머 없음). 정지 중인지는 요청 시각(`receivedAt`)과 `endsAt`을 비교해 정하므로 `canRing`도 시각을 받는다.
 - 침 뱉기: 서버가 바꾸는 상태가 없다. 사용 알림(`game:action`의 `skill`)만 가고, 대상 본인의 클라이언트가 6초(가림 3초 + 흘러내림 3초) 연출을 보여 준다.
@@ -68,7 +68,7 @@
 | C→S | `card:play` | `{ gameId, turnId }` |
 | C→S | `bell:ring` | `{ gameId, turnSeq }` |
 | C→S | `skill:pick` | `{ gameId, choice }` — `choice`는 `{ slot, replace? }`(후보 칸, 보유 칸이 가득 찼으면 바꿀 칸) 또는 `{ decline: true }`(가득 찼을 때만). 열린 선택이 없거나 늦었거나 이미 골랐으면 `ignored` |
-| C→S | `skill:use` | `{ gameId, slot, targetUserId? }` — 보유 스킬 사용. 대상 지정 스킬만 `targetUserId`를 보낸다. 선택 중이면 `ignored` |
+| C→S | `skill:use` | `{ gameId, slot, targetUserId?, expectedSkillId? }` — 보유 스킬 사용. 대상 지정 스킬만 `targetUserId`를 보낸다. 선택 중이면 `ignored` |
 | C→S | `game:sync` | `{}` — 이 소켓에 현재 전체 상태 재전송(스킬 상태 포함) |
 | C→S | `game:return` | `{}` — 종료·정산 확인 후 이 소켓에 `game:state: null` |
 | S→C | `game:state` | `GameStateEvent \| null` — 스냅샷 + 보낸 순간의 서버 시각 `serverTime`(클라이언트 시계 차이 계산용) |

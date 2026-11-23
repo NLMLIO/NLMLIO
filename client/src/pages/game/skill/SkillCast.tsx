@@ -4,7 +4,7 @@ import { SkillGlyph } from './SkillGlyph';
 import { GRADE_STYLE } from './skill-view';
 import type { SkillCastView, SkillTargeting } from '../game-view';
 
-/** 스킬을 쓰면 모두의 화면 위쪽 가운데에 1.6초 동안 뜨는 알림(Figma Skill Cast Banner) */
+/** 서버가 전달한 스킬 사용을 화면 위쪽에 1.6초 동안 표시하는 알림(Figma Skill Cast Banner) */
 export function SkillCast({ cast }: { cast: SkillCastView }) {
   const skill = skillById(cast.skillId);
   return (
@@ -21,10 +21,12 @@ export function SkillCast({ cast }: { cast: SkillCastView }) {
         <small>{cast.caster} 님이 사용</small>
         <b>{skill.name}!</b>
       </span>
-      <span className="skill-cast-target">
-        {cast.reflectedBy ? `🌈 ${cast.reflectedBy} 반사 → ` : cast.target ? '→ ' : ''}
-        {cast.target ?? '전원'}
-      </span>
+      {(cast.target || skill.announcement === 'field') && (
+        <span className="skill-cast-target">
+          {cast.reflectedBy ? `🌈 ${cast.reflectedBy} 반사 → ` : cast.target ? '→ ' : ''}
+          {cast.target ?? '필드 전체'}
+        </span>
+      )}
     </div>
   );
 }

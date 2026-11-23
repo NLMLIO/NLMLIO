@@ -10,7 +10,7 @@ interface GameShortcuts {
   /** 종 옮기기로 바뀐 종 치기 키(예: `KeyK`). 이 동안 Space는 쓰지 않는다 */
   bell?: { code: string; run: () => void };
   /** 종 야바위: 종마다의 단축키. 번호가 같은 종을 친다 */
-  bells?: { code: string; run: () => void }[];
+  bells?: { key: string; run: () => void }[];
 }
 
 const SLOT_CODES = ['KeyQ', 'KeyW', 'KeyE'];
@@ -37,7 +37,11 @@ export function useGameShortcuts(shortcuts: GameShortcuts) {
       const slot = SLOT_CODES.indexOf(event.code);
       const skill = latest.current.skill;
       const bell = latest.current.bell;
-      const shellBell = latest.current.bells?.find((entry) => entry.code === event.code);
+      const shellBell = latest.current.bells?.find(
+        (entry) =>
+          event.code === `Digit${entry.key}` ||
+          (event.code === `Numpad${entry.key}` && event.key === entry.key),
+      );
       const handler = shellBell
         ? shellBell.run
         : bell && event.code === bell.code
@@ -49,7 +53,16 @@ export function useGameShortcuts(shortcuts: GameShortcuts) {
               : slot >= 0 && skill
                 ? () => skill(slot)
                 : undefined;
-      if (!handler) return;
+      if (!handler) {
+        // 야바위 중 Space가 포커스된 종 버튼의 기본 click으로 바뀌지 않도록 한다.
+        if (
+          event.code === 'Space' &&
+          event.target instanceof HTMLElement &&
+          event.target.closest('.bell-shell-bell, .skill-dock .skill-slot-button, .bell-button')
+        )
+          event.preventDefault();
+        return;
+      }
       event.preventDefault();
       handler();
     }
@@ -64,6 +77,8 @@ function isTyping(target: EventTarget | null) {
     (target.isContentEditable ||
       target.closest('input, textarea, select, [role="dialog"], [role="alertdialog"]') !== null ||
       (target.closest('button, a') !== null &&
-        target.closest('.action-button.play, .bell-button') === null))
+        target.closest(
+          '.action-button.play, .bell-button, .bell-shell-bell, .skill-dock .skill-slot-button',
+        ) === null))
   );
 }

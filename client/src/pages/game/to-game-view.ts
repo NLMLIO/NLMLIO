@@ -10,8 +10,6 @@ import {
   SKILL_PICK_TIME_MS,
   SKILL_SLOT_COUNT,
   SkillId,
-  SPIT_COVER_MS,
-  SPIT_DRIP_MS,
   SkillTiming,
   SkillUser,
   TURN_TIME_MS,
@@ -24,7 +22,7 @@ import type {
   RoomResponse,
   SkillStateEvent,
 } from '@nlmlio/shared';
-import type { BellEvent, CardEvent, SkillCastEvent } from '../../stores/game-store';
+import type { BellEvent, CardEvent, RatCrushEvent, SkillCastEvent } from '../../stores/game-store';
 import type { LogEntry as RoomLogEntry } from '../../stores/room-store';
 import { colorOf } from '../room/member-color';
 import { noticeText } from '../room/RoomChat';
@@ -32,6 +30,7 @@ import {
   FRUIT_NAMES,
   type Banner,
   type GameView,
+  type RatView,
   type LogEntry,
   type PlayerColor,
   type PlayerView,
@@ -61,7 +60,9 @@ export interface GameViewInput {
   /** 서버가 본인에게 보낸 보유 스킬·선택 후보 */
   skills: SkillStateEvent | null;
   /** 방금 서버가 알린 스킬 사용 */
-  skillCast: SkillCastEvent | null;
+  recentSkills: SkillCastEvent[];
+  spitHit?: { key: number; endsAt: number };
+  ratCrush?: RatCrushEvent | null;
   /** 대상 지정 중인 슬롯. 아니면 null */
   targetingSlot: number | null;
   /** 서버 시각으로 맞춘 지금 */
@@ -100,13 +101,14 @@ function verdictOf(input: GameViewInput, bell: BellEvent): Verdict {
       tone: 'misfire',
       ringer: ringerView,
       formula: '가짜 종!',
-      detail: `잘못 눌렀어요 · 내 덱 ${action.movedCards}장만 종 아래로`,
+      detail: `상대에게 한 장씩 총 ${action.penaltyCards ?? 0}장 · 테이블 ${action.movedCards}장 보관`,
     };
   if (action.mined)
     return {
       tone: 'misfire',
       ringer: ringerView,
-      formula: '지뢰 폭발!',
+      title: '지뢰 폭발!',
+      formula: '테이블 카드를 종 아래에 보관해요',
       detail: `성공도 오발도 아니에요 · 카드 ${action.movedCards}장이 모두 종 아래로`,
     };
   if (action.success) {
@@ -162,7 +164,9 @@ function logOf(input: GameViewInput): LogEntry[] {
               id,
               tone: 'danger',
               nickname,
-              text: `오발 · 상대에게 ${action.penaltyCards ?? 0}장 · 테이블 ${action.movedCards}장 보관`,
+              text: action.mined
+                ? `지뢰 폭발 · 테이블 ${action.movedCards}장 보관`
+                : `오발 · 상대에게 ${action.penaltyCards ?? 0}장 · 테이블 ${action.movedCards}장 보관`,
             };
       case 'departed':
         return { kind: 'event', id, tone: 'danger', nickname, text: '이탈 · 관전으로 전환' };
@@ -216,6 +220,8 @@ function bannerOf(input: GameViewInput, seated: boolean): Banner | undefined {
       messages: ['이탈 처리됐어요 · 패배로 기록돼요', '끝날 때까지 관전할 수 있어요'],
     };
   if (snapshot.status === GameStatus.PLAYING && snapshot.turnUserId === null) {
+    if (bellBreakAt(snapshot, input.serverNow))
+      return { tone: 'accent', messages: ['종이 돌아오면 마지막 종 기회가 열려요'] };
     const seconds =
       snapshot.turnDeadline === null
         ? undefined
@@ -263,21 +269,50 @@ const nicknameOf = (input: GameViewInput, userId: number): string =>
   '';
 
 /** 방금 쓴 스킬 알림. 1.6초가 지나면 사라진다(Figma Skill Cast Banner) */
-function skillCastOf(input: GameViewInput): SkillCastView | undefined {
-  const cast = input.skillCast;
-  if (!cast || input.now - cast.castAt >= SKILL_CAST_MS) return undefined;
+function skillCastOf(input: GameViewInput, cast: SkillCastEvent): SkillCastView {
   const { action } = cast;
   return {
     key: cast.id,
+    movedCards: action.movedCards,
     caster: nicknameOf(input, action.userId),
     casterId: String(action.userId),
     skillId: action.skillId,
     target: action.targetUserId === null ? null : nicknameOf(input, action.targetUserId),
     targetId: action.targetUserId === null ? null : String(action.targetUserId),
     ...(action.reflectedBy !== undefined
-      ? { reflectedBy: nicknameOf(input, action.reflectedBy) }
+      ? {
+          reflectedBy: nicknameOf(input, action.reflectedBy),
+          reflectedById: String(action.reflectedBy),
+        }
       : {}),
   };
+}
+
+/** 쥐의 자리와 압착은 공개, 보상·도착 좌석은 소유자 전용 서버 결과로만 그린다. */
+function ratOf({
+  snapshot,
+  skills,
+  userId,
+  ratCrush,
+  now,
+  serverNow,
+}: GameViewInput): RatView | undefined {
+  const pending = snapshot.rat;
+  if (pending && (!ratCrush || ratCrush.revision <= snapshot.revision))
+    return { key: pending.endsAt, phase: 'waiting', cardCount: pending.cardCount };
+
+  if (ratCrush && now - ratCrush.receivedAt < 1600)
+    return { key: ratCrush.revision, phase: 'crushed', cardCount: ratCrush.cardCount };
+  const result = skills?.gameId === snapshot.gameId ? skills.ratResult : null;
+  if (result && result.outcome !== 'crushed' && serverNow - result.at < 1800) {
+    return {
+      key: result.at,
+      phase: result.outcome,
+      cardCount: result.cardCount,
+      recipientId: String(userId),
+    };
+  }
+  return undefined;
 }
 
 /** 대상 지정 스킬을 골랐으면 누를 수 있는 좌석(나를 뺀 플레이 중인 사람) */
@@ -297,8 +332,8 @@ function targetingOf(
         (player) =>
           player.status === GamePlayerStatus.ACTIVE &&
           player.userId !== input.userId &&
-          // 러시안 룰렛은 테이블에 카드를 내둔 사람만 맞출 수 있다
-          (entry.skillId !== SkillId.RUSSIAN_ROULETTE || player.tableCount > 0),
+          // 러시안 룰렛은 보유 덱이 남은 사람에게 쏜다.
+          (entry.skillId !== SkillId.RUSSIAN_ROULETTE || player.handCount > 0),
       )
       .map((player) => String(player.userId)),
   };
@@ -318,12 +353,12 @@ export function skillUsable(
   const skill = skillById(skillId);
   const me = snapshot.players.find((player) => player.userId === userId);
   const role = me?.status === GamePlayerStatus.ACTIVE ? SkillUser.PLAYER : SkillUser.SPECTATOR;
-  // 쥐새끼는 종 밑 보관 스택에 카드가 있어야 쓰고, 러시안 룰렛은 테이블에 카드를 내둔 사람이 있어야 쓴다.
-  if (skillId === SkillId.RAT && snapshot.pileCount === 0) return false;
+  // 쥐새끼는 종 밑 보관 스택에 카드가 있어야 쓰고, 러시안 룰렛은 덱에 카드가 남은 사람이 있어야 쓴다.
+  if (skillId === SkillId.RAT && (snapshot.pileCount === 0 || !!snapshot.rat)) return false;
   if (
     skillId === SkillId.RUSSIAN_ROULETTE &&
     !snapshot.players.some(
-      (player) => player.status === GamePlayerStatus.ACTIVE && player.tableCount > 0,
+      (player) => player.status === GamePlayerStatus.ACTIVE && player.handCount > 0,
     )
   )
     return false;
@@ -333,17 +368,6 @@ export function skillUsable(
     (snapshot.rewindUntil === null || serverNow >= snapshot.rewindUntil)
   )
     return false;
-  // 손 개 쌔게 내려치기는 종 판정이 난 지 2초 안에, 판정을 낸 사람이 아닌 플레이어만 쓴다.
-  if (skillId === SkillId.HAND_SMASH) {
-    const window = snapshot.smashWindow;
-    if (
-      !window ||
-      serverNow > window.endsAt ||
-      window.userId === userId ||
-      me?.status !== GamePlayerStatus.ACTIVE
-    )
-      return false;
-  }
   // 숫자 바꾸기는 과일 개수를 늘릴 수 있는 내 테이블 카드가 있어야 쓴다.
   if (skillId === SkillId.NUMBER_SHIFT) {
     const card = me?.topCard;
@@ -367,7 +391,6 @@ export function timeStopAt(
     : undefined;
 }
 
-/** 종 부수기로 종이 부서져 있으면 돌아올 때까지 남은 시간(초). 아니면 undefined */
 /** 종 야바위 중이면 종마다의 단축키와 남은 시간. 아니면 undefined */
 export function shellAt(
   snapshot: GameSnapshot,
@@ -379,14 +402,13 @@ export function shellAt(
   return { keys: shell.keys, seconds: Math.ceil((shell.endsAt - serverNow) / 1000) };
 }
 
-export function bellBreakAt(
-  snapshot: GameSnapshot,
-  serverNow: number,
-): { seconds: number } | undefined {
-  const broken = snapshot.bellBreak;
-  if (!broken || snapshot.status !== GameStatus.PLAYING || serverNow >= broken.endsAt)
-    return undefined;
-  return { seconds: Math.ceil((broken.endsAt - serverNow) / 1000) };
+/** 서버가 정한 복구 시각까지 종 입력을 막는다. */
+export function bellBreakAt(snapshot: GameSnapshot, serverNow: number): boolean {
+  return (
+    snapshot.status === GameStatus.PLAYING &&
+    !!snapshot.bellBreak &&
+    serverNow < snapshot.bellBreak.endsAt
+  );
 }
 
 /** 종 옮기기가 진행 중이면 옮겨진 자리·새 키. 끝나는 시각은 서버가 정하고 화면은 서버 시각으로 센다 */
@@ -421,7 +443,7 @@ function skillsOf(input: GameViewInput): SkillsView | undefined {
     slots,
     pick: {
       role: pick.role === RoomRole.SPECTATOR ? 'spectator' : 'player',
-      successCount: open.successCount,
+      round: snapshot.round,
       pickNo: open.pickNo,
       candidates: pick.candidates,
       chosenCandidate: pick.candidate,
@@ -472,6 +494,7 @@ export function toGameView(input: GameViewInput): GameView {
           : undefined,
       isTurn,
       burning: snapshot.burning.includes(player.userId),
+      smashed: snapshot.smashed.includes(player.userId),
       turnSeconds: isTurn ? turnSeconds : undefined,
       cardKey: card?.id,
       autoPlayed: card?.automatic ?? false,
@@ -484,7 +507,9 @@ export function toGameView(input: GameViewInput): GameView {
             : bell.action.success
               ? { tone: 'win', label: `WIN +${bell.action.movedCards}` }
               : { tone: 'misfire', label: '오발' }
-          : undefined,
+          : bell?.action.penaltyRecipients?.includes(player.userId)
+            ? { tone: 'receive', label: '덱 +1' }
+            : undefined,
     };
   });
   if (!seated)
@@ -532,11 +557,6 @@ export function toGameView(input: GameViewInput): GameView {
         : stop && !stopByMe
           ? 'time-stop'
           : undefined;
-  const cast = input.skillCast;
-  const spitHit =
-    cast?.action.skillId === SkillId.SPIT &&
-    cast.action.targetUserId === userId &&
-    input.now - cast.castAt < SPIT_COVER_MS + SPIT_DRIP_MS;
   const turnPlayer = snapshot.players.find((player) => player.userId === snapshot.turnUserId);
   const skills = skillsOf(input);
   return {
@@ -563,7 +583,6 @@ export function toGameView(input: GameViewInput): GameView {
     turnNickname: turnPlayer?.nickname,
     myTurnSeconds: myPhase === 'turn' ? turnSeconds : undefined,
     pileCount: snapshot.pileCount,
-    mine: snapshot.mine || undefined,
     smashed: snapshot.smashed.includes(userId) || undefined,
     bell: bell
       ? { kind: bell.action.success ? 'success' : 'misfire' }
@@ -574,7 +593,10 @@ export function toGameView(input: GameViewInput): GameView {
     verdict: bell ? verdictOf(input, bell) : undefined,
     log: logOf(input),
     skills,
-    skillCast: skillCastOf(input),
+    skillCasts: input.recentSkills
+      .filter((cast) => input.now - cast.castAt < SKILL_CAST_MS)
+      .map((cast) => skillCastOf(input, cast)),
+    rat: ratOf(input),
     targeting: targetingOf(input, skills),
     bellMove: bellMoveAt(snapshot, input.serverNow),
     bellBreak: bellBreakAt(snapshot, input.serverNow),
@@ -589,7 +611,7 @@ export function toGameView(input: GameViewInput): GameView {
       seconds: secondsLeft(stop.endsAt, input.serverNow, 99),
     },
     frozen,
-    spit: spitHit && cast ? { key: cast.id } : undefined,
+    spit: input.spitHit && input.now < input.spitHit.endsAt ? input.spitHit : undefined,
   };
 }
 

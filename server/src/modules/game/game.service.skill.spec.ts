@@ -1,4 +1,10 @@
-import { Fruit, ROUND_RESULT_MS, SKILL_PICK_TIME_MS, TURN_TIME_MS } from '@nlmlio/shared';
+import {
+  Fruit,
+  RAT_ESCAPE_MS,
+  ROUND_RESULT_MS,
+  SKILL_PICK_TIME_MS,
+  TURN_TIME_MS,
+} from '@nlmlio/shared';
 import { Card, Deck } from '../../domain/card/deck';
 import { Game } from '../../domain/game/game';
 import { Room } from '../../domain/room/room';
@@ -52,7 +58,7 @@ describe('GameService 스킬 선택(FUNC-009-01·003)', () => {
       lifecycle,
       new GameStore(),
       new RoomQueue(),
-      { create: (input) => Game.create(input, alternating(), () => 0) } as GameFactory,
+      { create: (input) => Game.create(input, alternating(), () => 0.9) } as GameFactory,
       {
         save: jest.fn().mockResolvedValue(undefined),
         claimBell: jest.fn().mockResolvedValue(true),
@@ -84,25 +90,29 @@ describe('GameService 스킬 선택(FUNC-009-01·003)', () => {
     for (let index = 0; index < count; index++) await round();
   };
 
-  it('종 성공 4번까지는 선택이 열리지 않는다', async () => {
-    await succeed(4);
-    expect(state()).toMatchObject({ skillSuccesses: 4, skillPick: null });
-    expect(events.skills).not.toHaveBeenCalledWith(
-      1,
-      expect.objectContaining({ pick: expect.anything() }),
-    );
+  const finishInitial = async () => {
+    for (const id of [1, 2])
+      await service.pickSkill(id, { gameId: state().gameId, choice: { slot: 0 } });
+  };
+
+  it('시작 스킬을 고른 뒤 두 라운드까지는 다시 열리지 않는다', async () => {
+    expect(state().skillPick).toMatchObject({ pickNo: 1, done: 0, total: 2 });
+    await finishInitial();
+    await succeed(2);
+    expect(state()).toMatchObject({ skillSuccesses: 2, skillPick: null });
   });
 
-  it('5번째 성공의 결과 표시가 끝나면 선택이 열리고 본인에게 후보를 보낸다', async () => {
+  it('세 번째 라운드의 판정 화면이 끝나면 다음 선택을 열고 본인에게 후보를 보낸다', async () => {
+    await finishInitial();
     const gameId = state().gameId;
-    await succeed(4);
+    await succeed(2);
     await service.play(1, { gameId, turnId: state().turnId });
     await service.play(2, { gameId, turnId: state().turnId });
     await service.bell(1, { gameId, turnSeq: state().turnSeq });
     await jest.advanceTimersByTimeAsync(ROUND_RESULT_MS - 1);
     expect(state().skillPick).toBeNull();
     await jest.advanceTimersByTimeAsync(1);
-    expect(state().skillPick).toMatchObject({ pickNo: 1, done: 0, total: 2 });
+    expect(state().skillPick).toMatchObject({ pickNo: 2, done: 0, total: 2 });
     expect(state().turnDeadline).toBeNull();
     const mine = events.skills.mock.calls.filter(([id]) => id === 1).at(-1)![1];
     expect(mine.pick.candidates).toHaveLength(3);
@@ -110,7 +120,6 @@ describe('GameService 스킬 선택(FUNC-009-01·003)', () => {
   });
 
   it('선택 중에는 카드 내기가 무시되고 턴 타이머가 멈춘다', async () => {
-    await succeed(5);
     const before = state();
     expect(before.skillPick).not.toBeNull();
     expect(await service.play(1, { gameId: before.gameId, turnId: before.turnId })).toBe(false);
@@ -120,7 +129,6 @@ describe('GameService 스킬 선택(FUNC-009-01·003)', () => {
   });
 
   it('전원이 고르면 바로 끝나고 멈춘 턴 시간부터 이어 간다', async () => {
-    await succeed(5);
     const { gameId, turnSeq } = state();
     await jest.advanceTimersByTimeAsync(3000);
     expect(await service.pickSkill(1, { gameId, choice: { slot: 0 } })).toBe(true);
@@ -138,7 +146,6 @@ describe('GameService 스킬 선택(FUNC-009-01·003)', () => {
   });
 
   it('10초 안에 못 고르면 서버가 처리하고 게임이 다시 진행된다', async () => {
-    await succeed(5);
     const { turnSeq } = state();
     await jest.advanceTimersByTimeAsync(SKILL_PICK_TIME_MS);
     expect(state().skillPick).toBeNull();
@@ -150,7 +157,8 @@ describe('GameService 스킬 선택(FUNC-009-01·003)', () => {
 
   it('도중에 들어온 관전자도 관전자용 후보로 선택에 참여한다', async () => {
     room.join({ userId: 3, nickname: '관전' });
-    await succeed(5);
+    await finishInitial();
+    await succeed(3);
     expect(state().skillPick).toMatchObject({ total: 3 });
     const spectator = events.skills.mock.calls.filter(([id]) => id === 3).at(-1)![1];
     expect(spectator.pick.role).toBe('SPECTATOR');
@@ -158,7 +166,6 @@ describe('GameService 스킬 선택(FUNC-009-01·003)', () => {
   });
 
   it('후보·내 선택은 본인에게만 가고, 바뀐 사람에게만 다시 보낸다', async () => {
-    await succeed(5);
     const { gameId } = state();
     events.skills.mockClear();
     await service.pickSkill(1, { gameId, choice: { slot: 0 } });
@@ -169,7 +176,8 @@ describe('GameService 스킬 선택(FUNC-009-01·003)', () => {
 
   it('선택 중에 방을 나가면 대상에서 빠지고 남은 사람이 모두 골랐다면 끝난다', async () => {
     room.join({ userId: 3, nickname: '관전' });
-    await succeed(5);
+    await finishInitial();
+    await succeed(3);
     const { gameId } = state();
     await service.pickSkill(1, { gameId, choice: { slot: 0 } });
     await service.pickSkill(2, { gameId, choice: { slot: 0 } });
@@ -178,8 +186,23 @@ describe('GameService 스킬 선택(FUNC-009-01·003)', () => {
     expect(state().skillPick).toBeNull();
   });
 
+  it('쥐는 추가 입력이 없어도 서버 타이머에 맞춰 카드를 가져가고 소유자에게만 결과가 간다', async () => {
+    await finishInitial();
+    const { gameId, turnId } = state();
+    await service.play(1, { gameId, turnId });
+    await service.bell(2, { gameId, turnSeq: state().turnSeq });
+    await service.useSkill(1, { gameId, slot: 0 });
+    expect(state().rat).toEqual({ endsAt: Date.now() + RAT_ESCAPE_MS, cardCount: 1 });
+    events.skills.mockClear();
+    await jest.advanceTimersByTimeAsync(RAT_ESCAPE_MS - 1);
+    expect(state().pileCount).toBe(1);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(state()).toMatchObject({ rat: null, pileCount: 0 });
+    expect(events.skills.mock.calls.map(([id]) => id)).toEqual([1]);
+    expect(service.skillsFor(1)?.ratResult?.outcome).toBe('stolen');
+  });
+
   it('게임이 끝나면 선택 타이머를 취소한다', async () => {
-    await succeed(5);
     await lifecycle.leaving(2);
     expect(state().status).toBe('ENDED');
     expect(state().skillPick).toBeNull();

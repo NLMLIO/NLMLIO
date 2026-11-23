@@ -6,8 +6,9 @@ import {
   GameStatus,
   RoomStatus,
   ROUND_RESULT_MS,
+  SKILL_CAST_MS,
 } from '@nlmlio/shared';
-import { skillById } from '@nlmlio/shared';
+import { SkillId, skillById } from '@nlmlio/shared';
 import type { PublicUser, SkillChoice } from '@nlmlio/shared';
 import { ApiError, api, errorMessage } from '../../api/http';
 import { playSound } from '../../audio/sounds';
@@ -51,7 +52,9 @@ export function GamePage({
   const offlineSince = useGameStore((state) => state.offlineSince);
   const clockOffset = useGameStore((state) => state.clockOffset);
   const skills = useGameStore((state) => state.skills);
-  const skillCast = useGameStore((state) => state.lastSkill);
+  const recentSkills = useGameStore((state) => state.recentSkills);
+  const ratCrush = useGameStore((state) => state.ratCrush);
+  const spitHit = useGameStore((state) => state.spitHits[user.id]);
   const room = useRoomStore((state) => state.room);
   const roomSynced = useRoomStore((state) => state.synced);
   const log = useRoomStore((state) => state.log);
@@ -61,6 +64,8 @@ export function GamePage({
   const [error, setError] = useState('');
   /** 대상 지정 스킬을 골라 좌석을 누르길 기다리는 슬롯 */
   const [targetingSlot, setTargetingSlot] = useState<number | null>(null);
+  const [armedSmash, setArmedSmash] = useState<{ gameId: string; slot: number } | null>(null);
+  const smashPending = useRef(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -75,11 +80,17 @@ export function GamePage({
     snapshot?.status === GameStatus.ENDED &&
     lastBell !== null &&
     now < lastBell.receivedAt + ROUND_RESULT_MS;
+  const showingFinalSkill =
+    snapshot?.status === GameStatus.ENDED &&
+    recentSkills.some(
+      (cast) =>
+        cast.action.skillId === SkillId.RUSSIAN_ROULETTE && now < cast.castAt + SKILL_CAST_MS,
+    );
   useEffect(() => {
-    if (!live && !showingFinalBell) return;
+    if (!live && !showingFinalBell && !showingFinalSkill) return;
     const timer = setInterval(() => setNow(Date.now()), 100);
     return () => clearInterval(timer);
-  }, [live, showingFinalBell]);
+  }, [live, showingFinalBell, showingFinalSkill]);
 
   useEffect(() => {
     if (!lastBell) return;
@@ -122,6 +133,19 @@ export function GamePage({
   const frozen = canAct && (burnedSelf || (!!timeStop && !stopByMe));
   const canPlayNow = canAct && !burnedSelf && (timeStop ? stopByMe : myTurn);
 
+  const armedSlot =
+    armedSmash &&
+    armedSmash.gameId === snapshot?.gameId &&
+    skills?.slots[armedSmash.slot] === SkillId.HAND_SMASH &&
+    canAct &&
+    !picking
+      ? armedSmash.slot
+      : null;
+
+  useEffect(() => {
+    if (armedSlot === null) setArmedSmash(null);
+  }, [armedSlot, armedSmash]);
+
   const joiningHandWindow = canJoinBellHandWindow(snapshot, user.id, now + clockOffset);
 
   function isPaused() {
@@ -147,6 +171,42 @@ export function GamePage({
 
   async function ringBell(bell?: number) {
     const atPress = useGameStore.getState();
+    if (armedSlot !== null) {
+      if (smashPending.current) return;
+      const latest = atPress.snapshot;
+      const window = latest?.smashWindow;
+      if (
+        !latest ||
+        latest.gameId !== armedSmash?.gameId ||
+        latest.skillPick ||
+        atPress.skills?.slots[armedSlot] !== SkillId.HAND_SMASH
+      )
+        return;
+      if (
+        !window ||
+        window.userId === user.id ||
+        Date.now() + atPress.clockOffset > window.endsAt ||
+        !latest.players.some(
+          (player) => player.userId === window.userId && player.status === GamePlayerStatus.ACTIVE,
+        )
+      ) {
+        setError('다른 플레이어가 종을 친 직후에 내려칠 수 있어요.');
+        return;
+      }
+      smashPending.current = true;
+      try {
+        const failure = await sendGameIntent(GameClientEvent.SKILL_USE, {
+          gameId: latest.gameId,
+          slot: armedSlot,
+          expectedSkillId: SkillId.HAND_SMASH,
+        });
+        if (failure) setError(failure);
+        else setArmedSmash(null);
+      } finally {
+        smashPending.current = false;
+      }
+      return;
+    }
     const joining = canJoinBellHandWindow(
       atPress.snapshot,
       user.id,
@@ -197,6 +257,12 @@ export function GamePage({
   function useSkillSlot(slot: number) {
     const id = skills?.slots[slot];
     if (!snapshot || !id || !skillUsable(snapshot, user.id, id)) return;
+    if (id === SkillId.HAND_SMASH) {
+      setTargetingSlot(null);
+      setArmedSmash(armedSlot === slot ? null : { gameId: snapshot.gameId, slot });
+      return;
+    }
+    setArmedSmash(null);
     if (skillById(id).target === 'one') {
       setTargetingSlot((current) => (current === slot ? null : slot));
       return;
@@ -272,17 +338,26 @@ export function GamePage({
   // 선택 창이 뜨거나 게임이 끝나면 대상 지정을 취소하고, Esc로도 취소한다.
   const targetingActive = targetingSlot !== null;
   useEffect(() => {
-    if (!targetingActive) return;
+    if (!targetingActive && armedSlot === null) return;
     if (picking || !live) {
       setTargetingSlot(null);
       return;
     }
     const escape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setTargetingSlot(null);
+      if (event.key === 'Escape') {
+        setTargetingSlot(null);
+        setArmedSmash(null);
+      }
     };
     window.addEventListener('keydown', escape);
     return () => window.removeEventListener('keydown', escape);
-  }, [targetingActive, picking, live]);
+  }, [targetingActive, armedSlot, picking, live]);
+
+  const bellInput =
+    !confirmLeave &&
+    !picking &&
+    (armedSlot !== null ||
+      (((canAct && !judging) || joiningHandWindow) && !frozen && !smashedSelf && !bellBroken));
 
   useGameShortcuts({
     skill: confirmLeave || ended ? undefined : useSkillSlot,
@@ -295,36 +370,11 @@ export function GamePage({
             ? actions.onLeave
             : undefined,
     // 종 옮기기·해킹 중에는 Space 대신 새 키로만 종을 친다.
-    space:
-      !confirmLeave &&
-      ((canAct && !judging) || joiningHandWindow) &&
-      !picking &&
-      !frozen &&
-      !smashedSelf &&
-      !bellBroken &&
-      !shell &&
-      !ringKey
-        ? () => ringBell()
-        : undefined,
-    bell:
-      !confirmLeave &&
-      ((canAct && !judging) || joiningHandWindow) &&
-      !picking &&
-      !frozen &&
-      !smashedSelf &&
-      !bellBroken &&
-      ringKey
-        ? { code: `Key${ringKey}`, run: () => ringBell() }
-        : undefined,
+    space: bellInput && !shell && !ringKey ? () => ringBell() : undefined,
+    bell: bellInput && ringKey ? { code: `Key${ringKey}`, run: () => ringBell() } : undefined,
     bells:
-      shell &&
-      !confirmLeave &&
-      ((canAct && !judging) || joiningHandWindow) &&
-      !picking &&
-      !frozen &&
-      !smashedSelf &&
-      !bellBroken
-        ? shell.keys.map((key, index) => ({ code: `Key${key}`, run: () => ringBell(index) }))
+      bellInput && shell
+        ? shell.keys.map((key, index) => ({ key, run: () => ringBell(index) }))
         : undefined,
   });
 
@@ -338,7 +388,7 @@ export function GamePage({
       </GameFrame>
     );
 
-  if (ended && !showingFinalBell)
+  if (ended && !showingFinalBell && !showingFinalSkill)
     return (
       <GameFrame>
         <GameResult
@@ -359,7 +409,9 @@ export function GamePage({
     log,
     emojis,
     skills,
-    skillCast,
+    recentSkills,
+    spitHit,
+    ratCrush,
     targetingSlot,
     bell: judging ? lastBell : null,
     lastCards,
@@ -377,6 +429,7 @@ export function GamePage({
         playing={playing}
         hands={judging ? (snapshot.bellHands ?? undefined) : undefined}
         canJoinHandWindow={joiningHandWindow}
+        armedSmashSlot={armedSlot}
       >
         {confirmLeave && (
           <LeaveConfirm

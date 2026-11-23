@@ -5,18 +5,17 @@ import type { RoomRole } from './domain';
  * 이 파일은 그 내용을 옮긴 것이다. 규칙(후보 뽑기·보유 칸·선택 진행)은 서버 도메인이 계산한다.
  */
 
-/** 5라운드가 아니라 «종 성공 횟수» 기준이다(009-01). */
-export const SKILL_PICK_EVERY = 5;
+/** 시작 스킬을 고른 뒤, 이만큼 라운드가 끝날 때마다 다시 고른다(009-01). */
+export const SKILL_PICK_EVERY = 3;
 /** 선택 시간(009-01) */
 export const SKILL_PICK_TIME_MS = 10_000;
-/** 스킬을 쓰면 모두의 화면 위쪽에 사용 알림이 뜨는 시간(009-04) */
+/** 스킬 사용 알림이 수신자의 화면 위쪽에 뜨는 시간(009-04) */
 export const SKILL_CAST_MS = 1_600;
 /** 손 개 쌔게 내려치기: 종 판정이 난 뒤 이 시간 안에만 쓸 수 있다 */
 export const HAND_SMASH_WINDOW_MS = 2_000;
 /** 종 야바위가 이어지는 시간과 늘어나는 종의 개수 */
 export const BELL_SHELL_MS = 10_000;
-export const BELL_SHELL_MIN = 3;
-export const BELL_SHELL_MAX = 5;
+export const BELL_SHELL_KEYS = ['1', '2', '3', '4'] as const;
 /**
  * 종 옮기기(009-05): 종이 옮겨지는 연출 0.5초 + 새 키로 치는 3초. 이동 중 처음 300ms는 종 입력을 무시한다.
  * 새 키는 방 전체가 같은 키 하나를 쓴다.
@@ -34,8 +33,10 @@ export const SPIT_DRIP_MS = 3_000;
 /** 종 부수기(009-05): 종이 부서져 아무도 못 치는 시간(10~30초 중 서버가 정한다) */
 export const BELL_BREAK_MIN_MS = 10_000;
 export const BELL_BREAK_MAX_MS = 30_000;
-/** 러시안 룰렛(009-05): 총을 맞은 사람의 테이블에서 종 밑으로 보내는 카드 수 */
+/** 러시안 룰렛(009-05): 총을 맞은 사람의 덱에서 종 밑으로 보내는 카드 수 */
 export const ROULETTE_CARDS = 5;
+/** 쥐가 종 아래에 나타난 뒤 카드를 가져갈 때까지의 시간 */
+export const RAT_ESCAPE_MS = 2_000;
 /** 후보 칸 수와 보유 칸 수(009-02, 009-03) */
 export const SKILL_CANDIDATE_COUNT = 3;
 export const SKILL_SLOT_COUNT = 3;
@@ -97,6 +98,8 @@ export interface SkillDefinition {
   timing: SkillTiming;
   user: SkillUser;
   target: SkillTarget;
+  /** 필드는 방 전체, 개인은 시전자·피격자·반사자, hidden은 설치 알림을 보내지 않는다. */
+  announcement: 'field' | 'personal' | 'hidden';
   /**
    * 사용 효과를 구현했나. false면 선택해서 보유할 수는 있지만 쓸 수 없다(FUNC-009-05 효과 구현 중).
    * 서버가 이 값으로 사용을 거부하고 화면은 흐리게 보인다.
@@ -108,6 +111,7 @@ export interface SkillDefinition {
 export const SKILLS: readonly SkillDefinition[] = [
   {
     id: SkillId.BELL_MOVE,
+    announcement: 'field',
     name: '종 옮기기',
     grade: 1,
     timing: SkillTiming.ANYTIME,
@@ -118,6 +122,7 @@ export const SKILLS: readonly SkillDefinition[] = [
   },
   {
     id: SkillId.SPARKLE_CARD,
+    announcement: 'personal',
     name: '반짝반짝한 카드',
     grade: 1,
     timing: SkillTiming.ANYTIME,
@@ -128,6 +133,7 @@ export const SKILLS: readonly SkillDefinition[] = [
   },
   {
     id: SkillId.SIX_FRUIT_CARD,
+    announcement: 'personal',
     name: '과일 6개 카드',
     grade: 1,
     timing: SkillTiming.ANYTIME,
@@ -138,6 +144,7 @@ export const SKILLS: readonly SkillDefinition[] = [
   },
   {
     id: SkillId.NUMBER_SHIFT,
+    announcement: 'personal',
     name: '아무도 몰래 숫자 바꾸고 좋아하기',
     grade: 2,
     timing: SkillTiming.ANYTIME,
@@ -148,6 +155,7 @@ export const SKILLS: readonly SkillDefinition[] = [
   },
   {
     id: SkillId.SPIT,
+    announcement: 'personal',
     name: '침 뱉기',
     grade: 2,
     timing: SkillTiming.ANYTIME,
@@ -158,26 +166,30 @@ export const SKILLS: readonly SkillDefinition[] = [
   },
   {
     id: SkillId.BELL_BREAK,
+    announcement: 'field',
     name: '종 부수기',
     grade: 2,
     timing: SkillTiming.ANYTIME,
     user: SkillUser.PLAYER,
     target: 'none',
     available: true,
-    description: '10~30초 동안 종을 부순다. 종이 돌아올 때까지 아무도 종을 못 친다.',
+    description:
+      '10~30초 동안 종을 부순다. 종이 돌아올 때까지 아무도 종을 못 친다. 종 아래에 있는 쥐도 잡는다.',
   },
   {
     id: SkillId.BELL_SHELL_GAME,
+    announcement: 'field',
     name: '종 야바위',
     grade: 2,
     timing: SkillTiming.ANYTIME,
     user: SkillUser.PLAYER,
     target: 'none',
     available: true,
-    description: '10초 동안 종이 3~5개로 늘어난다. 종마다 단축키가 있고 진짜는 하나뿐이다.',
+    description: '10초 동안 종이 4개로 늘어난다. 숫자키 1~4로 선택하며 진짜는 하나뿐이다.',
   },
   {
     id: SkillId.HACK,
+    announcement: 'personal',
     name: '해킹',
     grade: 2,
     timing: SkillTiming.ANYTIME,
@@ -188,6 +200,7 @@ export const SKILLS: readonly SkillDefinition[] = [
   },
   {
     id: SkillId.MINE,
+    announcement: 'hidden',
     name: '지뢰',
     grade: 2,
     timing: SkillTiming.ANYTIME,
@@ -195,10 +208,11 @@ export const SKILLS: readonly SkillDefinition[] = [
     target: 'none',
     available: true,
     description:
-      '이번 라운드에 지뢰를 깐다. 5개를 맞춰 종을 눌러도 카드가 종 밑에 쌓인다. 잘 보이지 않는다.',
+      '이번 라운드에 지뢰를 깐다. 5개를 맞춰 종을 눌러도 카드가 종 밑에 쌓인다. 폭발 전까지 설치 여부는 비밀이다.',
   },
   {
     id: SkillId.HAND_SMASH,
+    announcement: 'personal',
     name: '손 개 쌔개 내려치기',
     grade: 3,
     timing: SkillTiming.ON_BELL,
@@ -206,10 +220,11 @@ export const SKILLS: readonly SkillDefinition[] = [
     target: 'none',
     available: true,
     description:
-      '누군가 종을 쳐서 판정이 난 뒤 2초 안에 쓰면, 종을 먼저 친 사람의 손이 부서져 다음 판정까지 종을 못 친다.',
+      '슬롯을 눌러 준비한 뒤, 상대의 종 판정 후 2초 안에 현재 종 키로 내려친다. 맞은 손은 다음 판정까지 종을 못 친다.',
   },
   {
     id: SkillId.AMATERASU,
+    announcement: 'personal',
     name: '아마테라스',
     grade: 3,
     timing: SkillTiming.ANYTIME,
@@ -220,6 +235,7 @@ export const SKILLS: readonly SkillDefinition[] = [
   },
   {
     id: SkillId.RAINBOW_REFLECT,
+    announcement: 'personal',
     name: '무지개 반사',
     grade: 3,
     timing: SkillTiming.AUTOMATIC,
@@ -230,16 +246,18 @@ export const SKILLS: readonly SkillDefinition[] = [
   },
   {
     id: SkillId.RAT,
+    announcement: 'personal',
     name: '쥐새끼',
     grade: 3,
     timing: SkillTiming.ANYTIME,
     user: SkillUser.PLAYER,
     target: 'none',
     available: true,
-    description: '쥐를 보내 종 밑에 깔린 카드를 몰래 가져온다.',
+    description: '쥐를 보내 2초 뒤 종 밑의 카드를 가져온다. 그전에 종이 부서지면 쥐가 잡힌다.',
   },
   {
     id: SkillId.TIME_STOP,
+    announcement: 'field',
     name: '시간 정지',
     grade: 4,
     timing: SkillTiming.ANYTIME,
@@ -250,6 +268,7 @@ export const SKILLS: readonly SkillDefinition[] = [
   },
   {
     id: SkillId.DORMAMMU,
+    announcement: 'field',
     name: '도르마무',
     grade: 4,
     timing: SkillTiming.ON_ROUND_END,
@@ -260,16 +279,18 @@ export const SKILLS: readonly SkillDefinition[] = [
   },
   {
     id: SkillId.RUSSIAN_ROULETTE,
+    announcement: 'personal',
     name: '러시안 룰렛',
     grade: 4,
     timing: SkillTiming.ANYTIME,
     user: SkillUser.SPECTATOR,
     target: 'one',
     available: true,
-    description: '총을 맞은 유저는 자신이 낸 카드의 맨 위부터 5장을 종 밑에 넣는다.',
+    description: '총을 맞은 플레이어의 덱 맨 위에서 최대 5장을 종 아래에 넣는다.',
   },
   {
     id: SkillId.RESET,
+    announcement: 'field',
     name: '안해',
     grade: 5,
     timing: SkillTiming.ANYTIME,
@@ -311,8 +332,17 @@ export interface SkillPickPublic {
   total: number;
 }
 
+/** 쥐가 노린 카드 수와 서버에서 확정한 결과 */
+export interface RatResult {
+  at: number;
+  outcome: 'stolen' | 'crushed' | 'missed';
+  cardCount: number;
+}
+
 /** 본인에게만 보내는 스킬 상태(`game:skills`) */
 export interface SkillStateEvent {
+  /** 마지막 쥐의 결과. 쥐를 보낸 본인에게만 전달한다. */
+  ratResult?: RatResult | null;
   gameId: string;
   /** 보유 스킬(최대 3개, 칸 순서대로) */
   slots: SkillId[];
@@ -339,6 +369,7 @@ export interface SkillPickRequest {
 export interface SkillUseRequest {
   gameId: string;
   slot: number;
+  expectedSkillId?: SkillId;
   targetUserId?: number;
 }
 
