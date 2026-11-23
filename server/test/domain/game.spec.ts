@@ -4,8 +4,8 @@ import { Game, GameRuleError } from '../../src/domain/game/game';
 import { Table } from '../../src/domain/game/table';
 
 const card = (fruit: Fruit, count: 1 | 2 | 3 | 4 | 5) => new Card(fruit, count);
-const start = (deck: Deck, count = 2) =>
-  Game.create(
+const start = (deck: Deck, count = 2) => {
+  const game = Game.create(
     {
       gameId: 'test-game',
       roomCode: '123456',
@@ -18,6 +18,10 @@ const start = (deck: Deck, count = 2) =>
     },
     deck,
   );
+  game.openSkillPick([], 0);
+  for (const id of game.userIds) game.chooseSkill(id, { slot: 0 }, 0);
+  return game;
+};
 const total = (game: Game) => {
   const state = game.checkpoint();
   return (
@@ -171,7 +175,12 @@ describe('Game (FUNC-005-01~13,15,16)', () => {
   });
   it('오발하면 자신을 제외한 생존 플레이어 모두에게 덱 아래로 1장씩 준다', () => {
     const game = start(Deck.standard(), 4);
-    expect(game.ring(1, 0, 1)).toMatchObject({ success: false, movedCards: 0, penaltyCards: 3 });
+    expect(game.ring(1, 0, 1)).toMatchObject({
+      success: false,
+      movedCards: 0,
+      penaltyCards: 3,
+      penaltyRecipients: [2, 3, 4],
+    });
     expect(game.snapshot().players.map((player) => player.handCount)).toEqual([11, 15, 15, 15]);
     expect(game.snapshot().pileCount).toBe(0);
     expect(total(game)).toBe(56);
@@ -185,7 +194,12 @@ describe('Game (FUNC-005-01~13,15,16)', () => {
   });
   it('벌칙 카드는 부족하면 참가 순서대로 가진 만큼만 주며 카드를 생성하지 않는다', () => {
     const game = start(new Deck(Array.from({ length: 4 }, () => card(Fruit.BANANA, 1))), 4);
-    expect(game.ring(1, 0, 1)).toMatchObject({ success: false, movedCards: 0, penaltyCards: 1 });
+    expect(game.ring(1, 0, 1)).toMatchObject({
+      success: false,
+      movedCards: 0,
+      penaltyCards: 1,
+      penaltyRecipients: [2],
+    });
     expect(game.snapshot().players.map((player) => player.handCount)).toEqual([0, 2, 1, 1]);
     expect(game.snapshot().players[0].status).toBe(GamePlayerStatus.ELIMINATED);
     expect(total(game)).toBe(4);
@@ -346,7 +360,12 @@ describe('Game (FUNC-005-01~13,15,16)', () => {
   });
   it('오발 벌칙으로 0장이 되면 탈락하고 남은 플레이어가 승리한다', () => {
     const game = start(new Deck([card(Fruit.LIME, 5), card(Fruit.PLUM, 1)]));
-    expect(game.ring(1, 0, 10)).toMatchObject({ success: false, movedCards: 0, penaltyCards: 1 });
+    expect(game.ring(1, 0, 10)).toMatchObject({
+      success: false,
+      movedCards: 0,
+      penaltyCards: 1,
+      penaltyRecipients: [2],
+    });
     expect(game.snapshot().players[1].handCount).toBe(2);
     expect(game.snapshot().status).toBe('ENDED');
     expect(game.snapshot().results[0].userId).toBe(2);

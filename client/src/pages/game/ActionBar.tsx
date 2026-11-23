@@ -38,6 +38,8 @@ interface ActionBarProps {
   leaving: boolean;
   /** 종 옮기기 중이면 Space 대신 쓰는 새 키 */
   bellKey?: string;
+  smashReady?: boolean;
+  receivedPenalty?: boolean;
   onPlayCard: () => void;
   onLeave: () => void;
 }
@@ -54,6 +56,8 @@ export function ActionBar({
   playing = false,
   leaving,
   bellKey,
+  smashReady,
+  receivedPenalty,
   onPlayCard,
   onLeave,
 }: ActionBarProps) {
@@ -77,6 +81,7 @@ export function ActionBar({
           {nickname}
           <span>
             덱 <b>{deckCount}</b>
+            {receivedPenalty && <b className="penalty-credit"> +1</b>}
           </span>
         </p>
       </div>
@@ -106,7 +111,7 @@ export function ActionBar({
       </div>
       <span className="action-bar-divider" aria-hidden="true" />
       <p className="action-bar-control bell-hint">
-        종{' '}
+        {smashReady ? '내려치기' : '종'}{' '}
         {bellKey ? (
           <>
             <kbd className="key struck">SPACE</kbd>

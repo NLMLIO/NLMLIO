@@ -6,7 +6,7 @@ import { SLOT_KEYS, clock, firstEmptySlot, isFull } from './skill-view';
 import type { SkillPickHandler, SkillPickView, SkillSlotView } from './skill-view';
 
 /**
- * 종 성공 5번마다 뜨는 스킬 선택 창(Figma 21 · 21-1, FUNC-009-01~03). 게임 화면 전체(1440×900)를 덮는다.
+ * 시작 시와 매 3라운드 종료 후 뜨는 스킬 선택 창(Figma 21 · 21-1, FUNC-009-01~03). 게임 화면 전체(1440×900)를 덮는다.
  * 후보 3칸은 서버가 정해서 보내고, 여기서는 고른 칸을 «의도»로만 보낸다. 칸이 가득 차 있으면 바꿀 칸을 함께 고르거나 받지 않는다.
  */
 export function SkillPick({
@@ -60,17 +60,17 @@ export function SkillPick({
         <b>{clock(pick.secondsLeft)}</b>
       </p>
       <p className="skill-pick-eyebrow">
-        SUCCESS {pick.successCount} · {spectator ? 'SPECTATOR ' : ''}SKILL PICK {pick.pickNo}
+        {pick.pickNo === 1 ? '게임 시작' : `라운드 ${pick.round - 1} 종료`} · {spectator ? 'SPECTATOR ' : ''}SKILL PICK {pick.pickNo}
       </p>
       <h2 id="skill-pick-title" className="skill-pick-title">
         스킬을 하나 고르세요
       </h2>
       <p className="skill-pick-sub">
         {spectator
-          ? `관전자도 종 성공 ${SKILL_PICK_EVERY}번마다 관전자용 스킬 하나를 골라요. 같은 스킬이 여러 장 나올 수 있어요.`
+          ? `관전자는 게임 시작 시와 ${SKILL_PICK_EVERY}라운드마다 관전자용 스킬 하나를 골라요. 같은 스킬이 여러 장 나올 수 있어요.`
           : full
             ? '칸이 가득 찼어요. 바꿀 칸을 누르고 스킬을 고르거나, 받지 않을 수 있어요. 10초가 지나면 받지 않아요.'
-            : `종 성공 ${SKILL_PICK_EVERY}번마다 스킬 3개가 나와요. 하나를 골라 빈 칸에 넣어요. 10초 안에 안 고르면 무작위로 들어가요.`}
+            : `게임 시작 시와 ${SKILL_PICK_EVERY}라운드마다 스킬 3개가 나와요. 하나를 골라 빈 칸에 넣어요. 10초 안에 안 고르면 무작위로 들어가요.`}
       </p>
       <div className="skill-pick-cards">
         {pick.candidates.map((skillId, index) => {
@@ -120,7 +120,7 @@ export function SkillPick({
           <p className="skill-pick-dock-note">
             {pick.declined
               ? '이번 스킬은 받지 않았어요'
-              : `종 성공 ${SKILL_PICK_EVERY}번마다 하나씩 · 한 번 쓰면 그 칸은 비어요`}
+              : `게임 시작 시와 ${SKILL_PICK_EVERY}라운드마다 하나씩 · 한 번 쓰면 그 칸은 비어요`}
           </p>
         )}
       </section>

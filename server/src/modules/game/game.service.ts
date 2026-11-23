@@ -170,7 +170,7 @@ export class GameService implements OnModuleInit {
   }
 
   /**
-   * 스킬 사용(FUNC-009-04). 쓰면 칸에서 사라지고 방 전체에 사용 알림(`game:action`)이 간다.
+   * 스킬 사용(FUNC-009-04). 쓰면 칸에서 사라지고 스킬 공개 범위에 따라 사용 알림(`game:action`)이 간다.
    * 스킬 선택 중이면 조용히 무시하고 false, 쓸 수 없으면 `SKILL_UNAVAILABLE`.
    */
   useSkill(
@@ -180,7 +180,7 @@ export class GameService implements OnModuleInit {
     authorize: Authorize = trusted,
   ): Promise<boolean> {
     return this.command(userId, input.gameId, authorize, (game) =>
-      game.useSkill(userId, input.slot, input.targetUserId, receivedAt),
+      game.useSkill(userId, input.slot, input.targetUserId, receivedAt, input.expectedSkillId),
     );
   }
 
@@ -261,6 +261,7 @@ export class GameService implements OnModuleInit {
       try {
         event = await action(session.game);
       } catch (error) {
+        if (session.game.version !== version) await this.changed(session);
         if (error instanceof GameRuleError) throw appError(error.code);
         throw error;
       }
@@ -288,6 +289,7 @@ export class GameService implements OnModuleInit {
     this.timers.cancel(`turn:${code}`);
     this.timers.cancel(`skill-open:${code}`);
     this.timers.cancel(`skill-settle:${code}`);
+    this.timers.cancel(`rat:${code}`);
     const session = this.games.get(code);
     if (!session) return;
     session.closed = true;
@@ -313,6 +315,7 @@ export class GameService implements OnModuleInit {
       this.timers.cancel(`turn:${game.roomCode}`);
       this.timers.cancel(`skill-open:${game.roomCode}`);
       this.timers.cancel(`skill-settle:${game.roomCode}`);
+      this.timers.cancel(`rat:${game.roomCode}`);
       for (const id of game.userIds) {
         this.timers.cancel(`connection:${id}`);
         if (!this.connections.get(id)?.size) this.scheduleWaitingDisconnect(id, game.roomCode);
@@ -322,8 +325,12 @@ export class GameService implements OnModuleInit {
         session.returnedToRoom = true;
       }
     } else {
+      const opensAt = game.skillPickOpensAt;
+      const now = Date.now();
+      if (opensAt !== null && now >= opensAt) game.openSkillPick(this.spectatorIds(session), now);
       this.scheduleTurn(session);
       this.scheduleSkillPick(session);
+      this.scheduleRat(session);
     }
     const state = game.snapshot();
     if (action)
@@ -378,6 +385,24 @@ export class GameService implements OnModuleInit {
       this.games.delete(game.roomCode);
   }
 
+  private scheduleRat(session: GameSession): void {
+    const { game } = session;
+    const key = `rat:${game.roomCode}`;
+    const deadline = game.ratDeadline;
+    if (deadline === null) {
+      this.timers.cancel(key);
+      return;
+    }
+    this.timers.schedule(key, deadline, () => {
+      this.background(() =>
+        this.queue.run(game.roomCode, async () => {
+          if (this.games.get(game.roomCode) === session && game.settleRat(Date.now()))
+            await this.changed(session);
+        }),
+      );
+    });
+  }
+
   private scheduleTurn(session: GameSession): void {
     const { game } = session;
     const turnId = game.turnId;
@@ -400,7 +425,7 @@ export class GameService implements OnModuleInit {
     });
   }
   /**
-   * 종 성공 5번째의 결과 표시가 끝나면 스킬 선택을 열고, 열린 뒤에는 10초 마감에 처리한다(FUNC-009-01·003).
+   * 세 라운드마다 결과 표시가 끝나면 스킬 선택을 열고, 열린 뒤에는 10초 마감에 처리한다(FUNC-009-01·003).
    * 둘 다 같은 방 큐에 넣어 다른 이벤트와 순서대로 처리한다.
    */
   private scheduleSkillPick(session: GameSession): void {

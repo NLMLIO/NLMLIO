@@ -17,6 +17,7 @@ import { WaitingRoomPage } from './pages/room/WaitingRoomPage';
 import './styles/app.css';
 import './styles/game.css';
 import './styles/skill.css';
+import './styles/skill-motion.css';
 
 const PAGES = [
   'lobby',

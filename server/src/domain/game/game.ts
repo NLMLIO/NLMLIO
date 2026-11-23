@@ -3,6 +3,7 @@ import {
   GamePlayerStatus,
   GameStatus,
   HAND_SMASH_WINDOW_MS,
+  SKILL_PICK_EVERY,
   ROUND_RESULT_MS,
   TURN_TIME_MS,
 } from '@nlmlio/shared';
@@ -14,6 +15,7 @@ import type {
   SettleGameInput,
   SkillChoice,
   SkillStateEvent,
+  RatResult,
   TimeStopPublic,
 } from '@nlmlio/shared';
 import {
@@ -22,10 +24,10 @@ import {
   BELL_MOVE_KEYS,
   BELL_MOVE_MS,
   BELL_MOVE_POSITIONS,
-  BELL_SHELL_MAX,
-  BELL_SHELL_MIN,
+  BELL_SHELL_KEYS,
   BELL_SHELL_MS,
   ROULETTE_CARDS,
+  RAT_ESCAPE_MS,
   RoomRole,
   TIME_STOP_MS,
   SkillId,
@@ -121,8 +123,8 @@ export class Game {
   private clock: number;
   private readonly skills: SkillBook;
   private readonly random: Random;
-  /** 종 성공이 5의 배수가 돼 스킬 선택을 열 차례다. 결과 표시가 끝나면 서비스가 연다 */
-  private skillDue = false;
+  /** 게임 시작과 매 세 라운드 종료 때 방 구성원에게 선택을 연다 */
+  private skillDue = true;
   /** 스킬 선택 중 멈춘 턴의 남은 시간. 선택이 끝나면 여기서부터 이어 간다 */
   private pausedTurnMs: number | null = null;
   /** 반짝반짝한 카드를 쓴 사람. 다음에 내는 카드가 금칠이 된다 */
@@ -143,6 +145,8 @@ export class Game {
   private mine = false;
   /** 종 부수기: 종이 돌아올 때까지 아무도 종을 칠 수 없다 */
   private bellBreak: BellBreakPublic | null = null;
+  private rat: { userId: number; endsAt: number; cardCount: number } | null = null;
+  private readonly ratResults = new Map<number, RatResult>();
   /** 종 야바위: 종마다의 단축키와 진짜 종의 번호(진짜는 공개하지 않는다) */
   private shell: { endsAt: number; keys: string[]; real: number } | null = null;
   /** 도르마무로 되돌릴 수 있는 판정 직전 상태 */
@@ -228,6 +232,7 @@ export class Game {
     if (
       this.phase !== GameStatus.PLAYING ||
       this.skills.selection ||
+      this.skillDue ||
       sequence < this.sequence ||
       this.resolvedSequence === sequence
     )
@@ -251,10 +256,11 @@ export class Game {
     const player = this.activePlayer(userId);
     if (turnId !== this.turnToken) throw new GameRuleError(ErrorCode.VALIDATION_FAILED);
     now = this.time(now);
+    this.settleRat(now);
     // 시간 정지 중에는 쓴 사람만, 차례와 상관없이 카드를 낼 수 있다. 다른 사람은 조용히 무시한다.
     const stopper = this.stopperAt(now);
     if (stopper !== null) {
-      if (userId !== stopper) return null;
+      if (userId !== stopper || !player.handCount) return null;
     } else if (userId !== this.current) throw new GameRuleError(ErrorCode.NOT_YOUR_TURN);
     // 스킬 선택 중이거나 곧 열릴 예정이면 카드 내기를 무시한다(009-01).
     if (this.skills.selection || this.skillDue) return null;
@@ -286,6 +292,7 @@ export class Game {
       .filter((player) => player.active)
       .map((player) => player.userId);
     now = this.time(now);
+    this.settleRat(now);
     if (!this.canRing(userId, sequence, now)) return null;
     const player = this.activePlayer(userId);
     const totals = this.table.totals();
@@ -296,16 +303,17 @@ export class Game {
     // 지뢰: 5개를 맞춰도 터져서 카드가 모두 종 밑으로 간다. 성공도 오발도 아니라 기록·성공 횟수에 넣지 않는다.
     const mined = success && this.mine;
     const won = success && !mined;
-    const pickDue = won && this.skills.countSuccess();
+    if (won) this.skills.countSuccess();
     this.resolvedSequence = sequence;
     if (!mined) player.bell(success, this.playedAt === null ? 0 : now - this.playedAt);
     let movedCards: number;
-    let penaltyCards = 0;
+    const penaltyRecipients: number[] = [];
     if (mined) {
       const cards = this.table.collect();
       this.pile.push(...cards);
       movedCards = cards.length;
     } else if (success) {
+      this.finishRat('missed', now);
       const cards = [...this.table.collect(), ...this.pile];
       this.pile = [];
       player.take(cards);
@@ -318,10 +326,10 @@ export class Game {
         const cards = player.penalty();
         if (!cards.length) break;
         opponent.take(cards);
-        penaltyCards += cards.length;
+        penaltyRecipients.push(opponent.userId);
       }
       // 벌칙으로 덱이 떨어진 사람은 마지막에 카드를 «낸» 사람이 아니므로 가장 앞(낮은 순위)에 둔다.
-      if (penaltyCards && player.handCount === 0) this.emptied.unshift(userId);
+      if (penaltyRecipients.length && player.handCount === 0) this.emptied.unshift(userId);
       const cards = this.table.collect();
       this.pile.push(...cards);
       movedCards = cards.length;
@@ -338,14 +346,12 @@ export class Game {
     this.smashWindow = { userId, endsAt: now + HAND_SMASH_WINDOW_MS };
     if (this.current === null || !this.canPlay(this.current))
       this.current = this.nextAfter(this.current ?? userId);
-    this.roundNumber++;
+    this.advanceRound();
     this.newTurn(now);
     this.resumeAt = now + ROUND_RESULT_MS;
     this.bellHands = new BellHands(sequence, receivedAt, this.resumeAt, eligibleUserIds, userId);
     this.deadline = this.resumeAt + TURN_TIME_MS;
     this.finishIfNeeded(now);
-    // 그 판정으로 게임이 끝나면 선택을 열지 않는다(009-01).
-    if (pickDue && this.phase === GameStatus.PLAYING) this.skillDue = true;
     this.revision++;
     return {
       kind: 'bell',
@@ -355,7 +361,7 @@ export class Game {
       totals,
       ...(mined ? { mined: true as const } : {}),
       ...(fake ? { fake: true as const } : {}),
-      ...(!success ? { penaltyCards } : {}),
+      ...(!success ? { penaltyCards: penaltyRecipients.length, penaltyRecipients } : {}),
     };
   }
 
@@ -410,14 +416,13 @@ export class Game {
       if (face.gilded) card.gild();
       if (face.boosted && card.canBoost) card.boost();
     }
+    this.finishRat('missed', now);
     this.pile = [...point.pile];
     this.emptied = [...point.emptied];
     this.current = point.current;
     this.roundNumber = point.roundNumber;
-    if (point.counted) {
-      this.skills.uncountSuccess();
-      this.skillDue = false;
-    }
+    if (point.counted) this.skills.uncountSuccess();
+    this.skillDue = false;
     this.smashWindow = null;
     this.smashed.clear();
     this.rewind = null;
@@ -444,10 +449,12 @@ export class Game {
     this.bellMove = null;
     this.timeStop = null;
     this.bellBreak = null;
+    this.rat = null;
+    this.ratResults.clear();
     this.shell = null;
     this.rewind = null;
     this.skills.reset();
-    this.skillDue = false;
+    this.skillDue = true;
     this.pausedTurnMs = null;
     this.playedAt = null;
     this.resumeAt = null;
@@ -470,6 +477,7 @@ export class Game {
       return null;
     if (this.current !== null) return this.play(this.current, turnId, now, true);
     now = this.time(now);
+    if (this.settleRat(now) && turnId !== this.turnToken) return null;
     // 종이 부서져 있으면 종 기회도 없으므로 마지막 종 기회를 종이 돌아온 뒤로 미룬다.
     if (this.bellBreak && this.bellBrokenAt(now)) {
       this.deadline = this.bellBreak.endsAt + TURN_TIME_MS;
@@ -501,6 +509,7 @@ export class Game {
     const player = this.players.find((entry) => entry.userId === userId);
     if (!player?.active) return null;
     now = this.time(now);
+    this.settleRat(now);
     this.remove(player, true);
     if (this.current === userId) {
       this.current = this.nextAfter(userId);
@@ -514,7 +523,7 @@ export class Game {
 
   /** 스킬 선택을 열 차례가 됐다면 열어야 하는 서버 시각(결과 표시가 끝나는 때). 아니면 null */
   get skillPickOpensAt(): number | null {
-    return this.skillDue && this.phase === GameStatus.PLAYING
+    return this.skillDue && !this.skills.selection && this.phase === GameStatus.PLAYING
       ? (this.resumeAt ?? this.clock)
       : null;
   }
@@ -603,12 +612,14 @@ export class Game {
     slot: number,
     targetUserId: number | undefined,
     now: number,
+    expectedSkillId?: SkillId,
   ): GameAction | null {
     if (this.phase !== GameStatus.PLAYING) throw new GameRuleError(ErrorCode.GAME_ENDED);
     if (this.skills.selection) return null;
     if (!Number.isInteger(slot) || slot < 0) throw new GameRuleError(ErrorCode.VALIDATION_FAILED);
     const skillId = this.skills.inventory(userId).list()[slot];
-    if (!skillId) throw new GameRuleError(ErrorCode.SKILL_UNAVAILABLE);
+    if (!skillId || (expectedSkillId !== undefined && expectedSkillId !== skillId))
+      throw new GameRuleError(ErrorCode.SKILL_UNAVAILABLE);
     const skill = skillById(skillId);
     const role = this.activePlayerOrNull(userId) ? RoomRole.PLAYER : RoomRole.SPECTATOR;
     const allowed =
@@ -617,6 +628,8 @@ export class Game {
     // 아직 구현하지 않은 효과, 사용자 역할이 안 맞는 스킬, 사용 시점이 아닌 스킬은 쓸 수 없다.
     if (!skill.available || !allowed || skill.timing === SkillTiming.AUTOMATIC)
       throw new GameRuleError(ErrorCode.SKILL_UNAVAILABLE);
+    const at = this.time(now);
+    this.settleRat(at);
     if (skill.target === 'one') {
       if (
         targetUserId === undefined ||
@@ -624,17 +637,16 @@ export class Game {
         !this.activePlayerOrNull(targetUserId)
       )
         throw new GameRuleError(ErrorCode.VALIDATION_FAILED);
-      // 러시안 룰렛은 테이블에 내둔 카드가 있는 사람만 대상이 된다.
-      if (skillId === SkillId.RUSSIAN_ROULETTE && this.table.cards(targetUserId).length === 0)
+      if (skillId === SkillId.RUSSIAN_ROULETTE && !this.canPlay(targetUserId))
         throw new GameRuleError(ErrorCode.VALIDATION_FAILED);
     } else if (targetUserId !== undefined) throw new GameRuleError(ErrorCode.VALIDATION_FAILED);
     // 효과마다 쓸 수 있는 상태가 아니면(예: 숫자 바꾸기는 테이블에 걸 수 있는 내 카드가 있어야 한다) 거부한다.
-    const at = this.time(now);
     if (!this.effectUsable(skillId, userId, at))
       throw new GameRuleError(ErrorCode.SKILL_UNAVAILABLE);
     // 무지개 반사: 나를 노린 단일 지정 스킬을 자동으로 막고 쓴 사람이 대신 맞는다. 반사는 한 번 쓰면 사라지고,
     // 쓴 사람이 플레이어가 아니면(관전자의 러시안 룰렛) 맞을 수 없으므로 반사하지 않는다.
-    let victim = targetUserId;
+    // 손 내려치기는 대상을 고르지 않아도 직전 종 판정자가 피해자다.
+    let victim = skillId === SkillId.HAND_SMASH ? this.smashWindow?.userId : targetUserId;
     let reflectedBy: number | undefined;
     if (
       skill.target === 'one' &&
@@ -646,13 +658,14 @@ export class Game {
       victim = userId;
     }
     this.skills.consume(userId, slot);
-    this.applySkill(skillId, userId, at, victim);
+    const effect = this.applySkill(skillId, userId, at, victim);
     this.revision++;
     return {
       kind: 'skill',
       userId,
       skillId,
       targetUserId: victim ?? null,
+      ...effect,
       ...(reflectedBy !== undefined ? { reflectedBy } : {}),
     };
   }
@@ -665,6 +678,7 @@ export class Game {
     return {
       gameId: this.id,
       slots: this.skills.inventory(userId).list(),
+      ...(this.ratResults.has(userId) ? { ratResult: this.ratResults.get(userId) } : {}),
       hackKey: this.hacked.get(userId) ?? null,
       pick:
         selection && role
@@ -760,7 +774,7 @@ export class Game {
       bellMove: this.bellMove,
       timeStop: this.timeStop,
       bellBreak: this.bellBreak,
-      mine: this.mine,
+      rat: this.rat ? { endsAt: this.rat.endsAt, cardCount: this.rat.cardCount } : null,
       shell: this.shellAt(this.clock)
         ? { endsAt: this.shell!.endsAt, keys: this.shell!.keys }
         : null,
@@ -811,7 +825,12 @@ export class Game {
     return player?.active ? player : null;
   }
   /** 스킬 효과. `available`이 true인 스킬만 여기까지 온다 */
-  private applySkill(skillId: SkillId, userId: number, now: number, targetUserId?: number): void {
+  private applySkill(
+    skillId: SkillId,
+    userId: number,
+    now: number,
+    targetUserId?: number,
+  ): { ratCrushed?: true; movedCards?: number } | void {
     switch (skillId) {
       case SkillId.SPARKLE_CARD:
         this.sparkle.add(userId);
@@ -831,12 +850,19 @@ export class Game {
       case SkillId.NUMBER_SHIFT:
         // 내 테이블 맨 위 카드의 과일 개수를 1 늘린다(모두에게 보인다). 카드가 테이블을 떠나면 원래대로 돌아온다.
         this.table.cards(userId)[0].boost();
+        // 바뀐 과일 수를 본 모든 플레이어가 같은 새 테이블에 종을 칠 수 있다.
+        this.sequence++;
+        this.playedAt = now;
         break;
       case SkillId.BELL_BREAK: {
         // 10~30초(1초 단위) 동안 아무도 종을 칠 수 없다. 이미 부서져 있으면 더 늦게 끝나는 쪽을 따른다.
         const seconds = (BELL_BREAK_MAX_MS - BELL_BREAK_MIN_MS) / 1000 + 1;
         const endsAt = now + BELL_BREAK_MIN_MS + pickIndex(this.random, seconds) * 1000;
         this.bellBreak = { endsAt: Math.max(endsAt, this.bellBreak?.endsAt ?? 0) };
+        if (this.rat) {
+          this.finishRat('crushed', now);
+          return { ratCrushed: true };
+        }
         break;
       }
       case SkillId.HACK:
@@ -845,31 +871,33 @@ export class Game {
           BELL_MOVE_KEYS[pickIndex(this.random, BELL_MOVE_KEYS.length)],
         );
         break;
-      case SkillId.RAT: {
-        // 종 밑 보관 스택 전부를 내 덱 아래로 가져온다.
-        const player = this.players.find((entry) => entry.userId === userId)!;
-        player.take(this.pile.splice(0));
-        // 카드가 다시 생겼으므로 '덱을 다 냈다'는 기록에서 뺀다.
-        this.emptied = this.emptied.filter((id) => id !== userId);
+      case SkillId.RAT:
+        this.rat = { userId, endsAt: now + RAT_ESCAPE_MS, cardCount: this.pile.length };
+        this.ratResults.delete(userId);
         break;
+      case SkillId.RUSSIAN_ROULETTE: {
+        const target = this.activePlayer(targetUserId!);
+        const cards = target.penalty(ROULETTE_CARDS);
+        this.pile.push(...cards);
+        if (target.handCount === 0) {
+          this.emptied.unshift(target.userId);
+          if (this.current === target.userId) {
+            this.current = this.nextAfter(target.userId);
+            this.newTurn(now);
+          }
+        }
+        return { movedCards: cards.length };
       }
-      case SkillId.RUSSIAN_ROULETTE:
-        // 대상의 테이블 맨 위부터 5장(있는 만큼)이 종 밑 보관 스택으로 간다. 테이블이 바뀌므로 종 요청 순번을 올린다.
-        this.pile.push(...this.table.shoot(targetUserId!, ROULETTE_CARDS));
-        this.sequence++;
-        break;
       case SkillId.MINE:
         this.mine = true;
         break;
       case SkillId.BELL_SHELL_GAME: {
-        // 종이 3~5개로 늘어나고 종마다 서로 다른 단축키가 생긴다. 진짜는 하나뿐이다.
-        const count = BELL_SHELL_MIN + pickIndex(this.random, BELL_SHELL_MAX - BELL_SHELL_MIN + 1);
-        const pool = [...BELL_MOVE_KEYS];
-        const keys = Array.from(
-          { length: count },
-          () => pool.splice(pickIndex(this.random, pool.length), 1)[0],
-        );
-        this.shell = { endsAt: now + BELL_SHELL_MS, keys, real: pickIndex(this.random, count) };
+        const keys = [...BELL_SHELL_KEYS];
+        this.shell = {
+          endsAt: now + BELL_SHELL_MS,
+          keys,
+          real: pickIndex(this.random, keys.length),
+        };
         break;
       }
       case SkillId.DORMAMMU:
@@ -880,7 +908,7 @@ export class Game {
         break;
       case SkillId.HAND_SMASH:
         // 가장 최근에 종 판정을 낸 사람의 손이 부서진다(창이 닫히면 쓸 수 없으므로 반드시 있다).
-        this.smashed.add(this.smashWindow!.userId);
+        this.smashed.add(targetUserId!);
         this.smashWindow = null;
         break;
       case SkillId.SPIT:
@@ -913,6 +941,7 @@ export class Game {
   }
   private remove(player: GamePlayer, departed: boolean, advanceRound = true): void {
     this.pile.push(...player.eliminate(departed), ...this.table.remove(player.userId));
+    if (this.rat?.userId === player.userId) this.finishRat('missed', this.clock);
     this.out.push(player.userId);
     this.skills.clear(player.userId);
     this.sparkle.delete(player.userId);
@@ -923,12 +952,16 @@ export class Game {
     this.hacked.delete(player.userId);
     if (this.timeStop?.userId === player.userId) this.timeStop = null;
     if (advanceRound) {
-      this.roundNumber++;
+      this.advanceRound();
       this.burning.clear();
       this.smashed.clear();
       this.hacked.clear();
       this.mine = false;
     }
+  }
+  private advanceRound(): void {
+    if (this.roundNumber % SKILL_PICK_EVERY === 0) this.skillDue = true;
+    this.roundNumber++;
   }
   private markEmptied(userId: number): void {
     this.emptied = [...this.emptied.filter((id) => id !== userId), userId];
@@ -969,8 +1002,34 @@ export class Game {
     }
     if (skillId === SkillId.NUMBER_SHIFT) return this.table.cards(userId)[0]?.canBoost ?? false;
     // 쥐새끼는 종 밑 보관 스택에 카드가 있어야 쓴다.
-    if (skillId === SkillId.RAT) return this.pile.length > 0;
+    if (skillId === SkillId.RAT) return this.pile.length > 0 && !this.rat;
     return true;
+  }
+  get ratDeadline(): number | null {
+    return this.rat?.endsAt ?? null;
+  }
+  /** 방 타이머 또는 마감 뒤 첫 명령이 카드를 한 번만 넘긴다. */
+  settleRat(now: number): boolean {
+    const rat = this.rat;
+    if (!rat || now < rat.endsAt) return false;
+    this.finishRat('stolen', rat.endsAt);
+    this.revision++;
+    return true;
+  }
+  private finishRat(outcome: RatResult['outcome'], now: number): void {
+    const rat = this.rat;
+    if (!rat) return;
+    this.rat = null;
+    if (outcome === 'stolen') {
+      const player = this.activePlayer(rat.userId);
+      player.take(this.pile.splice(0, rat.cardCount));
+      this.emptied = this.emptied.filter((id) => id !== rat.userId);
+      if (this.current === null && !this.burning.has(player.userId)) {
+        this.current = player.userId;
+        this.newTurn(now);
+      }
+    }
+    this.ratResults.set(rat.userId, { at: now, outcome, cardCount: rat.cardCount });
   }
   /** 종이 부서져 있나 */
   private bellBrokenAt(now: number): boolean {
@@ -1005,6 +1064,7 @@ export class Game {
     this.bellMove = null;
     this.timeStop = null;
     this.bellBreak = null;
+    this.rat = null;
     this.burning.clear();
     this.smashed.clear();
     this.smashWindow = null;

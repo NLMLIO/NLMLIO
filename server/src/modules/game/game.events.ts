@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { GameServerEvent } from '@nlmlio/shared';
+import { GameServerEvent, skillById } from '@nlmlio/shared';
 import type {
   GameActionEvent,
   GameSnapshot,
@@ -31,6 +31,15 @@ export class GameEvents {
     this.server?.to(userChannel(userId)).emit(GameServerEvent.SKILLS, state);
   }
   action(code: string, action: GameActionEvent): void {
+    const audience = action.kind === 'skill' ? skillById(action.skillId).announcement : 'field';
+    if (audience === 'hidden') return;
+    if (action.kind === 'skill' && audience === 'personal') {
+      const recipients = new Set([action.userId]);
+      if (action.targetUserId !== null) recipients.add(action.targetUserId);
+      if (action.reflectedBy !== undefined) recipients.add(action.reflectedBy);
+      this.server?.to(Array.from(recipients, userChannel)).emit(GameServerEvent.ACTION, action);
+      return;
+    }
     this.server?.to(roomChannel(code)).emit(GameServerEvent.ACTION, action);
   }
 }

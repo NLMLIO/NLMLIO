@@ -63,6 +63,7 @@ export function PlayerSeat({
     <div
       className={`player-seat ${player.state}${player.isTurn ? ' is-turn' : ''}${growsUp ? ' grows-up' : ''}${onSelect ? ' is-targetable' : ''}${player.burning ? ' is-burning' : ''}`}
       style={style}
+      data-player-id={player.id}
       {...(onSelect
         ? {
             role: 'button',

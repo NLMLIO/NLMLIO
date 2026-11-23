@@ -22,18 +22,6 @@ export class Table {
     }
     return cards.filter((card) => !card.special);
   }
-  /**
-   * 러시안 룰렛: 이 사람이 내둔 카드를 맨 위부터 `count`장(있는 만큼) 꺼낸다. 꺼낸 카드는 종 밑 보관 스택으로 간다.
-   * 금칠·개수 증가는 풀리고, 과일 6개 카드는 어디로도 가지 않고 사라진다.
-   */
-  shoot(userId: number, count: number): Card[] {
-    const removed = (this.stacks.get(userId) ?? []).splice(0, count);
-    for (const card of removed) {
-      card.ungild();
-      card.unboost();
-    }
-    return removed.filter((card) => !card.special);
-  }
   /** 도르마무: 테이블 카드 전체의 복사본(사람별, 맨 위가 앞) */
   snapshot(): Map<number, Card[]> {
     return new Map([...this.stacks].map(([id, cards]) => [id, [...cards]]));

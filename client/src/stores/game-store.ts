@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { GameStatus, SkillId } from '@nlmlio/shared';
+import { GameStatus, SkillId, SKILL_CAST_MS, SPIT_COVER_MS, SPIT_DRIP_MS } from '@nlmlio/shared';
 import type {
   GameAction,
   GameActionEvent,
@@ -35,10 +35,18 @@ export interface CardEvent {
   automatic: boolean;
 }
 
+export interface RatCrushEvent {
+  revision: number;
+  receivedAt: number;
+  cardCount: number;
+}
+
 interface GameState {
   snapshot: GameSnapshot | null;
   lastBell: BellEvent | null;
-  lastSkill: SkillCastEvent | null;
+  recentSkills: SkillCastEvent[];
+  ratCrush: RatCrushEvent | null;
+  spitHits: Record<number, { key: number; endsAt: number }>;
   /** 플레이어별 마지막 카드 공개. 그 플레이어가 새 카드를 낼 때만 바뀐다 */
   lastCards: Record<number, CardEvent>;
   /** 연결이 끊긴 플레이어별로 끊김 이벤트를 받은 이 브라우저 시각 */
@@ -60,7 +68,9 @@ let nextId = 1;
 export const useGameStore = create<GameState>(() => ({
   snapshot: null,
   lastBell: null,
-  lastSkill: null,
+  recentSkills: [],
+  ratCrush: null,
+  spitHits: {},
   lastCards: {},
   offlineSince: {},
   clockOffset: 0,
@@ -77,7 +87,9 @@ export const gameActions = {
         return {
           snapshot: null,
           lastBell: null,
-          lastSkill: null,
+          recentSkills: [],
+          ratCrush: null,
+          spitHits: {},
           lastCards: {},
           offlineSince: {},
           skills: null,
@@ -102,7 +114,15 @@ export const gameActions = {
         offlineSince,
         ...(sameGame
           ? {}
-          : { lastBell: null, lastSkill: null, lastCards: {}, skills: null, returnedGameId: null }),
+          : {
+              lastBell: null,
+              recentSkills: [],
+              ratCrush: null,
+              spitHits: {},
+              lastCards: {},
+              skills: null,
+              returnedGameId: null,
+            }),
       };
     });
   },
@@ -145,15 +165,44 @@ export const gameActions = {
         });
         break;
       case 'skill':
-        useGameStore.setState(() => ({
-          lastSkill: { id: nextId++, action: event, castAt: Date.now() },
-          // 안해·도르마무는 테이블을 비우거나 판정 전으로 되돌리므로 지난 카드 공개·종 판정 표시를 지운다.
-          ...(event.skillId === SkillId.RESET
-            ? { lastBell: null, lastCards: {} }
-            : event.skillId === SkillId.DORMAMMU
-              ? { lastBell: null }
-              : {}),
-        }));
+        useGameStore.setState((state) => {
+          const lastSkill = { id: nextId++, action: event, castAt: Date.now() };
+          const recentSkills = [
+            lastSkill,
+            ...state.recentSkills.filter((cast) => lastSkill.castAt - cast.castAt < SKILL_CAST_MS),
+          ];
+          if (event.ratCrushed)
+            return {
+              recentSkills,
+              ratCrush: {
+                revision: event.revision,
+                receivedAt: lastSkill.castAt,
+                cardCount: snapshot.rat?.cardCount ?? 0,
+              },
+            };
+          if (event.skillId === SkillId.SPIT && event.targetUserId !== null) {
+            return {
+              recentSkills,
+              spitHits: {
+                ...state.spitHits,
+                [event.targetUserId]: {
+                  key: lastSkill.id,
+                  endsAt: lastSkill.castAt + SPIT_COVER_MS + SPIT_DRIP_MS,
+                },
+              },
+            };
+          }
+          if (event.skillId === SkillId.RESET)
+            return {
+              recentSkills: [lastSkill],
+              lastBell: null,
+              ratCrush: null,
+              lastCards: {},
+              spitHits: {},
+            };
+          if (event.skillId === SkillId.DORMAMMU) return { recentSkills, lastBell: null };
+          return { recentSkills };
+        });
         break;
       case 'departed':
         break;

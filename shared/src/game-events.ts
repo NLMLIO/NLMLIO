@@ -115,7 +115,7 @@ export interface GameSnapshot {
   fruitTotals: Record<Fruit, number>;
   results: GameResultEntry[];
   settled: boolean;
-  /** 종 성공 누적 횟수(스킬 선택은 5번마다, FUNC-009-01) */
+  /** 게임 전체 종 성공 누적 횟수 */
   skillSuccesses: number;
   /** 스킬 선택 중이면 진행 현황. 선택 중에는 카드 내기·종·턴 타이머가 멈춘다 */
   skillPick: SkillPickPublic | null;
@@ -125,6 +125,8 @@ export interface GameSnapshot {
   timeStop: TimeStopPublic | null;
   /** 종 부수기: 종이 돌아올 때까지 아무도 종을 칠 수 없다 */
   bellBreak: BellBreakPublic | null;
+  /** 종 아래의 쥐는 누구나 볼 수 있다. 소유자 정보는 숨긴다. */
+  rat?: { endsAt: number; cardCount: number } | null;
   /** 아마테라스에 걸린 사람들. 다음 종 판정(또는 탈락)까지 카드 내기·종 치기가 불가다 */
   burning: number[];
   /** 종 야바위 중이면 종마다의 단축키와 끝나는 시각 */
@@ -135,8 +137,6 @@ export interface GameSnapshot {
   smashWindow: { userId: number; endsAt: number } | null;
   /** 손이 부서진 사람들. 다음 종 판정(또는 탈락)까지 종을 칠 수 없다 */
   smashed: number[];
-  /** 지뢰가 깔려 있다(누가 깔았는지는 알리지 않는다). 다음 종 판정까지 */
-  mine: boolean;
 }
 /** `game:state` 페이로드. 보낼 때의 서버 시각을 붙여 클라이언트가 시계 차이를 잰다. */
 export type GameStateEvent = GameSnapshot & { serverTime: number };
@@ -150,6 +150,8 @@ export type GameAction =
       movedCards: number;
       /** 오발자가 다른 생존 플레이어에게 1장씩 나눠 준 총 벌칙 카드 수 */
       penaltyCards?: number;
+      /** 이 오발에서 실제로 벌칙 카드를 한 장씩 받은 플레이어 */
+      penaltyRecipients?: number[];
       totals: Record<Fruit, number>;
       /** 지뢰가 터졌다: 5개를 맞췄지만 카드가 모두 종 밑으로 갔다. 성공도 오발도 아니다 */
       mined?: true;
@@ -157,7 +159,7 @@ export type GameAction =
       fake?: true;
     }
   | { kind: 'departed'; userId: number }
-  /** 스킬 사용 알림. `targetUserId`가 null이면 대상 없음(전원·나에게) */
+  /** 스킬 사용 알림. 개인 스킬이면 시전자·피격자·반사자에게만 전달한다. */
   | {
       kind: 'skill';
       userId: number;
@@ -166,6 +168,10 @@ export type GameAction =
       targetUserId: number | null;
       /** 무지개 반사로 막아 낸 사람(원래 대상) */
       reflectedBy?: number;
+      /** 종 부수기가 살아 있는 쥐를 잡았을 때만 설정한다. */
+      ratCrushed?: true;
+      /** 러시안 룰렛에 맞아 덱에서 종 밑으로 옮긴 실제 카드 수 */
+      movedCards?: number;
     }
   | { kind: 'connection'; userId: number; connected: boolean };
 export type GameActionEvent = GameAction & { gameId: string; revision: number };

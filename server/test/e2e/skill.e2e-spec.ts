@@ -8,7 +8,7 @@ import {
   Fruit,
   GameClientEvent,
   GameServerEvent,
-  ROUND_RESULT_MS,
+  RoomRole,
   RoomClientEvent,
 } from '@nlmlio/shared';
 import type { AuthResponse, GameAck, GameActionEvent, SkillStateEvent } from '@nlmlio/shared';
@@ -160,35 +160,14 @@ describe('스킬 선택 Socket.io 통합 (FUNC-009)', () => {
     await app.close();
   });
 
-  it('종 성공 5번이면 선택이 열려 본인에게만 후보를 보내고, 전원이 고르면 게임이 이어진다', async () => {
+  it('시작과 함께 선택이 열려 본인에게만 후보를 보내고, 전원이 고르면 게임이 이어진다', async () => {
     const [a, b] = [await connect(users[0]), await connect(users[1])];
     await join(users[1]);
+    await join(users[2]);
+    app.get(RoomService).move(users[0].user.id, users[2].user.id, RoomRole.SPECTATOR);
+    const c = await connect(users[2]);
     expect(await emit(a, RoomClientEvent.START)).toEqual({ ok: true });
     const gameId = snapshot().gameId;
-    // 도중에 들어온 사람은 관전자로 선택에 참여한다.
-    await join(users[2]);
-    const c = await connect(users[2]);
-    await until(() => skills.get(c) !== undefined);
-
-    for (let round = 1; round <= 5; round++) {
-      expect(await emit(a, GameClientEvent.PLAY, { gameId, turnId: snapshot().turnId })).toEqual({
-        ok: true,
-      });
-      expect(await emit(b, GameClientEvent.PLAY, { gameId, turnId: snapshot().turnId })).toEqual({
-        ok: true,
-      });
-      expect(await emit(a, GameClientEvent.BELL, { gameId, turnSeq: snapshot().turnSeq })).toEqual({
-        ok: true,
-      });
-      expect(snapshot().skillSuccesses).toBe(round);
-      if (round < 5) {
-        expect(snapshot().skillPick).toBeNull();
-        await sleep(ROUND_RESULT_MS + 150);
-      }
-    }
-    // 결과 표시가 끝나기 전에는 열리지 않고, 끝나면 열린다.
-    expect(snapshot().skillPick).toBeNull();
-    await until(() => snapshot().skillPick !== null, ROUND_RESULT_MS + 1500);
     expect(snapshot()).toMatchObject({
       skillPick: { pickNo: 1, done: 0, total: 3 },
       turnDeadline: null,
@@ -264,36 +243,29 @@ describe('스킬 선택 Socket.io 통합 (FUNC-009)', () => {
     expect(
       await emit(c, GameClientEvent.SKILL_USE, { gameId, slot: 0, targetUserId: users[1].user.id }),
     ).toEqual({ ok: true });
-    await until(() =>
-      (actions.get(a) ?? []).some((action) => action.kind === 'skill' && action.skillId === 'SPIT'),
-    );
-    const spit = (actions.get(a) ?? []).find(
-      (action) => action.kind === 'skill' && action.skillId === 'SPIT',
-    )!;
-    expect(spit).toMatchObject({ userId: users[2].user.id, targetUserId: users[1].user.id });
+    const castOn = (socket: Socket, id: string) =>
+      (actions.get(socket) ?? []).find((action) => action.kind === 'skill' && action.skillId === id);
+    await until(() => !!castOn(b, 'SPIT') && !!castOn(c, 'SPIT'));
+    expect(castOn(b, 'SPIT')).toMatchObject({
+      userId: users[2].user.id,
+      targetUserId: users[1].user.id,
+    });
     await until(() => skills.get(c)?.slots.length === 0);
 
-    // 반짝반짝한 카드: 쓰면 모두에게 알리고 내 슬롯에서 사라진다.
+    // 소켓별 sync ack는 해당 소켓에 그 전에 보낸 이벤트까지 전달됐다는 경계다.
+    await emit(a, GameClientEvent.SYNC);
+    expect(castOn(a, 'SPIT')).toBeUndefined();
+
+    // 자기 카드에 거는 스킬은 시전자에게만 보인다.
     expect(await emit(a, GameClientEvent.SKILL_USE, { gameId, slot: 0 })).toEqual({ ok: true });
-    await until(() =>
-      (actions.get(b) ?? []).some(
-        (action) => action.kind === 'skill' && action.skillId === 'SPARKLE_CARD',
-      ),
-    );
-    await until(() =>
-      (actions.get(c) ?? []).some(
-        (action) => action.kind === 'skill' && action.skillId === 'SPARKLE_CARD',
-      ),
-    );
-    const cast = (actions.get(b) ?? []).find(
-      (action) => action.kind === 'skill' && action.skillId === 'SPARKLE_CARD',
-    )!;
-    expect(cast).toMatchObject({
-      kind: 'skill',
+    await until(() => !!castOn(a, 'SPARKLE_CARD'));
+    expect(castOn(a, 'SPARKLE_CARD')).toMatchObject({
       userId: users[0].user.id,
-      skillId: 'SPARKLE_CARD',
       targetUserId: null,
     });
+    await Promise.all([emit(b, GameClientEvent.SYNC), emit(c, GameClientEvent.SYNC)]);
+    expect(castOn(b, 'SPARKLE_CARD')).toBeUndefined();
+    expect(castOn(c, 'SPARKLE_CARD')).toBeUndefined();
     await until(() => skills.get(a)?.slots.length === 0);
     expect(skills.get(b)!.slots).toHaveLength(1);
     // 다시 쓰면 빈 칸이라 거부한다.

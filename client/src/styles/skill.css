@@ -779,18 +779,6 @@ body:has(.scene-switcher) .seat-flame {
   animation: none;
 }
 
-/* 종 부수기: 종이 회색으로 갈라지고, 복구까지 남은 시간을 알린다 */
-.bell.is-broken .bell-button img {
-  filter: grayscale(1) brightness(0.5);
-}
-.bell.is-broken .bell-button::after {
-  position: absolute;
-  inset: 12px;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 3 L43 27 L59 41 L40 58 L55 73 L46 97' fill='none' stroke='%23101015' stroke-width='3.5' stroke-linejoin='round'/%3E%3Cpath d='M43 27 L24 33 M59 41 L80 38 M40 58 L21 67' fill='none' stroke='%23101015' stroke-width='2.5'/%3E%3C/svg%3E")
-    center / contain no-repeat;
-  content: '';
-  pointer-events: none;
-}
 .bell-broken {
   position: absolute;
   z-index: 3;
@@ -825,194 +813,87 @@ body:has(.scene-switcher) .seat-flame {
   font: 700 12px/1.2 var(--font-mono);
 }
 
-/* 쥐새끼: 쥐가 종 밑에서 카드를 물고 쓴 사람의 자리로 달려간다 */
-.skill-rat {
-  position: absolute;
-  z-index: 6;
-  color: #4fa3ff;
-  font-family: 'Noto Emoji', var(--font-text);
-  font-size: 44px;
-  font-weight: 700;
-  line-height: 1;
-  text-shadow: 0 0 14px rgba(79, 163, 255, 0.6);
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-  animation: rat-run 1.4s cubic-bezier(0.4, 0, 0.2, 1) both;
-}
-@keyframes rat-run {
-  0% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.6);
-  }
-  15% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
-  80% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-    transform: translate(calc(-50% + var(--rat-dx)), calc(-50% + var(--rat-dy))) scale(1);
-  }
-}
-
-/* 러시안 룰렛: 대상 좌석에 총알이 맞는다 */
-.skill-shot {
-  position: absolute;
-  z-index: 6;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 140px;
-  height: 140px;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-}
-.skill-shot-ring {
-  position: absolute;
-  inset: 20px;
-  border: 4px solid var(--status-danger);
-  border-radius: 50%;
-  box-shadow: 0 0 24px rgba(255, 79, 139, 0.6);
-  animation: shot-ring 0.9s ease-out both;
-}
-.skill-shot-text {
-  color: var(--status-danger);
-  font-family: var(--font-display);
-  font-size: 46px;
-  font-weight: 400;
-  line-height: 1;
-  text-shadow: 0 0 14px rgba(255, 79, 139, 0.7);
-  animation: shot-text 1.2s ease-out both;
-}
-@keyframes shot-ring {
-  0% {
-    opacity: 1;
-    transform: scale(0.2);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1.6);
-  }
-}
-@keyframes shot-text {
-  0% {
-    opacity: 0;
-    transform: scale(0.5);
-  }
-  15% {
-    opacity: 1;
-    transform: scale(1.15);
-  }
-  70% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-    transform: translateY(-14px);
-  }
-}
-
-/* 개발 서버 미리보기에서는 한 장면으로 보여 준다 */
-body:has(.scene-switcher) .skill-rat {
-  opacity: 1;
-  animation: none;
-}
-body:has(.scene-switcher) .skill-shot-ring,
-body:has(.scene-switcher) .skill-shot-text {
-  animation: none;
-}
-
-/* 지뢰: 종 옆에 흐릿하게 보인다. 터지면 판정 결과(지뢰 폭발!)가 대신 뜬다 */
-.skill-mine {
-  position: absolute;
-  left: 50%;
-  top: 56%;
-  z-index: 2;
-  color: var(--status-danger);
-  font-size: 22px;
-  line-height: 1;
-  opacity: 0.28;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-  animation: mine-pulse 2.4s ease-in-out infinite;
-}
-@keyframes mine-pulse {
-  50% {
-    opacity: 0.12;
-  }
-}
-
-/* 지뢰: 종 옆에 흐릿하게 보인다. 터지면 판정 결과(지뢰 폭발!)가 대신 뜬다 */
-.skill-mine {
-  position: absolute;
-  left: 50%;
-  top: 56%;
-  z-index: 2;
-  color: var(--status-danger);
-  font-size: 22px;
-  line-height: 1;
-  opacity: 0.28;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-  animation: mine-pulse 2.4s ease-in-out infinite;
-}
-@keyframes mine-pulse {
-  50% {
-    opacity: 0.12;
-  }
-}
-
 .smashed-hint {
   --grade: var(--status-danger);
 }
 
-/* 종 야바위: 종이 3~5개로 늘어나고 종마다 단축키가 있다. 진짜는 하나뿐이다 */
+/* 실제 카드가 보이도록 네 종을 테이블 중앙에 모은다. */
+.bell.has-shell > .bell-button,
+.bell.has-shell > .bell-storage {
+  visibility: hidden;
+}
 .bell-shell {
   position: absolute;
-  inset: 0;
+  inset: 10px 0;
   z-index: 4;
+  display: grid;
+  grid-template-columns: repeat(2, 90px);
+  grid-template-rows: repeat(2, 88px);
+  place-content: center;
+  gap: 5px 10px;
   pointer-events: none;
 }
 .bell-shell-bell {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 0;
-  background: none;
+  position: relative;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(ellipse at 50% 68%, #c6f43224, transparent 69%);
   border: 0;
+  border-radius: 50%;
   cursor: pointer;
-  transform: translate(calc(-50% + var(--shell-x)), calc(-50% + var(--shell-y)));
   pointer-events: auto;
+  animation: shell-deal 380ms cubic-bezier(0.17, 0.75, 0.25, 1) both;
+}
+.bell-shell-bell:nth-child(even) {
+  --deal-x: -30px;
 }
 .bell-shell-bell img {
-  width: 72px;
-  height: 72px;
+  width: 90px;
+  height: 86px;
+  pointer-events: none;
 }
 .bell-shell-bell kbd {
-  padding: 2px 10px;
-  color: var(--accent-primary);
-  background: var(--bg-base);
-  border: 1.5px solid var(--accent-primary);
-  border-radius: 999px;
-  font: 700 14px/1.4 var(--font-mono);
+  position: absolute;
+  right: 0;
+  bottom: 4px;
+  min-width: 27px;
+  padding: 2px;
+  color: var(--bg-base);
+  background: var(--accent-primary);
+  border: 2px solid var(--bg-base);
+  border-radius: 7px;
+  font: 700 17px/1.15 var(--font-mono);
+}
+.bell-shell-bell:is(:hover, :focus-visible):enabled {
+  outline: 2px solid var(--accent-primary);
 }
 .bell-shell-bell:disabled {
   cursor: default;
-  opacity: 0.4;
 }
 .bell-shell-time {
   position: absolute;
   left: 50%;
-  top: calc(50% + 188px);
-  margin: 0;
+  bottom: calc(100% + 4px);
+  padding: 5px 10px;
   color: var(--accent-primary);
-  font: 700 14px/1 var(--font-mono);
+  background: var(--bg-base);
+  border-radius: 8px;
+  font: 700 14px/1.2 var(--font-mono);
   transform: translateX(-50%);
   white-space: nowrap;
+}
+@keyframes shell-deal {
+  from {
+    opacity: 0.25;
+    transform: translateX(var(--deal-x, 30px)) scale(0.72) rotate(-14deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bell-shell-bell {
+    animation: none;
+  }
 }
