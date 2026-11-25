@@ -39,6 +39,8 @@ export interface RatCrushEvent {
   revision: number;
   receivedAt: number;
   cardCount: number;
+  /** 종 부수기가 아니라 깔려 있던 지뢰를 밟아 죽었다 */
+  mined?: boolean;
 }
 
 interface GameState {
@@ -171,13 +173,14 @@ export const gameActions = {
             lastSkill,
             ...state.recentSkills.filter((cast) => lastSkill.castAt - cast.castAt < SKILL_CAST_MS),
           ];
-          if (event.ratCrushed)
+          if (event.ratCrushed || event.ratMined)
             return {
               recentSkills,
               ratCrush: {
                 revision: event.revision,
                 receivedAt: lastSkill.castAt,
-                cardCount: snapshot.rat?.cardCount ?? 0,
+                cardCount: snapshot.rat?.cardCount ?? snapshot.pileCount,
+                ...(event.ratMined ? { mined: true } : {}),
               },
             };
           if (event.skillId === SkillId.SPIT && event.targetUserId !== null) {

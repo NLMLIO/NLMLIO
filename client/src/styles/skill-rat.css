@@ -66,10 +66,12 @@
   font-size: 21px;
   animation: rat-score 1.8s both;
 }
-.rat-crushed .rat-actor {
+.rat-crushed .rat-actor,
+.rat-mined .rat-actor {
   animation: rat-flatten 1.15s both;
 }
-.rat-crushed .rat-cargo {
+.rat-crushed .rat-cargo,
+.rat-mined .rat-cargo {
   transform-origin: center;
   animation: rat-slip 0.5s 0.3s ease-out both;
 }
@@ -238,7 +240,8 @@
   .rat-reward {
     transform: translateX(-50%);
   }
-  .rat-crushed .rat-actor {
+  .rat-crushed .rat-actor,
+  .rat-mined .rat-actor {
     transform: scale(1.32, 0.25);
   }
   .rat-missed .rat-actor {

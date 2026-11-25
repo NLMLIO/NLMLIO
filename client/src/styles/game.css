@@ -1,4 +1,4 @@
-/* 게임 화면 — Figma NLML_design 「03 · 게임」. 1440×900 좌표계로 그리고 .game-frame이 창에 맞춰 배율을 바꾼다. */
+/* 게임 화면 — Figma NLML_design 「03 · 게임」. 1440×900 좌표계로 그리고 .game-frame이 창 높이에 맞춰 배율을 바꾸며, 가로로 긴 창에서는 폭을 늘려 여백 없이 채운다. */
 .game-viewport {
   --bg-base: #101015;
   --bg-surface: #1c1c24;
@@ -39,7 +39,8 @@
   position: absolute;
   top: 0;
   left: 0;
-  width: 1440px;
+  /* 가로로 긴 창에서는 GameFrame이 --stage-width를 키워 좌우 여백 없이 채운다 */
+  width: var(--stage-width, 1440px);
   height: 900px;
   transform: scale(var(--game-scale, 1));
   transform-origin: top left;
@@ -65,6 +66,8 @@
 .game-board {
   position: relative;
   flex-shrink: 0;
+  /* 화면 폭이 늘어나면 남는 폭은 보드 양옆에 같은 배경으로 나뉘고, 채팅은 오른쪽 끝에 붙는다 */
+  margin-inline: auto;
   width: 1100px;
   height: 100%;
   overflow: hidden;
@@ -107,8 +110,16 @@
   color: var(--text-primary);
   border-color: var(--text-secondary);
 }
-.game-chip.spectator-fullscreen { left: 802px; width: 100px; }
-.fullscreen-error { position: absolute; top: 73px; right: 194px; font-size: 12px; }
+.game-chip.spectator-fullscreen {
+  left: 802px;
+  width: 100px;
+}
+.fullscreen-error {
+  position: absolute;
+  top: 73px;
+  right: 194px;
+  font-size: 12px;
+}
 .game-chip.sound-toggle {
   left: 910px;
   width: 73px;
@@ -875,15 +886,40 @@
   stroke-linejoin: round;
   stroke-linecap: round;
 }
-.player-hand .hand-skin { fill: var(--hand-skin, #f4d5b4); }
-.player-hand .hand-shadow { fill: var(--hand-shadow, #d6ac88); stroke: none; }
-.player-hand[data-injured] {
+.player-hand .hand-skin {
+  fill: var(--hand-skin, #f4d5b4);
+}
+.player-hand .hand-shadow {
+  fill: var(--hand-shadow, #d6ac88);
+  stroke: none;
+}
+/* 손 개 쌔게 내려치기를 맞은 손: 3단계(빨강) → 2단계 → 1단계로 카드를 낼수록 원래 살색으로 돌아온다 */
+.player-hand[data-injured='3'] {
   --hand-skin: #ff615e;
   --hand-shadow: #b62d44;
   --hand-line: #922634;
 }
-.player-hand[data-injured] > svg { filter: drop-shadow(0 0 6px #ff3e5666); }
-.player-hand .hand-seam { fill: none; stroke: #ffffff80; stroke-width: 2; }
+.player-hand[data-injured='2'] {
+  --hand-skin: #f98d78;
+  --hand-shadow: #c95a54;
+  --hand-line: #a8494a;
+}
+.player-hand[data-injured='1'] {
+  --hand-skin: #f6b394;
+  --hand-shadow: #dc8a6f;
+  --hand-line: #c07a64;
+}
+.player-hand[data-injured] > svg {
+  filter: drop-shadow(0 0 6px #ff3e5666);
+}
+.player-hand[data-injured='1'] > svg {
+  filter: drop-shadow(0 0 4px #ff3e5633);
+}
+.player-hand .hand-seam {
+  fill: none;
+  stroke: #ffffff80;
+  stroke-width: 2;
+}
 .player-hand .hand-crease {
   fill: none;
   stroke: var(--hand-line, #c59a78);
@@ -1255,5 +1291,10 @@
   color: #ffce69;
   pointer-events: none;
 }
-.smash-ready-hint kbd { font: inherit; font-weight: 700; }
-.action-bar-name .penalty-credit { color: var(--fruit-lime); }
+.smash-ready-hint kbd {
+  font: inherit;
+  font-weight: 700;
+}
+.action-bar-name .penalty-credit {
+  color: var(--fruit-lime);
+}

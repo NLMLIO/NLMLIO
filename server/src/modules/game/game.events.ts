@@ -31,12 +31,18 @@ export class GameEvents {
     this.server?.to(userChannel(userId)).emit(GameServerEvent.SKILLS, state);
   }
   action(code: string, action: GameActionEvent): void {
-    const audience = action.kind === 'skill' ? skillById(action.skillId).announcement : 'field';
+    // 지뢰가 쥐를 터뜨리면 숨겨 둔 지뢰도 쥐의 죽음도 모두에게 드러난다.
+    const audience =
+      action.kind === 'skill'
+        ? action.ratMined
+          ? 'field'
+          : skillById(action.skillId).announcement
+        : 'field';
     if (audience === 'hidden') return;
     if (action.kind === 'skill' && audience === 'personal') {
       const recipients = new Set([action.userId]);
       if (action.targetUserId !== null) recipients.add(action.targetUserId);
-      if (action.reflectedBy !== undefined) recipients.add(action.reflectedBy);
+      for (const reflector of action.reflectedBy ?? []) recipients.add(reflector);
       this.server?.to(Array.from(recipients, userChannel)).emit(GameServerEvent.ACTION, action);
       return;
     }

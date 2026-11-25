@@ -77,8 +77,12 @@ export class GamePlayer {
     this.fail = stats.bellFail;
     this.reaction = stats.reactionSumMs;
   }
-  /** 안해: 새로 분배받은 카드로 처음부터 다시 시작한다(종 기록도 지운다) */
+  /**
+   * 안해: 새로 분배받은 카드로 처음부터 다시 시작한다(종 기록도 지운다).
+   * 탈락했던 사람도 다시 플레이한다. 이탈한 사람은 호출하지 않는다.
+   */
   restart(hand: readonly Card[]): void {
+    this.state = GamePlayerStatus.ACTIVE;
     this.hand = [...hand];
     this.success = 0;
     this.fail = 0;

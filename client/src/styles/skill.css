@@ -578,18 +578,27 @@ body:has(.scene-switcher) .skill-cast {
   opacity: 0.55;
   pointer-events: none;
 }
+/* 바뀐 종 치기 키(종 옮기기·해킹): 가장자리에 두면 다른 카드에 가려지므로 종 한가운데에 크게 보여 준다 */
 .bell-key {
   position: absolute;
-  z-index: 3;
-  top: 2px;
+  z-index: 5;
+  top: 50%;
   left: 50%;
-  padding: 4px 12px;
+  min-width: 52px;
+  padding: 6px 18px;
   color: var(--accent-primary);
   background: var(--bg-base);
-  border: 1.5px solid var(--accent-primary);
-  border-radius: 999px;
-  font: 700 14px/1.4 var(--font-mono);
-  transform: translateX(-50%);
+  border: 2px solid var(--accent-primary);
+  border-radius: 14px;
+  box-shadow: 0 0 14px rgba(198, 244, 50, 0.35);
+  font: 700 28px/1.2 var(--font-mono);
+  text-align: center;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+/* 리볼버가 종 위에 있으면 겹치지 않게 키를 아래로 내린다 */
+.bell.has-revolver .bell-key {
+  top: 76%;
 }
 .key.struck {
   color: var(--text-disabled);
@@ -600,29 +609,58 @@ body:has(.scene-switcher) .skill-cast {
   border-color: var(--accent-primary);
 }
 
-/* 과일 6개 카드(M15): 테두리 핑크 + "6" 배지 */
-.fruit-card.is-special {
-  border-color: var(--status-danger);
-  box-shadow: 0 0 18px rgba(255, 79, 139, 0.4);
-}
-.fruit-card-six {
+/* 과일 6개 카드(M15): 테두리·배지 강조 없이 일반 카드처럼 보인다(과일이 6개인 것만 다르다) */
+
+/* 러시안 룰렛: 종 위에 올려 둔 리볼버와 남은 탄(공포탄 5 · 실탄 1에서 시작) */
+.bell-revolver {
   position: absolute;
-  bottom: -10px;
-  left: -10px;
-  z-index: 2;
+  top: 56px;
+  left: 50%;
+  z-index: 4;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  min-width: 22px;
-  height: 22px;
-  color: var(--status-danger);
+  gap: 2px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.bell-revolver img {
+  width: 92px;
+  height: 54px;
+  filter: drop-shadow(2px 5px 2px rgba(32, 19, 49, 0.55));
+  animation: revolver-click 320ms ease-out;
+}
+.bell-revolver span {
+  padding: 2px 8px;
+  color: var(--text-body);
   background: var(--bg-base);
-  border: 1.5px solid var(--status-danger);
+  border: 1px solid var(--border-default);
   border-radius: 999px;
-  font: 700 12px/1 var(--font-mono);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.bell-revolver b {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+.bell-revolver b.live {
+  color: var(--status-danger);
+}
+@keyframes revolver-click {
+  from {
+    transform: rotate(-9deg) translateY(-4px);
+  }
+  45% {
+    transform: rotate(5deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bell-revolver img {
+    animation: none;
+  }
 }
 
-/* 시간 정지(M02): 화면 전체가 청회색이 되고 3초 카운트가 뜬다. 쓴 사람만 움직일 수 있다 */
+/* 시간 정지(M02): 화면 전체가 청회색이 되고, 시작 연출이 끝나면 5초 카운트가 뜬다. 쓴 사람만 움직일 수 있다 */
 .time-stop {
   position: absolute;
   inset: 0;

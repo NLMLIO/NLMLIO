@@ -82,6 +82,13 @@ export class RoomService {
     this.events.state(room);
   }
 
+  /** 안해로 되살아난 탈락자를 다시 참가자로 돌린다. */
+  markPlayer(userId: number): void {
+    const room = this.requireRoom(userId);
+    room.markPlayer(userId);
+    this.events.state(room);
+  }
+
   async leave(account: UserAccount): Promise<void> {
     await this.leaveMember(account.id);
   }

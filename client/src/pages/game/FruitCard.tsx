@@ -28,7 +28,7 @@ export function FruitCard({ card }: { card: CardFace }) {
   const cells = PIP_CELLS[card.count];
   return (
     <div
-      className={`fruit-card${card.gilded ? ' is-gilded' : ''}${card.special ? ' is-special' : ''}${card.boosted ? ' is-boosted' : ''}`}
+      className={`fruit-card${card.gilded ? ' is-gilded' : ''}${card.boosted ? ' is-boosted' : ''}`}
       role="img"
       aria-label={`${FRUIT_NAMES[card.fruit]} ${card.count}${card.gilded ? ' 금칠' : ''}${card.boosted ? ' +1' : ''}`}
     >
@@ -36,11 +36,6 @@ export function FruitCard({ card }: { card: CardFace }) {
       {card.boosted && (
         <span className="fruit-card-plus" aria-hidden="true">
           +1
-        </span>
-      )}
-      {card.special && (
-        <span className="fruit-card-six" aria-hidden="true">
-          6
         </span>
       )}
       <div className="fruit-card-pips">

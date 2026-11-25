@@ -22,7 +22,10 @@ export class GameInputSequence {
   }
 }
 
-/** 모션 접수 가능 여부도 서버가 보낸 참가자·마감만 읽는다. 승패는 계산하지 않는다. */
+/**
+ * 모션 접수 가능 여부도 서버가 보낸 참가자·마감만 읽는다. 승패는 계산하지 않는다.
+ * 판정 결과를 보여 주는 동안은 늦게 눌러도 손이 올라간다.
+ */
 export function canJoinBellHandWindow(
   snapshot: GameSnapshot | null,
   userId: number,
@@ -31,7 +34,6 @@ export function canJoinBellHandWindow(
   const hands = snapshot?.bellHands;
   return (
     !!hands &&
-    serverNow <= hands.windowClosesAt &&
     serverNow < hands.displayUntil &&
     hands.eligibleUserIds.includes(userId) &&
     !hands.userIds.includes(userId)

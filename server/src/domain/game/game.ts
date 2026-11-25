@@ -2,6 +2,8 @@ import {
   ErrorCode,
   GamePlayerStatus,
   GameStatus,
+  HAND_SMASH_CARDS_PER_STAGE,
+  HAND_SMASH_STAGES,
   HAND_SMASH_WINDOW_MS,
   SKILL_PICK_EVERY,
   ROUND_RESULT_MS,
@@ -16,6 +18,7 @@ import type {
   SkillChoice,
   SkillStateEvent,
   RatResult,
+  RevolverPublic,
   TimeStopPublic,
 } from '@nlmlio/shared';
 import {
@@ -26,9 +29,11 @@ import {
   BELL_MOVE_POSITIONS,
   BELL_SHELL_KEYS,
   BELL_SHELL_MS,
-  ROULETTE_CARDS,
+  ROULETTE_BLANKS,
+  ROULETTE_LIVE,
   RAT_ESCAPE_MS,
   RoomRole,
+  TIME_STOP_INTRO_MS,
   TIME_STOP_MS,
   SkillId,
   SkillTiming,
@@ -83,9 +88,11 @@ export interface GameCheckpoint {
   pile: string[];
 }
 
-/** 도르마무: 가장 최근 종 판정 직전의 카드 상태 */
+/** 도르마무: 가장 최근 종 판정이 난 라운드의 첫 카드를 내기 직전의 카드 상태 */
 interface RewindPoint {
   hands: Map<number, Card[]>;
+  /** 그 라운드의 첫 카드를 내기 직전의 마지막 카드 공개 시각 */
+  playedAt: number | null;
   stats: Map<number, ReturnType<GamePlayer['statistics']>>;
   tables: Map<number, Card[]>;
   pile: Card[];
@@ -139,8 +146,13 @@ export class Game {
   private readonly burning = new Set<number>();
   /** 손 개 쌔게 내려치기: 가장 최근 종 판정을 낸 사람과 쓸 수 있는 마감 시각 */
   private smashWindow: { userId: number; endsAt: number } | null = null;
-  /** 손이 부서진 사람들: 다음 종 판정까지 종을 칠 수 없다(카드는 낼 수 있다) */
-  private readonly smashed = new Set<number>();
+  /**
+   * 손이 부서진 사람 → 풀릴 때까지 더 내야 하는 자기 카드 수(9장에서 시작). 3장 낼 때마다 한 단계씩 회복하고
+   * 0이 되면 풀린다. 그동안 종을 칠 수 없다(카드는 낼 수 있다).
+   */
+  private readonly smashed = new Map<number, number>();
+  /** 러시안 룰렛: 종 위의 리볼버에 남은 공포탄 수(실탄은 `ROULETTE_LIVE`발). 없으면 null */
+  private revolver: { blanks: number } | null = null;
   /** 지뢰: 다음 종 판정까지, 5개를 맞춰 종을 쳐도 카드가 모두 종 밑으로 간다(성공도 오발도 아니다) */
   private mine = false;
   /** 종 부수기: 종이 돌아올 때까지 아무도 종을 칠 수 없다 */
@@ -149,8 +161,10 @@ export class Game {
   private readonly ratResults = new Map<number, RatResult>();
   /** 종 야바위: 종마다의 단축키와 진짜 종의 번호(진짜는 공개하지 않는다) */
   private shell: { endsAt: number; keys: string[]; real: number } | null = null;
-  /** 도르마무로 되돌릴 수 있는 판정 직전 상태 */
+  /** 도르마무로 되돌릴 수 있는 상태: 방금 판정이 난 라운드의 첫 카드를 내기 직전 */
   private rewind: RewindPoint | null = null;
+  /** 지금 라운드의 첫 카드를 내기 직전 상태. 라운드의 첫 카드를 낼 때 저장하고, 판정이 나면 `rewind`로 넘어간다 */
+  private roundStart: RewindPoint | null = null;
   /** 해킹: 걸린 사람 → Space 대신 쓰는 새 종 치기 키(다음 판정까지, 본인에게만 알린다) */
   private readonly hacked = new Map<number, string>();
 
@@ -269,11 +283,14 @@ export class Game {
     if (this.resumeAt !== null && now < this.resumeAt) return null;
     this.resumeAt = null;
     this.bellHands = null;
+    // 이 라운드의 첫 카드를 내기 직전 상태를 도르마무가 돌아갈 곳으로 저장해 둔다.
+    this.roundStart ??= this.captureRewind(false);
     let card = player.draw(automatic);
     // 과일 6개 카드: 낼 카드의 과일 그대로 6개짜리 특수 카드로 바뀐다(원래 카드는 함께 사라진다).
     if (this.sixCard.delete(userId)) card = Card.six(card.fruit);
     if (this.sparkle.delete(userId)) card.gild();
     this.table.play(userId, card);
+    this.recoverSmashedHand(userId);
     this.sequence++;
     this.playedAt = now;
     if (automatic && player.automaticTurns >= 3) this.remove(player, true);
@@ -299,16 +316,37 @@ export class Game {
     // 종 야바위 중에는 진짜가 아닌 종(번호를 보내지 않은 것 포함)을 누르면 5개여도 오발이다.
     const fake = this.shellAt(now) !== null && bell !== this.shell!.real;
     const success = !fake && Object.values(totals).some((count) => count === 5);
-    this.rewind = this.captureRewind(success && !this.mine);
+    // 러시안 룰렛: 종 위 리볼버의 남은 칸에서 하나가 나온다. 공포탄이면 그 칸만 줄고(종 판정은 그대로 이어진다),
+    // 실탄이면 테이블 카드가 모두 종 밑으로 가고 리볼버가 사라진다.
+    let revolver: { fired: 'blank' | 'live'; blanks: number } | undefined;
+    if (this.revolver) {
+      const live = pickIndex(this.random, this.revolver.blanks + ROULETTE_LIVE) < ROULETTE_LIVE;
+      if (live) {
+        revolver = { fired: 'live', blanks: this.revolver.blanks };
+        this.revolver = null;
+      } else {
+        this.revolver.blanks--;
+        revolver = { fired: 'blank', blanks: this.revolver.blanks };
+      }
+    }
+    const shot = revolver?.fired === 'live';
     // 지뢰: 5개를 맞춰도 터져서 카드가 모두 종 밑으로 간다. 성공도 오발도 아니라 기록·성공 횟수에 넣지 않는다.
     const mined = success && this.mine;
-    const won = success && !mined;
+    // 지뢰가 터지거나 실탄이 나오면 판정은 성공도 오발도 아니다: 테이블 카드만 종 밑으로 간다.
+    const collected = mined || shot;
+    const won = success && !collected;
+    // 도르마무는 종 직전이 아니라 이 라운드의 첫 카드를 내기 전으로 돌아간다(카드를 낸 적이 없으면 지금 상태).
+    this.rewind = {
+      ...(this.roundStart ?? this.captureRewind(false)),
+      counted: won,
+    };
+    this.roundStart = null;
     if (won) this.skills.countSuccess();
     this.resolvedSequence = sequence;
-    if (!mined) player.bell(success, this.playedAt === null ? 0 : now - this.playedAt);
+    if (!collected) player.bell(success, this.playedAt === null ? 0 : now - this.playedAt);
     let movedCards: number;
     const penaltyRecipients: number[] = [];
-    if (mined) {
+    if (collected) {
       const cards = this.table.collect();
       this.pile.push(...cards);
       movedCards = cards.length;
@@ -337,8 +375,8 @@ export class Game {
     // 판정이 났다: 테이블에 남은 과일 6개 카드는 성공·오발과 상관없이 사라진다.
     this.table.discardSpecial();
     // 판정이 났으니 라운드가 끝난다: 아마테라스도 풀린다.
+    // 맞은 손(smashed)은 라운드가 아니라 자기 카드를 낸 수로 회복하므로 여기서 풀리지 않는다.
     this.burning.clear();
-    this.smashed.clear();
     this.hacked.clear();
     this.mine = false;
     this.eliminateEmpty();
@@ -360,8 +398,11 @@ export class Game {
       movedCards,
       totals,
       ...(mined ? { mined: true as const } : {}),
+      ...(revolver ? { revolver } : {}),
       ...(fake ? { fake: true as const } : {}),
-      ...(!success ? { penaltyCards: penaltyRecipients.length, penaltyRecipients } : {}),
+      ...(!success && !collected
+        ? { penaltyCards: penaltyRecipients.length, penaltyRecipients }
+        : {}),
     };
   }
 
@@ -372,6 +413,25 @@ export class Game {
     if (!this.bellHands?.add(userId, sequence, receivedAt)) return false;
     this.revision++;
     return true;
+  }
+
+  /** 맞은 손은 자기 카드를 낼 때마다 회복한다: 3장마다 한 단계, 9장이면 풀린다 */
+  private recoverSmashedHand(userId: number): void {
+    const left = this.smashed.get(userId);
+    if (left === undefined) return;
+    if (left <= 1) this.smashed.delete(userId);
+    else this.smashed.set(userId, left - 1);
+  }
+
+  /**
+   * 이미 지난 테이블에 대한 늦은 종 요청인가: 새 카드가 공개돼 순번이 지났거나, 판정은 났는데
+   * 판정 결과를 보여 주는 시간(손을 올릴 수 있는 시간)도 끝났다. 이때만 클라이언트에 안내한다.
+   */
+  isLateBell(sequence: number, now: number): boolean {
+    if (sequence < this.sequence) return true;
+    return (
+      this.resolvedSequence === sequence && !(this.bellHands?.acceptsAt(this.time(now)) ?? false)
+    );
   }
 
   /** 종 야바위가 진행 중이면 그 상태, 끝났으면 null */
@@ -385,6 +445,7 @@ export class Game {
       for (const card of cards) faces.set(card, { gilded: card.gilded, boosted: card.boosted });
     return {
       hands: new Map(this.players.map((player) => [player.userId, player.cards()])),
+      playedAt: this.playedAt,
       stats: new Map(this.players.map((player) => [player.userId, player.statistics()])),
       tables,
       pile: [...this.pile],
@@ -426,19 +487,35 @@ export class Game {
     this.smashWindow = null;
     this.smashed.clear();
     this.rewind = null;
+    this.roundStart = null;
+    this.playedAt = point.playedAt;
+    this.bellHands = null;
     this.sequence++;
     this.newTurn(now);
   }
-  /** 안해: 플레이 중인 사람끼리 카드를 다시 섞어 분배하고 모든 진행·스킬을 처음으로 돌린다 */
+  /**
+   * 안해: 게임을 처음부터 다시 시작한다. 탈락해 관전하던 사람까지 되살려 카드를 다시 섞어 나누고,
+   * 나간 사람(이탈)만 뺀다. 보유 스킬은 모두 사라지고, 처음처럼 스킬 선택을 다시 연다.
+   */
   private restart(now: number): void {
-    const active = this.players.filter((player) => player.active);
-    const { hands, remainder } = Deck.standard().shuffle(this.random).deal(active.length);
-    active.forEach((player, index) => player.restart(hands[index]));
+    const participants = this.players.filter(
+      (player) => player.status !== GamePlayerStatus.DEPARTED,
+    );
+    const { hands, remainder } = Deck.standard().shuffle(this.random).deal(participants.length);
+    participants.forEach((player, index) => player.restart(hands[index]));
+    // 되살아난 사람은 탈락 명단에서 뺀다. 이탈한 사람은 그대로 남는다.
+    for (const player of participants) {
+      const index = this.out.indexOf(player.userId);
+      if (index >= 0) this.out.splice(index, 1);
+    }
     this.table.clear();
     this.pile = remainder;
     this.emptied = [];
-    this.current = active[0].userId;
+    this.current = participants[0].userId;
     this.roundNumber = 1;
+    this.revolver = null;
+    this.roundStart = null;
+    this.bellHands = null;
     this.sparkle.clear();
     this.sixCard.clear();
     this.burning.clear();
@@ -637,27 +714,31 @@ export class Game {
         !this.activePlayerOrNull(targetUserId)
       )
         throw new GameRuleError(ErrorCode.VALIDATION_FAILED);
-      if (skillId === SkillId.RUSSIAN_ROULETTE && !this.canPlay(targetUserId))
-        throw new GameRuleError(ErrorCode.VALIDATION_FAILED);
     } else if (targetUserId !== undefined) throw new GameRuleError(ErrorCode.VALIDATION_FAILED);
     // 효과마다 쓸 수 있는 상태가 아니면(예: 숫자 바꾸기는 테이블에 걸 수 있는 내 카드가 있어야 한다) 거부한다.
     if (!this.effectUsable(skillId, userId, at))
       throw new GameRuleError(ErrorCode.SKILL_UNAVAILABLE);
-    // 무지개 반사: 나를 노린 단일 지정 스킬을 자동으로 막고 쓴 사람이 대신 맞는다. 반사는 한 번 쓰면 사라지고,
-    // 쓴 사람이 플레이어가 아니면(관전자의 러시안 룰렛) 맞을 수 없으므로 반사하지 않는다.
-    // 손 내려치기는 대상을 고르지 않아도 직전 종 판정자가 피해자다.
-    let victim = skillId === SkillId.HAND_SMASH ? this.smashWindow?.userId : targetUserId;
-    let reflectedBy: number | undefined;
-    if (
-      skill.target === 'one' &&
-      targetUserId !== undefined &&
-      role === RoomRole.PLAYER &&
-      this.skills.consumeSkill(targetUserId, SkillId.RAINBOW_REFLECT)
-    ) {
-      reflectedBy = targetUserId;
-      victim = userId;
-    }
+    // 반사로 보유 칸이 줄어들기 전에 쓴 칸부터 소모해야 칸 번호가 밀리지 않는다.
     this.skills.consume(userId, slot);
+    // 무지개 반사: 나를 노린 스킬(손 내려치기 포함)을 자동으로 막고 쓴 사람이 대신 맞는다. 반사는 한 번 쓰면
+    // 사라지며, 반사된 것을 맞은 쪽도 무지개가 있으면 다시 반사해 반사가 없을 때까지 주고받는다.
+    // 쓴 사람이 플레이어가 아니면(관전자의 침 뱉기) 맞을 수 없으므로 반사하지 않는다.
+    // 손 내려치기는 대상을 고르지 않아도 직전 종 판정자가 피해자다.
+    const aimed =
+      skillId === SkillId.HAND_SMASH
+        ? this.smashWindow?.userId
+        : skill.target === 'one'
+          ? targetUserId
+          : undefined;
+    let victim = aimed;
+    const reflectedBy: number[] = [];
+    if (aimed !== undefined && role === RoomRole.PLAYER) {
+      let shooter = userId;
+      while (victim !== undefined && this.skills.consumeSkill(victim, SkillId.RAINBOW_REFLECT)) {
+        reflectedBy.push(victim);
+        [victim, shooter] = [shooter, victim];
+      }
+    }
     const effect = this.applySkill(skillId, userId, at, victim);
     this.revision++;
     return {
@@ -666,7 +747,7 @@ export class Game {
       skillId,
       targetUserId: victim ?? null,
       ...effect,
-      ...(reflectedBy !== undefined ? { reflectedBy } : {}),
+      ...(reflectedBy.length ? { reflectedBy } : {}),
     };
   }
 
@@ -780,7 +861,14 @@ export class Game {
         : null,
       rewindUntil: this.canRewind(this.clock) ? this.resumeAt : null,
       smashWindow: this.smashWindow,
-      smashed: [...this.smashed],
+      smashed: [...this.smashed].map(([userId, left]) => ({
+        userId,
+        stage: Math.min(
+          HAND_SMASH_STAGES,
+          Math.max(1, Math.ceil(left / HAND_SMASH_CARDS_PER_STAGE)),
+        ) as 1 | 2 | 3,
+      })),
+      revolver: this.revolver ? this.revolverPublic(this.revolver) : null,
       burning: [...this.burning],
       skillPick: this.skills.selection
         ? {
@@ -820,6 +908,9 @@ export class Game {
     };
   }
 
+  private revolverPublic(revolver: { blanks: number }): RevolverPublic {
+    return { blanks: revolver.blanks, live: ROULETTE_LIVE };
+  }
   private activePlayerOrNull(userId: number): GamePlayer | null {
     const player = this.players.find((entry) => entry.userId === userId);
     return player?.active ? player : null;
@@ -830,7 +921,7 @@ export class Game {
     userId: number,
     now: number,
     targetUserId?: number,
-  ): { ratCrushed?: true; movedCards?: number } | void {
+  ): { ratCrushed?: true; ratMined?: true } | void {
     switch (skillId) {
       case SkillId.SPARKLE_CARD:
         this.sparkle.add(userId);
@@ -839,12 +930,14 @@ export class Game {
         this.sixCard.add(userId);
         break;
       case SkillId.TIME_STOP: {
+        // 시작 연출(INTRO)이 끝난 뒤부터 5초를 센다. 연출 중에도 시간은 멈춰 있고 쓴 사람은 카드를 낼 수 있다.
         // 멈춘 시간만큼 턴 타이머를 뒤로 민다(시간이 흐르지 않는다). 이미 멈춰 있었다면 더해지는 만큼만 민다.
         const previousEnd =
           this.timeStop && this.timeStop.endsAt > now ? this.timeStop.endsAt : now;
-        const endsAt = now + TIME_STOP_MS;
+        const startsAt = now + TIME_STOP_INTRO_MS;
+        const endsAt = startsAt + TIME_STOP_MS;
         if (this.deadline !== null) this.deadline += Math.max(0, endsAt - previousEnd);
-        this.timeStop = { userId, endsAt };
+        this.timeStop = { userId, startsAt, endsAt };
         break;
       }
       case SkillId.NUMBER_SHIFT:
@@ -855,7 +948,7 @@ export class Game {
         this.playedAt = now;
         break;
       case SkillId.BELL_BREAK: {
-        // 10~30초(1초 단위) 동안 아무도 종을 칠 수 없다. 이미 부서져 있으면 더 늦게 끝나는 쪽을 따른다.
+        // 5~20초(1초 단위) 동안 아무도 종을 칠 수 없다. 이미 부서져 있으면 더 늦게 끝나는 쪽을 따른다.
         const seconds = (BELL_BREAK_MAX_MS - BELL_BREAK_MIN_MS) / 1000 + 1;
         const endsAt = now + BELL_BREAK_MIN_MS + pickIndex(this.random, seconds) * 1000;
         this.bellBreak = { endsAt: Math.max(endsAt, this.bellBreak?.endsAt ?? 0) };
@@ -872,23 +965,25 @@ export class Game {
         );
         break;
       case SkillId.RAT:
+        // 지뢰가 깔려 있으면 쥐가 밟아 죽고 지뢰도 사라진다.
+        if (this.mine) {
+          this.mine = false;
+          this.ratResults.set(userId, { at: now, outcome: 'mined', cardCount: this.pile.length });
+          return { ratMined: true };
+        }
         this.rat = { userId, endsAt: now + RAT_ESCAPE_MS, cardCount: this.pile.length };
         this.ratResults.delete(userId);
         break;
-      case SkillId.RUSSIAN_ROULETTE: {
-        const target = this.activePlayer(targetUserId!);
-        const cards = target.penalty(ROULETTE_CARDS);
-        this.pile.push(...cards);
-        if (target.handCount === 0) {
-          this.emptied.unshift(target.userId);
-          if (this.current === target.userId) {
-            this.current = this.nextAfter(target.userId);
-            this.newTurn(now);
-          }
-        }
-        return { movedCards: cards.length };
-      }
+      case SkillId.RUSSIAN_ROULETTE:
+        // 종 위에 리볼버를 올려 둔다. 이미 있으면 공포탄 5발·실탄 1발로 다시 채운다.
+        this.revolver = { blanks: ROULETTE_BLANKS };
+        break;
       case SkillId.MINE:
+        // 쥐가 종 밑에 있는 동안 지뢰를 깔면 쥐가 지뢰에 죽고 지뢰도 사라진다.
+        if (this.rat) {
+          this.finishRat('mined', now);
+          return { ratMined: true };
+        }
         this.mine = true;
         break;
       case SkillId.BELL_SHELL_GAME: {
@@ -908,7 +1003,8 @@ export class Game {
         break;
       case SkillId.HAND_SMASH:
         // 가장 최근에 종 판정을 낸 사람의 손이 부서진다(창이 닫히면 쓸 수 없으므로 반드시 있다).
-        this.smashed.add(targetUserId!);
+        // 자기 카드를 3장 낼 때마다 한 단계씩 회복해 9장을 내면 풀린다. 이미 부서져 있으면 다시 9장부터다.
+        this.smashed.set(targetUserId!, HAND_SMASH_STAGES * HAND_SMASH_CARDS_PER_STAGE);
         this.smashWindow = null;
         break;
       case SkillId.SPIT:
@@ -954,7 +1050,6 @@ export class Game {
     if (advanceRound) {
       this.advanceRound();
       this.burning.clear();
-      this.smashed.clear();
       this.hacked.clear();
       this.mine = false;
     }
@@ -1070,8 +1165,10 @@ export class Game {
     this.smashWindow = null;
     this.hacked.clear();
     this.mine = false;
+    this.revolver = null;
     this.shell = null;
     this.rewind = null;
+    this.roundStart = null;
     this.skillDue = false;
     this.pausedTurnMs = null;
     this.endedAt = now;

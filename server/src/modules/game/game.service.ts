@@ -130,12 +130,23 @@ export class GameService implements OnModuleInit {
     authorize: Authorize = trusted,
   ): Promise<boolean> {
     return this.command(userId, input.gameId, authorize, async (game) => {
-      // 승자는 이미 확정돼도 최초 접수 후 200ms 이내의 손은 서버 순서로 함께 표시한다.
+      // 승자는 이미 확정돼도 판정 결과를 보여 주는 동안 늦게 도착한 손도 서버 접수 순서로 함께 표시한다.
       if (game.recordBellHand(userId, input.turnSeq, receivedAt)) return null;
       if (!game.canRing(userId, input.turnSeq, receivedAt)) return null;
       if (!(await this.snapshots.claimBell(game.id, input.turnSeq, userId))) return null;
       return game.ring(userId, input.turnSeq, receivedAt, input.bell);
     });
+  }
+
+  /** 무시된 종 요청이 이미 지난 테이블에 대한 늦은 요청인가(읽기 전용) */
+  isLateBell(userId: number, input: BellRingRequest, now = Date.now()): boolean {
+    const room = this.rooms.memberRoom(userId);
+    const session = room ? this.games.get(room.code) : undefined;
+    return (
+      session?.game.id === input.gameId &&
+      session.game.status === GameStatus.PLAYING &&
+      session.game.isLateBell(input.turnSeq, now)
+    );
   }
 
   sync(userId: number): GameSnapshot | null {
@@ -302,6 +313,17 @@ export class GameService implements OnModuleInit {
 
   private async changed(session: GameSession, action?: GameAction): Promise<void> {
     const game = session.game;
+    // 안해로 게임이 다시 시작돼 되살아난 탈락자는 방에서도 참가자로 돌린다(이탈한 사람은 그대로다).
+    for (const id of session.marked) {
+      if (game.eliminatedIds.includes(id)) continue;
+      session.marked.delete(id);
+      this.timers.cancel(`connection:${id}`);
+      if (this.rooms.memberRoom(id)?.code === game.roomCode) this.rooms.markPlayer(id);
+      if (!this.connections.get(id)?.size) {
+        game.connection(id, false);
+        this.scheduleDisconnect(id, game.roomCode, game.id);
+      }
+    }
     for (const id of game.eliminatedIds) {
       if (!session.marked.has(id)) {
         this.timers.cancel(`connection:${id}`);

@@ -95,14 +95,18 @@ describe('GameService 방 큐·타이머·정산 재시도', () => {
     expect(state().bellHands?.displayUntil).toBe(receivedAt + 1800);
   });
 
-  it('첫 서버 접수 후 201ms의 손은 방송하지 않고 중복 손도 추가하지 않는다', async () => {
+  it('판정 결과를 보여 주는 동안은 늦게 누른 손도 올라가고, 표시가 끝난 뒤나 중복 손은 추가하지 않는다', async () => {
     const input = { gameId: state().gameId, turnSeq: state().turnSeq };
     const now = Date.now();
     await service.bell(1, input, now);
     const before = state();
-    expect(await service.bell(2, input, now + 201)).toBe(false);
+    // 표시가 끝난 뒤(1800ms 초과)의 손은 올릴 수 없다
+    expect(await service.bell(2, input, now + 1801)).toBe(false);
     expect(await service.bell(1, input, now + 100)).toBe(false);
     expect(state()).toEqual(before);
+    // 200ms를 넘겨도 표시 중이면 늦게라도 손이 올라간다(승패는 그대로)
+    expect(await service.bell(2, input, now + 1500)).toBe(false);
+    expect(state().bellHands?.userIds).toEqual([1, 2]);
   });
 
   it('게임 중 늦게 입장한 관전자도 마지막 탭이 끊긴 뒤 60초 후 방에서 정리한다', async () => {

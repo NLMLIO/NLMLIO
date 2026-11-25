@@ -31,7 +31,6 @@ describe('서버가 허용한 손 접수 구간', () => {
   const snapshot = {
     bellHands: {
       turnSeq: 1,
-      windowClosesAt: 1200,
       displayUntil: 2800,
       userIds: [2],
       eligibleUserIds: [1, 2],
@@ -40,7 +39,9 @@ describe('서버가 허용한 손 접수 구간', () => {
   it('서버 참가자·순서·마감으로만 판단하고 자기 손을 미리 추가하지 않는다', () => {
     expect(canJoinBellHandWindow(null, 1, 1000)).toBe(false);
     expect(canJoinBellHandWindow(snapshot, 1, 1200)).toBe(true);
-    expect(canJoinBellHandWindow(snapshot, 1, 1201)).toBe(false);
+    // 판정 결과를 보여 주는 동안은 늦게 눌러도 손이 올라간다.
+    expect(canJoinBellHandWindow(snapshot, 1, 2799)).toBe(true);
+    expect(canJoinBellHandWindow(snapshot, 1, 2800)).toBe(false);
     expect(canJoinBellHandWindow(snapshot, 2, 1100)).toBe(false);
     expect(canJoinBellHandWindow(snapshot, 99, 1100)).toBe(false);
     expect(snapshot.bellHands.userIds).toEqual([2]);

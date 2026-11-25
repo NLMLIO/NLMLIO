@@ -535,27 +535,30 @@ export const PREVIEW_SCENES = {
       },
     ],
   },
-  /** 러시안 룰렛: 관전자가 쏜 총알이 대상 좌석에 맞는다 */
+  /** 러시안 룰렛: 관전자가 종 위에 올려 둔 리볼버(공포탄 5 · 실탄 1) */
   'skill-roulette': {
     ...MY_TURN,
     pileCount: 5,
     skills: { slots: [EMPTY_SLOT, EMPTY_SLOT, EMPTY_SLOT] },
+    revolver: { blanks: 5, live: 1 },
     skillCasts: [
       {
         key: 14,
         caster: '관전자',
         casterId: '99',
         skillId: SkillId.RUSSIAN_ROULETTE,
-        movedCards: 3,
-        target: '자두씨',
-        targetId: 'p3',
+        target: null,
+        targetId: null,
       },
     ],
   },
   'skill-hand-smash': {
     ...MY_TURN,
-    players: MY_TURN.players.map((entry) => ({ ...entry, smashed: entry.id === 'me' })),
-    smashed: true,
+    players: MY_TURN.players.map((entry) => ({
+      ...entry,
+      smashed: entry.id === 'me' ? (3 as const) : undefined,
+    })),
+    smashed: 3,
     skillCasts: [
       {
         key: 15,

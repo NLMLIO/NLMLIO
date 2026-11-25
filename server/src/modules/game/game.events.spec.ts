@@ -23,11 +23,26 @@ describe('스킬 사용 알림의 수신 범위 (FUNC-009-04)', () => {
   it.each<[string, GameActionEvent, string | string[]]>([
     ['종 부수기', { ...action, skillId: SkillId.BELL_BREAK }, 'room:123456'],
     ['자기 카드 강화', { ...action, skillId: SkillId.SPARKLE_CARD }, ['user:1']],
-    ['피격 대상', { ...action, skillId: SkillId.SPIT, targetUserId: 2 }, ['user:1', 'user:2']],
     [
-      '무지개 반사로 시전자가 맞아도 반사자에게 전달',
-      { ...action, skillId: SkillId.HACK, targetUserId: 1, reflectedBy: 2 },
-      ['user:1', 'user:2'],
+      '대상을 지정하는 침 뱉기는 모두에게',
+      { ...action, skillId: SkillId.SPIT, targetUserId: 2 },
+      'room:123456',
+    ],
+    ['해킹도 모두에게', { ...action, skillId: SkillId.HACK, targetUserId: 2 }, 'room:123456'],
+    [
+      '무지개 반사가 오가도 모두에게 전달',
+      { ...action, skillId: SkillId.AMATERASU, targetUserId: 1, reflectedBy: [2, 1] },
+      'room:123456',
+    ],
+    [
+      '손 내려치기도 모두에게',
+      { ...action, skillId: SkillId.HAND_SMASH, targetUserId: 2 },
+      'room:123456',
+    ],
+    [
+      '쥐새끼가 지뢰에 죽으면 숨겨 둔 지뢰도 모두에게 드러난다',
+      { ...action, skillId: SkillId.MINE, ratMined: true },
+      'room:123456',
     ],
   ])('%s', (_name, payload, rooms) => {
     const emit = jest.fn();

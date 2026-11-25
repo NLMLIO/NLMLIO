@@ -183,6 +183,8 @@ export async function sendGameIntent<E extends GameIntent>(
       event === GameClientEvent.BELL
         ? '이미 판정된 종이에요. 다음 카드가 공개되면 다시 눌러주세요.'
         : '차례나 판정 상태가 바뀌어 카드를 내지 못했어요.',
+    // 종은 판정 결과를 보여 주는 동안 늦게 눌러도 손이 올라가므로, 손도 올릴 수 없을 만큼 늦은 경우만 안내한다.
+    ignoredOnlyWhenLate: event === GameClientEvent.BELL,
     // ack를 못 받았으면 실제 상태를 다시 받아 맞춘다.
     onTimeout: (target) => raw(target).emit(GameClientEvent.SYNC, {}),
   });
@@ -281,6 +283,8 @@ async function emitIntent(
     disconnected: string;
     timeout: string;
     ignored?: string;
+    /** true면 서버가 `late`로 표시한 무시만 안내한다(나머지 무시는 조용히 넘어간다) */
+    ignoredOnlyWhenLate?: boolean;
     onTimeout?: (target: GameSocket) => void;
   },
 ): Promise<string | null> {
@@ -298,6 +302,7 @@ async function emitIntent(
       if (await reauthenticate(current)) continue;
     if (result.ok && 'ignored' in result && result.ignored) {
       if ('handAccepted' in result && result.handAccepted) return null;
+      if (messages.ignoredOnlyWhenLate && !('late' in result && result.late)) return null;
       return messages.ignored ?? null;
     }
     return ackMessage(result);

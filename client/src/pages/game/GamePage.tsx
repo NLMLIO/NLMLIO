@@ -6,7 +6,6 @@ import {
   GameStatus,
   RoomStatus,
   ROUND_RESULT_MS,
-  SKILL_CAST_MS,
 } from '@nlmlio/shared';
 import { SkillId, skillById } from '@nlmlio/shared';
 import type { PublicUser, SkillChoice } from '@nlmlio/shared';
@@ -16,7 +15,7 @@ import { useGameShortcuts } from '../../hooks/use-game-shortcuts';
 import { sendChat, sendGameIntent } from '../../socket/socket';
 import { useGameStore } from '../../stores/game-store';
 import { useRoomStore } from '../../stores/room-store';
-import { GameBoard, type GameActions } from './GameBoard';
+import { GameBoard, SMASHED_MESSAGES, type GameActions } from './GameBoard';
 import { GameFrame } from './GameFrame';
 import { GameResult } from './GameResult';
 import { GameInputSequence, canJoinBellHandWindow } from './game-input-sequence';
@@ -25,6 +24,7 @@ import {
   bellMoveAt,
   shellAt,
   skillUsable,
+  smashStageOf,
   timeStopAt,
   toGameView,
   toRanking,
@@ -70,7 +70,7 @@ export function GamePage({
   const [leaving, setLeaving] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [returning, setReturning] = useState(false);
-  const rungSeq = useRef<string | null>(null);
+  const bellPending = useRef(false);
   const inputs = useRef(new GameInputSequence());
   const cancelLeave = useCallback(() => setConfirmLeave(false), []);
 
@@ -80,17 +80,11 @@ export function GamePage({
     snapshot?.status === GameStatus.ENDED &&
     lastBell !== null &&
     now < lastBell.receivedAt + ROUND_RESULT_MS;
-  const showingFinalSkill =
-    snapshot?.status === GameStatus.ENDED &&
-    recentSkills.some(
-      (cast) =>
-        cast.action.skillId === SkillId.RUSSIAN_ROULETTE && now < cast.castAt + SKILL_CAST_MS,
-    );
   useEffect(() => {
-    if (!live && !showingFinalBell && !showingFinalSkill) return;
+    if (!live && !showingFinalBell) return;
     const timer = setInterval(() => setNow(Date.now()), 100);
     return () => clearInterval(timer);
-  }, [live, showingFinalBell, showingFinalSkill]);
+  }, [live, showingFinalBell]);
 
   useEffect(() => {
     if (!lastBell) return;
@@ -128,8 +122,8 @@ export function GamePage({
   const timeStop = snapshot ? timeStopAt(snapshot, now + clockOffset) : undefined;
   const stopByMe = timeStop?.userId === user.id;
   const burnedSelf = !!snapshot?.burning.includes(user.id);
-  // 손이 부서진 사람은 카드는 낼 수 있지만 다음 종 판정까지 종을 못 친다.
-  const smashedSelf = !!snapshot?.smashed.includes(user.id);
+  // 손이 부서진 사람은 카드는 낼 수 있지만 단계(3→1)가 풀릴 때까지 종을 못 친다. 종을 누르면 안내만 뜬다.
+  const smashStage = snapshot ? smashStageOf(snapshot, user.id) : undefined;
   const frozen = canAct && (burnedSelf || (!!timeStop && !stopByMe));
   const canPlayNow = canAct && !burnedSelf && (timeStop ? stopByMe : myTurn);
 
@@ -213,8 +207,13 @@ export function GamePage({
       Date.now() + atPress.clockOffset,
     );
     if (!snapshot || ((!canAct || isPaused()) && !joining)) return;
-    // 아마테라스·시간 정지·부서진 손은 종을 칠 수 없고 접수 순서에도 끼지 못한다.
-    if (frozen || smashedSelf) return;
+    // 아마테라스·시간 정지는 종을 칠 수 없고 접수 순서에도 끼지 못한다.
+    if (frozen) return;
+    // 부서진 손은 종을 못 친다. 눌러 보면 단계에 맞는 안내만 띄운다.
+    if (smashStage !== undefined) {
+      setError(SMASHED_MESSAGES[smashStage]);
+      return;
+    }
     // 종이 부서져 있는 동안은 아무도 종을 칠 수 없다(종 부수기).
     if (bellBreakAt(snapshot, Date.now() + atPress.clockOffset)) return;
     // 종이 옮겨지는 중(처음 300ms)에는 종 입력을 무시한다(종 옮기기).
@@ -231,22 +230,21 @@ export function GamePage({
         GamePlayerStatus.ACTIVE &&
       !isPaused();
     if (!latest || latest.gameId !== snapshot.gameId || (!mayRing && !mayJoin)) return;
-    // 같은 공개 테이블에 대한 종은 서버가 한 번만 판정하므로 다시 보내지 않는다.
-    const key = `${latest.gameId}:${latest.turnSeq}`;
-    if (rungSeq.current === key) {
-      setError('이미 보낸 종이에요. 다음 카드가 공개되면 다시 눌러주세요.');
-      return;
-    }
-    rungSeq.current = key;
+    // 같은 종 요청이 응답을 기다리는 동안만 중복 전송을 막는다. 판정은 서버가 한 번만 하고,
+    // 늦게 눌러도 판정 결과를 보여 주는 동안은 서버가 손을 올려 준다.
+    if (bellPending.current) return;
+    bellPending.current = true;
     void sendGameIntent(GameClientEvent.BELL, {
       gameId: latest.gameId,
       turnSeq: latest.turnSeq,
       ...(bell !== undefined ? { bell } : {}),
-    }).then((failure) => {
-      if (!failure) return;
-      setError(failure);
-      if (rungSeq.current === key) rungSeq.current = null;
-    });
+    })
+      .then((failure) => {
+        if (failure) setError(failure);
+      })
+      .finally(() => {
+        bellPending.current = false;
+      });
   }
 
   /** 후보 칸 선택(FUNC-009-03): 결과는 서버가 보내는 상태로만 화면에 반영한다 */
@@ -356,8 +354,7 @@ export function GamePage({
   const bellInput =
     !confirmLeave &&
     !picking &&
-    (armedSlot !== null ||
-      (((canAct && !judging) || joiningHandWindow) && !frozen && !smashedSelf && !bellBroken));
+    (armedSlot !== null || (((canAct && !judging) || joiningHandWindow) && !frozen && !bellBroken));
 
   useGameShortcuts({
     skill: confirmLeave || ended ? undefined : useSkillSlot,
@@ -388,7 +385,7 @@ export function GamePage({
       </GameFrame>
     );
 
-  if (ended && !showingFinalBell && !showingFinalSkill)
+  if (ended && !showingFinalBell)
     return (
       <GameFrame>
         <GameResult

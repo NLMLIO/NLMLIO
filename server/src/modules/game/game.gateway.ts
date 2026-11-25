@@ -80,9 +80,17 @@ export class GameGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       state?.gameId === input.gameId &&
       state.bellHands?.turnSeq === input.turnSeq &&
       state.bellHands.userIds.includes(userId);
+    // 손을 올릴 수 없을 만큼 늦은 요청만 `late`로 알린다. 나머지 무시는 조용히 넘어간다.
+    const late = !accepted && !handAccepted && this.games.isLateBell(userId, input);
     return {
       ok: true,
-      ...(!accepted ? { ignored: true, ...(handAccepted ? { handAccepted: true } : {}) } : {}),
+      ...(!accepted
+        ? {
+            ignored: true,
+            ...(handAccepted ? { handAccepted: true } : {}),
+            ...(late ? { late: true } : {}),
+          }
+        : {}),
     };
   }
   @SubscribeMessage(GameClientEvent.SYNC)

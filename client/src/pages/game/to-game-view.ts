@@ -12,6 +12,7 @@ import {
   SkillId,
   SkillTiming,
   SkillUser,
+  TIME_STOP_MS,
   TURN_TIME_MS,
   skillById,
 } from '@nlmlio/shared';
@@ -21,6 +22,7 @@ import type {
   GameSnapshot,
   RoomResponse,
   SkillStateEvent,
+  TimeStopPublic,
 } from '@nlmlio/shared';
 import type { BellEvent, CardEvent, RatCrushEvent, SkillCastEvent } from '../../stores/game-store';
 import type { LogEntry as RoomLogEntry } from '../../stores/room-store';
@@ -86,6 +88,10 @@ export function playerColor(
   return FALLBACK_COLORS[Math.max(seat, 0) % FALLBACK_COLORS.length];
 }
 
+/** 손 개 쌔게 내려치기를 맞은 손의 회복 단계(3→1). 맞지 않았으면 undefined */
+export const smashStageOf = (snapshot: GameSnapshot, userId: number): 1 | 2 | 3 | undefined =>
+  snapshot.smashed.find((entry) => entry.userId === userId)?.stage;
+
 const secondsLeft = (until: number, now: number, max: number) =>
   Math.min(max, Math.max(0, Math.ceil((until - now) / 1000)));
 
@@ -109,6 +115,14 @@ function verdictOf(input: GameViewInput, bell: BellEvent): Verdict {
       ringer: ringerView,
       title: '지뢰 폭발!',
       formula: '테이블 카드를 종 아래에 보관해요',
+      detail: `성공도 오발도 아니에요 · 카드 ${action.movedCards}장이 모두 종 아래로`,
+    };
+  if (action.revolver?.fired === 'live')
+    return {
+      tone: 'misfire',
+      ringer: ringerView,
+      title: '탕! 실탄!',
+      formula: '리볼버에서 실탄이 나왔어요',
       detail: `성공도 오발도 아니에요 · 카드 ${action.movedCards}장이 모두 종 아래로`,
     };
   if (action.success) {
@@ -166,7 +180,9 @@ function logOf(input: GameViewInput): LogEntry[] {
               nickname,
               text: action.mined
                 ? `지뢰 폭발 · 테이블 ${action.movedCards}장 보관`
-                : `오발 · 상대에게 ${action.penaltyCards ?? 0}장 · 테이블 ${action.movedCards}장 보관`,
+                : action.revolver?.fired === 'live'
+                  ? `실탄 발사 · 테이블 ${action.movedCards}장 보관`
+                  : `오발 · 상대에게 ${action.penaltyCards ?? 0}장 · 테이블 ${action.movedCards}장 보관`,
             };
       case 'departed':
         return { kind: 'event', id, tone: 'danger', nickname, text: '이탈 · 관전으로 전환' };
@@ -185,8 +201,10 @@ function logOf(input: GameViewInput): LogEntry[] {
           action.targetUserId === null
             ? null
             : snapshot.players.find((player) => player.userId === action.targetUserId)?.nickname;
-        const reflected = action.reflectedBy
-          ? snapshot.players.find((player) => player.userId === action.reflectedBy)?.nickname
+        const reflected = action.reflectedBy?.length
+          ? action.reflectedBy
+              .map((id) => snapshot.players.find((player) => player.userId === id)?.nickname)
+              .join('·')
           : undefined;
         return {
           kind: 'event',
@@ -273,16 +291,15 @@ function skillCastOf(input: GameViewInput, cast: SkillCastEvent): SkillCastView 
   const { action } = cast;
   return {
     key: cast.id,
-    movedCards: action.movedCards,
     caster: nicknameOf(input, action.userId),
     casterId: String(action.userId),
     skillId: action.skillId,
     target: action.targetUserId === null ? null : nicknameOf(input, action.targetUserId),
     targetId: action.targetUserId === null ? null : String(action.targetUserId),
-    ...(action.reflectedBy !== undefined
+    ...(action.reflectedBy?.length
       ? {
-          reflectedBy: nicknameOf(input, action.reflectedBy),
-          reflectedById: String(action.reflectedBy),
+          reflectedBy: action.reflectedBy.map((id) => nicknameOf(input, id)),
+          reflectedById: action.reflectedBy.map(String),
         }
       : {}),
   };
@@ -302,9 +319,19 @@ function ratOf({
     return { key: pending.endsAt, phase: 'waiting', cardCount: pending.cardCount };
 
   if (ratCrush && now - ratCrush.receivedAt < 1600)
-    return { key: ratCrush.revision, phase: 'crushed', cardCount: ratCrush.cardCount };
+    return {
+      key: ratCrush.revision,
+      phase: ratCrush.mined ? 'mined' : 'crushed',
+      cardCount: ratCrush.cardCount,
+    };
   const result = skills?.gameId === snapshot.gameId ? skills.ratResult : null;
-  if (result && result.outcome !== 'crushed' && serverNow - result.at < 1800) {
+  // 쥐가 깔리거나 지뢰에 죽은 것은 모두에게 공개된 `ratCrush`로 이미 그렸다.
+  if (
+    result &&
+    result.outcome !== 'crushed' &&
+    result.outcome !== 'mined' &&
+    serverNow - result.at < 1800
+  ) {
     return {
       key: result.at,
       phase: result.outcome,
@@ -329,11 +356,7 @@ function targetingOf(
     skillId: entry.skillId,
     targetIds: input.snapshot.players
       .filter(
-        (player) =>
-          player.status === GamePlayerStatus.ACTIVE &&
-          player.userId !== input.userId &&
-          // 러시안 룰렛은 보유 덱이 남은 사람에게 쏜다.
-          (entry.skillId !== SkillId.RUSSIAN_ROULETTE || player.handCount > 0),
+        (player) => player.status === GamePlayerStatus.ACTIVE && player.userId !== input.userId,
       )
       .map((player) => String(player.userId)),
   };
@@ -353,15 +376,8 @@ export function skillUsable(
   const skill = skillById(skillId);
   const me = snapshot.players.find((player) => player.userId === userId);
   const role = me?.status === GamePlayerStatus.ACTIVE ? SkillUser.PLAYER : SkillUser.SPECTATOR;
-  // 쥐새끼는 종 밑 보관 스택에 카드가 있어야 쓰고, 러시안 룰렛은 덱에 카드가 남은 사람이 있어야 쓴다.
+  // 쥐새끼는 종 밑 보관 스택에 카드가 있어야 쓴다.
   if (skillId === SkillId.RAT && (snapshot.pileCount === 0 || !!snapshot.rat)) return false;
-  if (
-    skillId === SkillId.RUSSIAN_ROULETTE &&
-    !snapshot.players.some(
-      (player) => player.status === GamePlayerStatus.ACTIVE && player.handCount > 0,
-    )
-  )
-    return false;
   // 도르마무는 판정 결과를 보여 주는 동안(되돌릴 수 있는 마감 전)에만 쓴다.
   if (
     skillId === SkillId.DORMAMMU &&
@@ -381,10 +397,7 @@ export function skillUsable(
 }
 
 /** 시간 정지 중이면 쓴 사람과 끝나는 시각. 아니면 undefined */
-export function timeStopAt(
-  snapshot: GameSnapshot,
-  serverNow: number,
-): { userId: number; endsAt: number } | undefined {
+export function timeStopAt(snapshot: GameSnapshot, serverNow: number): TimeStopPublic | undefined {
   const stop = snapshot.timeStop;
   return stop && snapshot.status === GameStatus.PLAYING && serverNow < stop.endsAt
     ? stop
@@ -494,7 +507,7 @@ export function toGameView(input: GameViewInput): GameView {
           : undefined,
       isTurn,
       burning: snapshot.burning.includes(player.userId),
-      smashed: snapshot.smashed.includes(player.userId),
+      smashed: smashStageOf(snapshot, player.userId),
       turnSeconds: isTurn ? turnSeconds : undefined,
       cardKey: card?.id,
       autoPlayed: card?.automatic ?? false,
@@ -583,7 +596,8 @@ export function toGameView(input: GameViewInput): GameView {
     turnNickname: turnPlayer?.nickname,
     myTurnSeconds: myPhase === 'turn' ? turnSeconds : undefined,
     pileCount: snapshot.pileCount,
-    smashed: snapshot.smashed.includes(userId) || undefined,
+    smashed: smashStageOf(snapshot, userId),
+    revolver: snapshot.status === GameStatus.PLAYING ? (snapshot.revolver ?? undefined) : undefined,
     bell: bell
       ? { kind: bell.action.success ? 'success' : 'misfire' }
       : playing && snapshot.turnUserId === null
@@ -608,7 +622,12 @@ export function toGameView(input: GameViewInput): GameView {
     timeStop: stop && {
       caster: nicknameOf(input, stop.userId),
       byMe: stopByMe,
-      seconds: secondsLeft(stop.endsAt, input.serverNow, 99),
+      intro: input.serverNow < stop.startsAt,
+      // 시작 연출 동안은 5초 그대로이고, 연출이 끝난 뒤부터 센다.
+      seconds:
+        input.serverNow < stop.startsAt
+          ? TIME_STOP_MS / 1000
+          : secondsLeft(stop.endsAt, input.serverNow, 99),
     },
     frozen,
     spit: input.spitHit && input.now < input.spitHit.endsAt ? input.spitHit : undefined,

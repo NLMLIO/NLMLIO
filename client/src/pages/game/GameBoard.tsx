@@ -9,7 +9,6 @@ import { EmptyCardSlot, FruitCard } from './FruitCard';
 import { GameChat } from './GameChat';
 import { bellCenter, seatPlacements, type GameView } from './game-view';
 import { PlayerSeat, playerColorStyle } from './PlayerSeat';
-import { SkillShot } from './skill/SkillShot';
 import { SkillPick } from './skill/SkillPick';
 import { FistImpact, SkillMotion } from './skill/SkillMotion';
 import { SkillRat } from './skill/SkillRat';
@@ -33,6 +32,13 @@ export interface GameActions {
   /** 대상 지정 중 좌석을 눌러 대상으로 고른다 */
   onPickTarget?: (userId: number) => void;
 }
+
+/** 손 개 쌔게 내려치기를 맞았을 때 종을 눌러 보면 나오는 단계별 안내 */
+export const SMASHED_MESSAGES: Record<1 | 2 | 3, string> = {
+  3: '너무 두려워서 종을 칠 수가 없어요',
+  2: '손이 너무 아파 종을 칠 수 없어요',
+  1: '손이 아직 뜨거워요',
+};
 
 /** 게임 화면(06·15·18·19·05B·07A·07B·16·21·22): 테이블·자리·종·내 상태 바와 채팅 패널 */
 export function GameBoard({
@@ -152,7 +158,6 @@ export function GameBoard({
               !!view.skills?.pick ||
               !!view.bellMove?.locked ||
               !!view.bellBreak ||
-              !!view.smashed ||
               !!view.frozen)
           }
           onRing={actions.onRingBell}
@@ -161,6 +166,7 @@ export function GameBoard({
           breakStrike={casts.find((cast) => cast.skillId === SkillId.BELL_BREAK)?.key}
           hackKey={view.hackKey}
           shell={view.shell}
+          revolver={view.revolver}
         />
         {view.bellMove && !view.shell && <span className="bell-ghost" aria-hidden="true" />}
         {armedSmashSlot !== null && (
@@ -171,8 +177,8 @@ export function GameBoard({
         )}
         {view.smashed && (
           <p className="skill-hint smashed-hint" role="status">
-            <b>손이 부서졌어요</b>
-            <span>다음 종 판정까지 종을 칠 수 없어요</span>
+            <b>{SMASHED_MESSAGES[view.smashed]}</b>
+            <span>내 카드를 낼수록 손이 회복돼요</span>
           </p>
         )}
         {seatedPlayers.map((player, index) => {
@@ -192,7 +198,7 @@ export function GameBoard({
               }
               aria-hidden="true"
             >
-              <div className="player-hand" data-injured={player.smashed || undefined}>
+              <div className="player-hand" data-injured={player.smashed}>
                 {casts
                   .filter(
                     (cast) => cast.skillId === SkillId.HAND_SMASH && cast.targetId === player.id,
@@ -293,24 +299,13 @@ export function GameBoard({
         )}
         {casts.map((cast) => {
           const target = cast.targetId ? seatPoint(cast.targetId) : null;
-          if (cast.skillId === SkillId.RUSSIAN_ROULETTE && cast.targetId && target)
-            return (
-              <SkillShot
-                key={cast.key}
-                center={bell}
-                targetId={cast.targetId}
-                targetName={cast.target ?? ''}
-                at={target}
-                movedCards={cast.movedCards}
-              />
-            );
           return (
             <SkillMotion
               key={cast.key}
               cast={cast}
               caster={seatPoint(cast.casterId)}
               target={target}
-              reflector={cast.reflectedById ? seatPoint(cast.reflectedById) : null}
+              reflectors={(cast.reflectedById ?? []).flatMap((id) => seatPoint(id) ?? [])}
             />
           );
         })}

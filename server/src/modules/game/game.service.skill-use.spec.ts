@@ -1,4 +1,4 @@
-import { Fruit } from '@nlmlio/shared';
+import { Fruit, TIME_STOP_INTRO_MS, TIME_STOP_MS } from '@nlmlio/shared';
 import { Card, Deck } from '../../domain/card/deck';
 import { Game } from '../../domain/game/game';
 import { Room } from '../../domain/room/room';
@@ -149,8 +149,8 @@ describe.each([
       expect(await service.bell(1, { gameId, turnSeq: state().turnSeq })).toBe(false);
       expect(await service.play(2, { gameId, turnId: state().turnId })).toBe(true);
       expect(await service.play(2, { gameId, turnId: state().turnId })).toBe(true);
-      // 3초가 지나면 평소로 돌아온다
-      await jest.advanceTimersByTimeAsync(3000);
+      // 시작 연출이 끝난 뒤 5초가 지나면 평소로 돌아온다
+      await jest.advanceTimersByTimeAsync(TIME_STOP_INTRO_MS + TIME_STOP_MS);
       expect(await service.play(1, { gameId, turnId: state().turnId })).toBe(true);
     });
 });

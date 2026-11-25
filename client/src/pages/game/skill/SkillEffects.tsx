@@ -6,7 +6,7 @@ import type { TimeStopView } from '../game-view';
 const hintStyle = (skillId: SkillId): CSSProperties =>
   ({ '--grade': GRADE_STYLE[skillById(skillId).grade].color }) as CSSProperties;
 
-/** 시간 정지(FUNC-009-05): 화면 전체가 청회색이 되고 3초 카운트가 뜬다. 쓴 사람만 움직일 수 있다 */
+/** 시간 정지(FUNC-009-05): 화면 전체가 청회색이 되고, 시작 연출이 끝나면 5초 카운트가 뜬다. 쓴 사람만 움직일 수 있다 */
 export function SkillTimeStop({ stop }: { stop: TimeStopView }) {
   return (
     <div

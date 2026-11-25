@@ -73,14 +73,16 @@ export function SkillMotion({
   cast,
   caster,
   target,
-  reflector,
+  reflectors,
 }: {
   cast: SkillCastView;
   caster: Point | null;
   target: Point | null;
-  reflector: Point | null;
+  /** 무지개 반사로 막아 낸 사람들의 자리(막은 순서). 첫 사람이 원래 대상이다 */
+  reflectors: Point[];
 }) {
   const start = caster ?? { x: 990, y: 80 };
+  const reflector = reflectors[0];
   const destination = reflector ?? target ?? { x: 550, y: 440 };
   const travel = {
     left: destination.x,
@@ -124,7 +126,13 @@ export function SkillMotion({
   return (
     <div className="skill-motion" aria-hidden="true">
       {effect}
-      {reflector && <i className="reflect-arc" style={{ left: reflector.x, top: reflector.y }} />}
+      {reflectors.map((point, index) => (
+        <i
+          key={index}
+          className="reflect-arc"
+          style={{ left: point.x, top: point.y, animationDelay: `${index * 180}ms` }}
+        />
+      ))}
     </div>
   );
 }

@@ -136,6 +136,13 @@ export class Room {
     this.members.set(userId, { ...member, role: RoomRole.SPECTATOR });
   }
 
+  /** 안해로 게임이 처음부터 다시 시작돼 되살아난 탈락자를 참가자로 되돌린다(이번 판 참가자만). */
+  markPlayer(userId: number): void {
+    const member = this.member(userId);
+    if (!this.gamePlayers.has(userId)) return;
+    this.members.set(userId, { ...member, role: RoomRole.PLAYER });
+  }
+
   /** 참가자가 2명 이상이면 방장이 게임을 시작한다. 관전자는 그대로 관전한다. */
   start(actorId: number): void {
     this.requireWaiting();

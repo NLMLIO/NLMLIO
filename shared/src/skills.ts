@@ -13,6 +13,9 @@ export const SKILL_PICK_TIME_MS = 10_000;
 export const SKILL_CAST_MS = 1_600;
 /** 손 개 쌔게 내려치기: 종 판정이 난 뒤 이 시간 안에만 쓸 수 있다 */
 export const HAND_SMASH_WINDOW_MS = 2_000;
+/** 맞은 손이 회복하는 단계 수와, 한 단계를 내려가는 데 필요한 자기 카드 수(3단계 × 3장 = 9장) */
+export const HAND_SMASH_STAGES = 3;
+export const HAND_SMASH_CARDS_PER_STAGE = 3;
 /** 종 야바위가 이어지는 시간과 늘어나는 종의 개수 */
 export const BELL_SHELL_MS = 10_000;
 export const BELL_SHELL_KEYS = ['1', '2', '3', '4'] as const;
@@ -25,17 +28,23 @@ export const BELL_MOVE_INPUT_LOCK_MS = 300;
 export const BELL_MOVE_KEYS = ['A', 'S', 'D', 'F', 'G', 'H', 'K', 'L'] as const;
 /** 종이 옮겨 갈 자리 수(테이블 위 대각선 4곳) */
 export const BELL_MOVE_POSITIONS = 4;
-/** 시간 정지(009-05): 쓴 사람만 카드를 낼 수 있는 시간 */
-export const TIME_STOP_MS = 3_000;
+/** 시간 정지(009-05): 쓴 사람만 카드를 낼 수 있는 시간. 시작 연출 시간은 여기에 들어가지 않는다 */
+export const TIME_STOP_MS = 5_000;
+/** 시간 정지 시작 연출(시계가 멈추는 애니메이션). 이 동안에도 시간은 멈춰 있고 쓴 사람은 카드를 낼 수 있다 */
+export const TIME_STOP_INTRO_MS = 1_100;
 /** 침 뱉기(009-05): 대상 화면이 3초 가려지고 3초 흘러내린다 */
 export const SPIT_COVER_MS = 3_000;
 export const SPIT_DRIP_MS = 3_000;
-/** 종 부수기(009-05): 종이 부서져 아무도 못 치는 시간(10~30초 중 서버가 정한다) */
-export const BELL_BREAK_MIN_MS = 10_000;
-export const BELL_BREAK_MAX_MS = 30_000;
-/** 러시안 룰렛(009-05): 총을 맞은 사람의 덱에서 종 밑으로 보내는 카드 수 */
-export const ROULETTE_CARDS = 5;
-/** 쥐가 종 아래에 나타난 뒤 카드를 가져갈 때까지의 시간 */
+/** 종 부수기(009-05): 종이 부서져 아무도 못 치는 시간(5~20초 중 서버가 정한다) */
+export const BELL_BREAK_MIN_MS = 5_000;
+export const BELL_BREAK_MAX_MS = 20_000;
+/**
+ * 러시안 룰렛(009-05): 종 위에 올려 둔 리볼버의 공포탄·실탄 수. 종을 누를 때마다 남은 칸 중 하나가 나오고,
+ * 공포탄이면 그 칸만 줄고 실탄이면 테이블 카드가 종 아래로 가고 리볼버가 사라진다.
+ */
+export const ROULETTE_BLANKS = 5;
+export const ROULETTE_LIVE = 1;
+/** 쥐가 종 아래에 나타난 뒤 카드를 가져갈 때까지의 시간(이 안에 지뢰를 깔아도 쥐가 죽는다) */
 export const RAT_ESCAPE_MS = 2_000;
 /** 후보 칸 수와 보유 칸 수(009-02, 009-03) */
 export const SKILL_CANDIDATE_COUNT = 3;
@@ -98,7 +107,10 @@ export interface SkillDefinition {
   timing: SkillTiming;
   user: SkillUser;
   target: SkillTarget;
-  /** 필드는 방 전체, 개인은 시전자·피격자·반사자, hidden은 설치 알림을 보내지 않는다. */
+  /**
+   * 필드는 방 전체, 개인은 시전자·피격자·반사자, hidden은 설치 알림을 보내지 않는다.
+   * 대상을 지정하는 스킬(침 뱉기·해킹·아마테라스·손 내려치기)은 모두가 연출을 보도록 필드로 보낸다.
+   */
   announcement: 'field' | 'personal' | 'hidden';
   /**
    * 사용 효과를 구현했나. false면 선택해서 보유할 수는 있지만 쓸 수 없다(FUNC-009-05 효과 구현 중).
@@ -155,7 +167,7 @@ export const SKILLS: readonly SkillDefinition[] = [
   },
   {
     id: SkillId.SPIT,
-    announcement: 'personal',
+    announcement: 'field',
     name: '침 뱉기',
     grade: 2,
     timing: SkillTiming.ANYTIME,
@@ -174,7 +186,7 @@ export const SKILLS: readonly SkillDefinition[] = [
     target: 'none',
     available: true,
     description:
-      '10~30초 동안 종을 부순다. 종이 돌아올 때까지 아무도 종을 못 친다. 종 아래에 있는 쥐도 잡는다.',
+      '5~20초 동안 종을 부순다. 종이 돌아올 때까지 아무도 종을 못 친다. 종 아래에 있는 쥐도 잡는다.',
   },
   {
     id: SkillId.BELL_SHELL_GAME,
@@ -189,7 +201,7 @@ export const SKILLS: readonly SkillDefinition[] = [
   },
   {
     id: SkillId.HACK,
-    announcement: 'personal',
+    announcement: 'field',
     name: '해킹',
     grade: 2,
     timing: SkillTiming.ANYTIME,
@@ -208,11 +220,11 @@ export const SKILLS: readonly SkillDefinition[] = [
     target: 'none',
     available: true,
     description:
-      '이번 라운드에 지뢰를 깐다. 5개를 맞춰 종을 눌러도 카드가 종 밑에 쌓인다. 폭발 전까지 설치 여부는 비밀이다.',
+      '이번 라운드에 지뢰를 깐다. 5개를 맞춰 종을 눌러도 카드가 종 밑에 쌓인다. 쥐새끼가 오면 쥐가 터져 죽고 지뢰는 사라진다. 폭발 전까지 설치 여부는 비밀이다.',
   },
   {
     id: SkillId.HAND_SMASH,
-    announcement: 'personal',
+    announcement: 'field',
     name: '손 개 쌔개 내려치기',
     grade: 3,
     timing: SkillTiming.ON_BELL,
@@ -220,11 +232,11 @@ export const SKILLS: readonly SkillDefinition[] = [
     target: 'none',
     available: true,
     description:
-      '슬롯을 눌러 준비한 뒤, 상대의 종 판정 후 2초 안에 현재 종 키로 내려친다. 맞은 손은 다음 판정까지 종을 못 친다.',
+      '슬롯을 눌러 준비한 뒤, 상대의 종 판정 후 2초 안에 현재 종 키로 내려친다. 맞은 손은 자기 카드를 3장 낼 때마다 한 단계씩 회복해, 9장을 내면 종을 다시 칠 수 있다.',
   },
   {
     id: SkillId.AMATERASU,
-    announcement: 'personal',
+    announcement: 'field',
     name: '아마테라스',
     grade: 3,
     timing: SkillTiming.ANYTIME,
@@ -242,7 +254,8 @@ export const SKILLS: readonly SkillDefinition[] = [
     user: SkillUser.PLAYER,
     target: 'none',
     available: true,
-    description: '나를 노린 단일 지정 스킬을 자동으로 반사해, 쓴 사람이 대신 맞는다.',
+    description:
+      '나를 노린 스킬(손 개 쌔게 내려치기 포함)을 자동으로 반사해, 쓴 사람이 대신 맞는다. 반사가 없을 때까지 서로 주고받는다.',
   },
   {
     id: SkillId.RAT,
@@ -264,7 +277,7 @@ export const SKILLS: readonly SkillDefinition[] = [
     user: SkillUser.PLAYER,
     target: 'none',
     available: true,
-    description: '3초 동안 시간이 멈춘다. 나만 카드를 낼 수 있다.',
+    description: '5초 동안 시간이 멈춘다. 나만 카드를 낼 수 있다.',
   },
   {
     id: SkillId.DORMAMMU,
@@ -279,14 +292,15 @@ export const SKILLS: readonly SkillDefinition[] = [
   },
   {
     id: SkillId.RUSSIAN_ROULETTE,
-    announcement: 'personal',
+    announcement: 'field',
     name: '러시안 룰렛',
     grade: 4,
     timing: SkillTiming.ANYTIME,
     user: SkillUser.SPECTATOR,
-    target: 'one',
+    target: 'none',
     available: true,
-    description: '총을 맞은 플레이어의 덱 맨 위에서 최대 5장을 종 아래에 넣는다.',
+    description:
+      '종 위에 공포탄 5발·실탄 1발 리볼버를 올린다. 종을 누를 때 실탄이 나오면 테이블 카드가 종 아래로 간다.',
   },
   {
     id: SkillId.RESET,
@@ -335,7 +349,7 @@ export interface SkillPickPublic {
 /** 쥐가 노린 카드 수와 서버에서 확정한 결과 */
 export interface RatResult {
   at: number;
-  outcome: 'stolen' | 'crushed' | 'missed';
+  outcome: 'stolen' | 'crushed' | 'missed' | 'mined';
   cardCount: number;
 }
 
@@ -380,9 +394,13 @@ export interface BellMovePublic {
   endsAt: number;
 }
 
-/** 시간 정지 중: 쓴 사람과 끝나는 서버 시각 */
+/**
+ * 시간 정지 중: 쓴 사람, 시작 연출이 끝나 5초 카운트가 시작되는 서버 시각, 끝나는 서버 시각.
+ * 연출 시간(`TIME_STOP_INTRO_MS`)은 5초에 들어가지 않는다.
+ */
 export interface TimeStopPublic {
   userId: number;
+  startsAt: number;
   endsAt: number;
 }
 

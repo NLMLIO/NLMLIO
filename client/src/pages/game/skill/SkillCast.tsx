@@ -23,7 +23,11 @@ export function SkillCast({ cast }: { cast: SkillCastView }) {
       </span>
       {(cast.target || skill.announcement === 'field') && (
         <span className="skill-cast-target">
-          {cast.reflectedBy ? `🌈 ${cast.reflectedBy} 반사 → ` : cast.target ? '→ ' : ''}
+          {cast.reflectedBy?.length
+            ? `🌈 ${cast.reflectedBy.join('·')} 반사 → `
+            : cast.target
+              ? '→ '
+              : ''}
           {cast.target ?? '필드 전체'}
         </span>
       )}

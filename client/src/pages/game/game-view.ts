@@ -46,7 +46,8 @@ export interface PlayerView {
   isTurn: boolean;
   /** 아마테라스: 검은 불꽃에 휩싸여 다음 판정까지 카드·종이 불가 */
   burning?: boolean;
-  smashed?: boolean;
+  /** 손 개 쌔게 내려치기를 맞은 손의 회복 단계(3 빨강 → 1 거의 회복). 맞지 않았으면 비워 둔다 */
+  smashed?: 1 | 2 | 3;
   /** 차례인 사람의 남은 턴 시간(초, FUNC-005-15) */
   turnSeconds?: number;
   /** 맨 위 카드가 바뀔 때마다 달라지는 값. 바뀌면 카드 뒤집기 애니메이션을 다시 튼다 */
@@ -101,7 +102,7 @@ export type LogEntry =
 
 export interface RatView {
   key: number;
-  phase: 'waiting' | 'stolen' | 'crushed' | 'missed';
+  phase: 'waiting' | 'stolen' | 'crushed' | 'missed' | 'mined';
   cardCount: number;
   /** 성공 결과는 카드를 실제로 받은 본인에게만 전송된다. */
   recipientId?: string;
@@ -128,8 +129,10 @@ export interface GameView {
   /** 스킬 슬롯과 선택 창(FUNC-009). 스킬이 없는 화면은 비워 둔다 */
   skills?: SkillsView;
   rat?: RatView;
-  /** 내 손이 부서져 다음 종 판정까지 종을 칠 수 없다 */
-  smashed?: boolean;
+  /** 내 손이 부서졌다: 단계(3→1)가 내려가 풀릴 때까지 종을 칠 수 없다 */
+  smashed?: 1 | 2 | 3;
+  /** 러시안 룰렛: 종 위에 올려 둔 리볼버의 남은 탄 */
+  revolver?: { blanks: number; live: number };
   /** 방금 쓴 스킬 알림(화면 위쪽, 1.6초) */
   skillCasts?: SkillCastView[];
   /** 대상 지정 중: 누를 수 있는 좌석 */
@@ -152,6 +155,8 @@ export interface GameView {
 
 export interface TimeStopView {
   caster: string;
+  /** 시작 연출 중이다(5초 카운트는 연출이 끝난 뒤부터 센다) */
+  intro?: boolean;
   /** 내가 쓴 사람이다(나만 움직일 수 있다) */
   byMe: boolean;
   /** 남은 시간(초) */
@@ -178,11 +183,9 @@ export interface SkillCastView {
   target: string | null;
   /** 대상의 좌석 id. 대상이 없으면 null */
   targetId: string | null;
-  /** 무지개 반사로 막아 낸 사람의 닉네임. 있으면 target은 쓴 사람 자신이다 */
-  reflectedBy?: string;
-  reflectedById?: string;
-  /** 서버가 룰렛 피격자의 덱에서 종 아래로 옮긴 카드 수 */
-  movedCards?: number;
+  /** 무지개 반사로 막아 낸 사람들의 닉네임(막은 순서). 있으면 target은 마지막으로 반사를 맞은 사람이다 */
+  reflectedBy?: string[];
+  reflectedById?: string[];
 }
 
 export interface SkillTargeting {

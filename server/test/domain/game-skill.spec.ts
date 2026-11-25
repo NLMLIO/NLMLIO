@@ -10,6 +10,7 @@ import {
   ROUND_RESULT_MS,
   RAT_ESCAPE_MS,
   SKILL_PICK_TIME_MS,
+  TIME_STOP_INTRO_MS,
   TIME_STOP_MS,
   TURN_TIME_MS,
 } from '@nlmlio/shared';
@@ -487,12 +488,16 @@ describe('스킬 효과: 시간 정지(FUNC-009-05)', () => {
     expect(game.snapshot().turnUserId).toBe(1);
     const deadline = game.turnDeadline!;
     game.useSkill(2, 0, undefined, at + 1);
-    expect(game.snapshot().timeStop).toEqual({ userId: 2, endsAt: at + 1 + TIME_STOP_MS });
-    // 시간이 흐르지 않는다: 턴 타이머가 멈춘 시간만큼 뒤로 밀린다
-    expect(game.turnDeadline).toBe(deadline + TIME_STOP_MS);
+    // 시작 연출(INTRO)이 끝난 뒤부터 5초를 센다. 연출 시간은 5초에 들어가지 않는다.
+    const startsAt = at + 1 + TIME_STOP_INTRO_MS;
+    const endsAt = startsAt + TIME_STOP_MS;
+    expect(TIME_STOP_MS).toBe(5000);
+    expect(game.snapshot().timeStop).toEqual({ userId: 2, startsAt, endsAt });
+    // 시간이 흐르지 않는다: 턴 타이머가 멈춘 시간(연출 + 5초)만큼 뒤로 밀린다
+    expect(game.turnDeadline).toBe(deadline + TIME_STOP_INTRO_MS + TIME_STOP_MS);
     expect(game.timeout(game.turnId, deadline + 1)).toBeNull();
 
-    // 쓴 사람(2번)은 자기 차례가 아니어도 연달아 낼 수 있다
+    // 쓴 사람(2번)은 시작 연출 중에도, 자기 차례가 아니어도 연달아 낼 수 있다
     expect(game.play(2, game.turnId, at + 10)?.kind).toBe('card');
     expect(game.play(2, game.turnId, at + 20)?.kind).toBe('card');
     // 다른 사람은 카드도 종도 못 한다(조용히 무시)
@@ -500,8 +505,10 @@ describe('스킬 효과: 시간 정지(FUNC-009-05)', () => {
     expect(game.canRing(1, game.turnSeq, at + 30)).toBe(false);
     expect(game.ring(1, game.turnSeq, at + 30)).toBeNull();
     expect(game.canRing(2, game.turnSeq, at + 30)).toBe(true);
+    // 연출이 끝나도 5초가 다 지나기 전에는 다른 사람은 여전히 못 한다
+    expect(game.canRing(1, game.turnSeq, endsAt - 1)).toBe(false);
     // 끝나면 평소로 돌아온다
-    const over = at + 1 + TIME_STOP_MS;
+    const over = endsAt;
     expect(game.canRing(1, game.turnSeq, over)).toBe(true);
     expectRule(() => game.play(2, game.turnId, over), ErrorCode.NOT_YOUR_TURN);
     expect(game.play(1, game.turnId, over)?.kind).toBe('card');
@@ -668,7 +675,7 @@ describe('스킬 효과: 숫자 바꾸기(FUNC-009-05)', () => {
 });
 
 describe('스킬 효과: 종 부수기(FUNC-009-05)', () => {
-  it('10~30초 동안 아무도 종을 칠 수 없고(쓴 사람도), 카드는 낼 수 있다', () => {
+  it('5~20초 동안 아무도 종을 칠 수 없고(쓴 사람도), 카드는 낼 수 있다', () => {
     const game = start(2, bellBreakRandom());
     const at = holdSkills(game);
     game.useSkill(1, 0, undefined, at + 1);
@@ -832,81 +839,113 @@ describe('스킬 효과: 쥐새끼(FUNC-009-05)', () => {
 });
 
 describe('스킬 효과: 러시안 룰렛(FUNC-009-05)', () => {
-  /** 관전자(9번)가 러시안 룰렛을 들고, 두 플레이어는 카드를 내지 않은 상태 */
+  /** 관전자(9·10번)가 러시안 룰렛을 들고, 두 플레이어는 카드를 내지 않은 상태. 리볼버 난수는 `roll`로 고정한다 */
   const setup = () => {
-    const game = start(2, rouletteRandom());
+    const roll: { value: number | null } = { value: null };
+    const base = rouletteRandom();
+    const game = start(2, () => roll.value ?? base());
     const opensAt = 0;
-    game.openSkillPick([9], opensAt);
-    for (const id of [1, 2, 9]) game.chooseSkill(id, { slot: 0 }, opensAt + 10);
+    game.openSkillPick([9, 10], opensAt);
+    for (const id of [1, 2, 9, 10]) game.chooseSkill(id, { slot: 0 }, opensAt + 10);
     expect(game.skillState(9).slots).toEqual([SkillId.RUSSIAN_ROULETTE]);
-    return { game, at: opensAt + 20 };
+    expect(game.skillState(10).slots).toEqual([SkillId.RUSSIAN_ROULETTE]);
+    return { game, at: opensAt + 20, roll };
   };
-  const fill = (game: Game, rounds: number, from: number) => {
-    let t = from;
-    for (let round = 0; round < rounds; round++) {
-      game.play(1, game.turnId, (t += 1));
-      game.play(2, game.turnId, (t += 1));
-    }
-    return t;
+  /** 1번 딸기 2 + 2번 딸기 3으로 정확히 5개를 만든 뒤 종을 친다. 다음 판 시작 시각을 돌려준다 */
+  const ringAfterTwoCards = (game: Game, from: number) => {
+    game.play(1, game.turnId, from);
+    game.play(2, game.turnId, from + 1);
+    return game.ring(1, game.turnSeq, from + 2);
   };
 
-  it('피격자의 보유 덱 위에서 5장을 종 밑으로 옮기고 실제 수량을 알려준다', () => {
+  it('쓰면 대상 없이 종 위에 공포탄 5발·실탄 1발 리볼버가 올라간다', () => {
     const { game, at } = setup();
-    const t = fill(game, 2, at);
-    const before = game.checkpoint();
-    const count = totalCards(game);
-    const action = game.useSkill(9, 0, 2, t + 1);
+    expect(game.snapshot().revolver).toBeNull();
+    const action = game.useSkill(9, 0, undefined, at + 1);
     expect(action).toEqual({
       kind: 'skill',
       userId: 9,
       skillId: SkillId.RUSSIAN_ROULETTE,
-      targetUserId: 2,
-      movedCards: 5,
+      targetUserId: null,
     });
-    const after = game.checkpoint();
-    expect(after.players[1].hand).toEqual(before.players[1].hand.slice(5));
-    expect(after.pile).toEqual(before.players[1].hand.slice(0, 5));
-    expect(after.players[1].table).toEqual(before.players[1].table);
-    expect(after.players[0]).toEqual(before.players[0]);
-    expect(game.turnSeq).toBe(before.turnSeq);
-    expect(totalCards(game)).toBe(count);
+    expect(game.snapshot().revolver).toEqual({ blanks: 5, live: 1 });
+    expect(game.skillState(9).slots).toEqual([]);
   });
 
-  it('보유 덱이 5장 미만이면 남은 카드만 이동하고 다음 사람에게 차례를 넘긴다', () => {
+  it('대상을 지정할 수 없다', () => {
     const { game, at } = setup();
-    const t = fill(game, 9, at);
-    expect(game.turnUserId).toBe(1);
-    expect(game.useSkill(9, 0, 1, t + 1)).toMatchObject({ movedCards: 3, targetUserId: 1 });
-    expect(game.snapshot().players[0]).toMatchObject({ handCount: 0, tableCount: 9 });
-    expect(game.snapshot().pileCount).toBe(3);
-    expect(game.turnUserId).toBe(2);
-    expect(game.canRing(1, game.turnSeq)).toBe(true);
-  });
-
-  it('테이블에 카드가 있어도 덱이 비어 있는 대상에게는 쓸 수 없다', () => {
-    const { game, at } = setup();
-    const t = fill(game, 12, at);
-    expectRule(() => game.useSkill(9, 0, 2, t + 1), ErrorCode.VALIDATION_FAILED);
+    expectRule(() => game.useSkill(9, 0, 2, at + 1), ErrorCode.VALIDATION_FAILED);
     expect(game.skillState(9).slots).toEqual([SkillId.RUSSIAN_ROULETTE]);
   });
 
-  it('마지막 덱을 비우면 기존 종 기회를 준 뒤 게임을 종료한다', () => {
-    const { game, at } = setup();
-    const t = fill(game, 11, at);
-    game.play(1, game.turnId, t + 1);
-    expect(game.useSkill(9, 0, 2, t + 2)).toMatchObject({ movedCards: 1 });
-    expect(game.turnUserId).toBeNull();
-    expect(game.status).toBe(GameStatus.PLAYING);
-    game.timeout(game.turnId, game.turnDeadline!);
-    expect(game.status).toBe(GameStatus.ENDED);
-    expect(game.snapshot().results[0].userId).toBe(1);
+  it('종을 눌렀을 때 공포탄이면 공포탄만 하나 줄고 종 판정은 평소대로 이어진다', () => {
+    const { game, at, roll } = setup();
+    game.useSkill(9, 0, undefined, at + 1);
+    roll.value = 0.99;
+    const action = ringAfterTwoCards(game, at + 2);
+    expect(action).toMatchObject({
+      kind: 'bell',
+      success: true,
+      revolver: { fired: 'blank', blanks: 4 },
+    });
+    // 평소 성공처럼 카드를 가져간다
+    expect(action).toMatchObject({ movedCards: 2 });
+    expect(game.snapshot().revolver).toEqual({ blanks: 4, live: 1 });
+    expect(game.snapshot().skillSuccesses).toBe(1);
+  });
+
+  it('공포탄이 계속 나오면 그때마다 하나씩 줄어든다', () => {
+    const { game, at, roll } = setup();
+    game.useSkill(9, 0, undefined, at + 1);
+    roll.value = 0.99;
+    ringAfterTwoCards(game, at + 2);
+    const next = at + 2 + ROUND_RESULT_MS + 10;
+    expect(ringAfterTwoCards(game, next)).toMatchObject({
+      revolver: { fired: 'blank', blanks: 3 },
+    });
+    expect(game.snapshot().revolver).toEqual({ blanks: 3, live: 1 });
+  });
+
+  it('실탄이 나오면 필드의 카드가 종 밑으로 가고 리볼버가 사라진다(성공도 오발도 아니다)', () => {
+    const { game, at, roll } = setup();
+    game.useSkill(9, 0, undefined, at + 1);
+    const before = game.checkpoint();
+    const successes = game.snapshot().skillSuccesses;
+    roll.value = 0;
+    const action = ringAfterTwoCards(game, at + 2);
+    expect(action).toMatchObject({
+      kind: 'bell',
+      success: false,
+      movedCards: 2,
+      revolver: { fired: 'live', blanks: 5 },
+    });
+    expect(action).not.toHaveProperty('penaltyCards');
+    const after = game.checkpoint();
+    expect(after.pile).toHaveLength(before.pile.length + 2);
+    expect(game.snapshot().players.map((player) => player.tableCount)).toEqual([0, 0]);
+    expect(game.snapshot().revolver).toBeNull();
+    // 성공도 오발도 아니라 기록과 성공 횟수에 넣지 않는다
+    expect(after.players[0]).toMatchObject({ bellSuccess: 0, bellFail: 0 });
+    expect(game.snapshot().skillSuccesses).toBe(successes);
+  });
+
+  it('리볼버가 있는 상태에서 또 쓰면 공포탄 5발·실탄 1발로 초기화된다', () => {
+    const { game, at, roll } = setup();
+    game.useSkill(9, 0, undefined, at + 1);
+    roll.value = 0.99;
+    const next = at + 2 + ROUND_RESULT_MS + 10;
+    ringAfterTwoCards(game, at + 2);
+    expect(game.snapshot().revolver).toEqual({ blanks: 4, live: 1 });
+    roll.value = null;
+    game.useSkill(10, 0, undefined, next);
+    expect(game.snapshot().revolver).toEqual({ blanks: 5, live: 1 });
   });
 
   it('관전자 전용이라 플레이어는 쓸 수 없다', () => {
     const { game, at } = setup();
     expect(game.skillState(1).slots).not.toContain(SkillId.RUSSIAN_ROULETTE);
     // 플레이어는 관전자 전용 스킬을 후보로도 받지 못하므로 어떤 칸도 쓸 수 없다
-    expectRule(() => game.useSkill(1, 1, 2, at + 1), ErrorCode.SKILL_UNAVAILABLE);
+    expectRule(() => game.useSkill(1, 1, undefined, at + 1), ErrorCode.SKILL_UNAVAILABLE);
   });
 });
 
@@ -920,7 +959,9 @@ const asAmaterasu = [0.9, 0.3, 0.9, 0.3, 0.9, 0.3];
 const asReflect = [0.9, 0.6, 0.9, 0.6, 0.9, 0.6];
 const asSpit = [0.6, 0.2, 0.6, 0.2, 0.6, 0.2];
 const asHack = [0.6, 0.7, 0.6, 0.7, 0.6, 0.7];
-const asRoulette = [0.9, 0, 0.9, 0, 0.9, 0];
+const asRat = [0.9, 0.9, 0.9, 0.9, 0.9, 0.9];
+const asMine = [0.6, 0.9, 0.6, 0.9, 0.6, 0.9];
+const asHandSmash = [0.9, 0, 0.9, 0, 0.9, 0];
 const mineRandom = () => pickRandom(0.6, 0.9);
 
 describe('스킬 효과: 지뢰(FUNC-009-05)', () => {
@@ -978,6 +1019,59 @@ describe('스킬 효과: 지뢰(FUNC-009-05)', () => {
   });
 });
 
+describe('스킬 효과: 지뢰와 쥐새끼(FUNC-009-05)', () => {
+  /** 1번은 쥐새끼를, 2번은 지뢰를 든다. 보관 스택에 카드가 1장 있는 상태로 시작한다 */
+  const setup = () => {
+    const game = start(2, sequenceRandom(...asRat, ...asMine));
+    const at = holdSkills(game);
+    expect(game.skillState(1).slots).toEqual([SkillId.RAT]);
+    expect(game.skillState(2).slots).toEqual([SkillId.MINE]);
+    game.play(1, game.turnId, at + 1);
+    expect(game.ring(2, game.turnSeq, at + 2)).toMatchObject({ success: false });
+    expect(game.snapshot().pileCount).toBe(1);
+    return { game, at };
+  };
+
+  it('쥐가 종 밑에 있는 2초 안에 지뢰를 깔면 쥐가 지뢰에 터져 죽고 지뢰도 사라진다', () => {
+    const { game, at } = setup();
+    const hand = game.checkpoint().players[0].hand.length;
+    game.useSkill(1, 0, undefined, at + 3);
+    expect(game.snapshot().rat).not.toBeNull();
+    const action = game.useSkill(2, 0, undefined, at + 3 + RAT_ESCAPE_MS - 1);
+    expect(action).toMatchObject({ kind: 'skill', skillId: SkillId.MINE, ratMined: true });
+    expect(game.snapshot().rat).toBeNull();
+    expect(game.skillState(1).ratResult).toMatchObject({ outcome: 'mined', cardCount: 1 });
+    // 쥐는 카드를 가져가지 못한다
+    expect(game.settleRat(at + 10_000)).toBe(false);
+    expect(game.checkpoint().players[0].hand.length).toBe(hand);
+    expect(game.snapshot().pileCount).toBe(1);
+  });
+
+  it('이미 지뢰가 깔려 있으면 쥐새끼를 보내자마자 쥐가 죽고 지뢰가 사라진다', () => {
+    const { game, at } = setup();
+    game.useSkill(2, 0, undefined, at + 3);
+    const hand = game.checkpoint().players[0].hand.length;
+    const action = game.useSkill(1, 0, undefined, at + 4);
+    expect(action).toMatchObject({ kind: 'skill', skillId: SkillId.RAT, ratMined: true });
+    expect(game.snapshot().rat).toBeNull();
+    expect(game.skillState(1).ratResult).toMatchObject({ outcome: 'mined' });
+    expect(game.checkpoint().players[0].hand.length).toBe(hand);
+    // 지뢰가 사라졌으니 다음 판정은 평소와 같다
+    const next = at + 10_000;
+    game.play(game.snapshot().turnUserId!, game.turnId, next);
+    game.play(game.snapshot().turnUserId!, game.turnId, next + 1);
+    expect(game.ring(1, game.turnSeq, next + 2)).not.toHaveProperty('mined');
+  });
+
+  it('쥐가 이미 카드를 가져간 뒤에 깐 지뢰는 쥐와 상관없이 그대로 남는다', () => {
+    const { game, at } = setup();
+    game.useSkill(1, 0, undefined, at + 3);
+    const end = game.ratDeadline!;
+    expect(game.useSkill(2, 0, undefined, end)).not.toHaveProperty('ratMined');
+    expect(game.skillState(1).ratResult).toMatchObject({ outcome: 'stolen' });
+  });
+});
+
 describe('스킬 효과: 무지개 반사(FUNC-009-05)', () => {
   /** 1번은 `attacker`를, 2번은 무지개 반사를 들고 시작한다 */
   const setup = (attacker: number[]) => {
@@ -985,6 +1079,19 @@ describe('스킬 효과: 무지개 반사(FUNC-009-05)', () => {
     const at = holdSkills(game);
     expect(game.skillState(2).slots).toEqual([SkillId.RAINBOW_REFLECT]);
     return { game, at };
+  };
+  /**
+   * 세 라운드 뒤 두 번째 스킬 선택까지 마친다. 1번은 첫 칸에 `first`, 두 번째에 `secondA`를,
+   * 2번은 첫 칸에 `first2`, 두 번째에 `secondB`를 든다.
+   */
+  const setupTwoPicks = (secondA: number[], secondB: number[]) => {
+    const game = start(2, sequenceRandom(...asAmaterasu, ...asReflect, ...secondA, ...secondB));
+    holdSkills(game);
+    const last = succeed(game, 3);
+    const opensAt = last + ROUND_RESULT_MS;
+    expect(game.openSkillPick([], opensAt)).toBe(true);
+    for (const id of game.userIds) game.chooseSkill(id, { slot: 0 }, opensAt + 10);
+    return { game, at: opensAt + 20 };
   };
 
   it('나를 노린 단일 지정 스킬을 자동으로 막고, 쓴 사람이 대신 맞는다(아마테라스)', () => {
@@ -995,7 +1102,7 @@ describe('스킬 효과: 무지개 반사(FUNC-009-05)', () => {
       userId: 1,
       skillId: SkillId.AMATERASU,
       targetUserId: 1,
-      reflectedBy: 2,
+      reflectedBy: [2],
     });
     expect(game.snapshot().burning).toEqual([1]);
     // 반사는 한 번 쓰면 사라지고, 쓴 스킬도 사라진다
@@ -1007,7 +1114,7 @@ describe('스킬 효과: 무지개 반사(FUNC-009-05)', () => {
     const spit = setup(asSpit);
     expect(spit.game.useSkill(1, 0, 2, spit.at + 1)).toMatchObject({
       targetUserId: 1,
-      reflectedBy: 2,
+      reflectedBy: [2],
     });
     const hack = setup(asHack);
     hack.game.useSkill(1, 0, 2, hack.at + 1);
@@ -1015,11 +1122,40 @@ describe('스킬 효과: 무지개 반사(FUNC-009-05)', () => {
     expect(hack.game.skillState(2).hackKey).toBeNull();
   });
 
+  it('반사된 것을 맞은 쪽도 무지개 반사가 있으면 다시 반사한다', () => {
+    // 1번: 아마테라스 + 반사 / 2번: 반사 + 아마테라스 → 2번 반사 → 1번 반사 → 2번이 맞는다
+    const { game, at } = setupTwoPicks(asReflect, asAmaterasu);
+    expect(game.skillState(1).slots).toEqual([SkillId.AMATERASU, SkillId.RAINBOW_REFLECT]);
+    expect(game.skillState(2).slots).toEqual([SkillId.RAINBOW_REFLECT, SkillId.AMATERASU]);
+    expect(game.useSkill(1, 0, 2, at + 1)).toMatchObject({
+      skillId: SkillId.AMATERASU,
+      targetUserId: 2,
+      reflectedBy: [2, 1],
+    });
+    expect(game.snapshot().burning).toEqual([2]);
+    expect(game.skillState(1).slots).toEqual([]);
+    expect(game.skillState(2).slots).toEqual([SkillId.AMATERASU]);
+  });
+
+  it('반사가 없을 때까지 주고받는다', () => {
+    // 1번: 아마테라스 + 반사 / 2번: 반사 + 반사 → 2·1·2번이 차례로 반사하고 1번이 맞는다
+    const { game, at } = setupTwoPicks(asReflect, asReflect);
+    expect(game.useSkill(1, 0, 2, at + 1)).toMatchObject({
+      targetUserId: 1,
+      reflectedBy: [2, 1, 2],
+    });
+    expect(game.snapshot().burning).toEqual([1]);
+    expect(game.skillState(1).slots).toEqual([]);
+    expect(game.skillState(2).slots).toEqual([]);
+  });
+
   it('반사를 가진 사람이 대상이 아니면 반사하지 않는다', () => {
     const game = start(2, sequenceRandom(...asAmaterasu, ...asAmaterasu));
     const at = holdSkills(game);
     // 2번이 1번을 노리는데 1번은 반사를 갖고 있지 않아 그대로 맞는다
-    expect(game.useSkill(2, 0, 1, at + 1)).toMatchObject({ targetUserId: 1 });
+    const action = game.useSkill(2, 0, 1, at + 1);
+    expect(action).toMatchObject({ targetUserId: 1 });
+    expect(action).not.toHaveProperty('reflectedBy');
     expect(game.snapshot().burning).toEqual([1]);
   });
 
@@ -1029,19 +1165,32 @@ describe('스킬 효과: 무지개 반사(FUNC-009-05)', () => {
     expect(game.skillState(2).slots).toEqual([SkillId.RAINBOW_REFLECT]);
   });
 
-  it('쓴 사람이 관전자인 러시안 룰렛은 반사하지 않는다(맞을 카드가 없다)', () => {
-    const game = start(2, sequenceRandom(...asAmaterasu, ...asReflect, ...asRoulette));
+  it('손 개 쌔게 내려치기도 반사해, 내려친 사람의 손이 대신 부서진다', () => {
+    // 1번은 반사를, 2번은 손 개 쌔게 내려치기를 들고 시작한다
+    const game = start(2, sequenceRandom(...asReflect, ...asHandSmash));
+    const at = holdSkills(game);
+    expect(game.skillState(1).slots).toEqual([SkillId.RAINBOW_REFLECT]);
+    expect(game.skillState(2).slots).toEqual([SkillId.HAND_SMASH]);
+    game.play(1, game.turnId, at + 1);
+    game.play(2, game.turnId, at + 2);
+    const ringAt = at + 3;
+    expect(game.ring(1, game.turnSeq, ringAt)).toMatchObject({ success: true });
+    expect(game.useSkill(2, 0, undefined, ringAt + 500)).toMatchObject({
+      skillId: SkillId.HAND_SMASH,
+      targetUserId: 2,
+      reflectedBy: [1],
+    });
+    expect(game.snapshot().smashed).toEqual([{ userId: 2, stage: 3 }]);
+    expect(game.skillState(1).slots).toEqual([]);
+  });
+
+  it('쓴 사람이 관전자인 침 뱉기는 반사하지 않는다(관전자는 맞을 수 없다)', () => {
+    const game = start(2, sequenceRandom(...asAmaterasu, ...asReflect, ...asSpit));
     const opensAt = 0;
     game.openSkillPick([9], opensAt);
     for (const id of [1, 2, 9]) game.chooseSkill(id, { slot: 0 }, opensAt + 10);
-    expect(game.skillState(9).slots).toEqual([SkillId.RUSSIAN_ROULETTE]);
-    let t = opensAt + 20;
-    for (let round = 0; round < 3; round++) {
-      game.play(1, game.turnId, (t += 1));
-      game.play(2, game.turnId, (t += 1));
-    }
-    expect(game.useSkill(9, 0, 2, t + 1)).toMatchObject({ targetUserId: 2 });
-    expect(game.snapshot().players[1]).toMatchObject({ tableCount: 3, handCount: 4 });
+    expect(game.skillState(9).slots).toEqual([SkillId.SPIT]);
+    expect(game.useSkill(9, 0, 2, opensAt + 20)).toMatchObject({ targetUserId: 2 });
     // 반사는 그대로 남는다
     expect(game.skillState(2).slots).toEqual([SkillId.RAINBOW_REFLECT]);
   });
@@ -1060,8 +1209,19 @@ describe('스킬 효과: 손 개 쌔게 내려치기(FUNC-009-05)', () => {
     expect(game.ring(1, game.turnSeq, ringAt)).toMatchObject({ success: true });
     return { game, ringAt };
   };
+  /** 1번이 자기 카드를 `count`장 낼 때까지 번갈아 낸다(종은 치지 않는다). 마지막 시각을 돌려준다 */
+  const playOwnCards = (game: Game, count: number, from: number): number => {
+    let t = from;
+    let own = 0;
+    while (own < count) {
+      const turn = game.snapshot().turnUserId!;
+      game.play(turn, game.turnId, (t += 1));
+      if (turn === 1) own++;
+    }
+    return t;
+  };
 
-  it('종 판정이 난 2초 안에 쓰면 종을 친 사람의 손이 부서져 다음 판정까지 종을 못 친다', () => {
+  it('종 판정이 난 2초 안에 쓰면 종을 친 사람의 손이 부서져 3단계로 시작한다', () => {
     const { game, ringAt } = setup();
     expect(game.snapshot().smashWindow).toEqual({ userId: 1, endsAt: ringAt + 2000 });
     expect(game.useSkill(2, 0, undefined, ringAt + 1500)).toMatchObject({
@@ -1070,18 +1230,51 @@ describe('스킬 효과: 손 개 쌔게 내려치기(FUNC-009-05)', () => {
       skillId: SkillId.HAND_SMASH,
       targetUserId: 1,
     });
-    expect(game.snapshot().smashed).toEqual([1]);
+    expect(game.snapshot().smashed).toEqual([{ userId: 1, stage: 3 }]);
     expect(game.snapshot().smashWindow).toBeNull();
     expect(game.skillState(2).slots).toEqual([]);
-    // 손이 부서진 사람은 카드는 낼 수 있지만 종은 못 친다
+  });
+
+  it('자기 카드를 3장 낼 때마다 한 단계씩 내려가 9장을 내면 종을 칠 수 있다', () => {
+    const { game, ringAt } = setup();
+    game.useSkill(2, 0, undefined, ringAt + 1500);
     let t = ringAt + 5000;
-    while (game.snapshot().turnUserId !== 2)
-      game.play(game.snapshot().turnUserId!, game.turnId, (t += 1));
-    game.play(2, game.turnId, (t += 1));
-    game.play(1, game.turnId, (t += 1));
-    expect(game.ring(1, game.turnSeq, (t += 1))).toBeNull();
-    // 다음 종 판정이 나면 풀린다
+    // [그 뒤 더 낸 내 카드 수, 그때 남아 있어야 할 단계]. 누적 3장마다 한 단계씩 내려간다.
+    const steps: [number, 1 | 2 | 3][] = [
+      [1, 3],
+      [1, 3],
+      [1, 2],
+      [2, 2],
+      [1, 1],
+      [2, 1],
+    ];
+    for (const [more, stage] of steps) {
+      t = playOwnCards(game, more, t);
+      expect(game.snapshot().smashed).toEqual([{ userId: 1, stage }]);
+      // 카드는 낼 수 있지만 종은 못 친다
+      expect(game.canRing(1, game.turnSeq, t)).toBe(false);
+      expect(game.ring(1, game.turnSeq, t)).toBeNull();
+    }
+    t = playOwnCards(game, 1, t); // 9장째: 풀린다
+    expect(game.snapshot().smashed).toEqual([]);
+    expect(game.canRing(1, game.turnSeq, t)).toBe(true);
+  });
+
+  it('종 판정이 나도 풀리지 않고 카드를 낸 수로만 회복한다', () => {
+    const { game, ringAt } = setup();
+    game.useSkill(2, 0, undefined, ringAt + 1500);
+    let t = ringAt + 5000;
+    t = playOwnCards(game, 1, t);
+    game.play(game.snapshot().turnUserId!, game.turnId, (t += 1));
+    // 2번이 종을 쳐서 판정이 난다(성공이든 오발이든)
     expect(game.ring(2, game.turnSeq, (t += 1))).not.toBeNull();
+    expect(game.snapshot().smashed).toEqual([{ userId: 1, stage: 3 }]);
+  });
+
+  it('손이 부서진 사람이 나가면 풀린다', () => {
+    const { game, ringAt } = setup();
+    game.useSkill(2, 0, undefined, ringAt + 1500);
+    game.depart(1, ringAt + 2000);
     expect(game.snapshot().smashed).toEqual([]);
   });
 
@@ -1153,12 +1346,14 @@ describe('스킬 효과: 도르마무(FUNC-009-05)', () => {
     const game = start(2, pickRandom(0.97, 0.9));
     const at = holdSkills(game);
     expect(game.skillState(2).slots).toEqual([SkillId.DORMAMMU]);
+    // 도르마무가 돌아가는 곳은 종 직전이 아니라 이 라운드의 첫 카드를 내기 전이다
+    const before = game.checkpoint();
     game.play(1, game.turnId, at + 1);
     game.play(2, game.turnId, at + 2);
-    return { game, at, before: game.checkpoint() };
+    return { game, at, before };
   };
 
-  it('판정 결과를 보여 주는 동안 쓰면 카드·성공 횟수가 판정 전으로 돌아온다', () => {
+  it('판정 결과를 보여 주는 동안 쓰면 카드·성공 횟수가 그 라운드의 첫 카드를 내기 전으로 돌아온다', () => {
     const { game, at, before } = setup();
     const successes = game.snapshot().skillSuccesses;
     expect(game.ring(1, game.turnSeq, at + 3)).toMatchObject({ success: true });
@@ -1169,15 +1364,31 @@ describe('스킬 효과: 도르마무(FUNC-009-05)', () => {
       skillId: SkillId.DORMAMMU,
     });
     const after = game.checkpoint();
+    // 낸 카드(테이블)도 모두 손으로 돌아와 아무도 카드를 내기 전 상태가 된다
     expect(after.players).toEqual(before.players);
+    expect(after.players.every((player) => player.table.length === 0)).toBe(true);
     expect(after.pile).toEqual(before.pile);
     expect(after.turnUserId).toBe(before.turnUserId);
     expect(game.snapshot().skillSuccesses).toBe(successes);
     expect(game.snapshot().rewindUntil).toBeNull();
-    // 되돌린 테이블에서 다시 종을 칠 수 있다
-    expect(game.ring(2, game.turnSeq, at + 3 + ROUND_RESULT_MS + 10)).toMatchObject({
-      success: true,
-    });
+    // 되돌린 라운드에서 다시 카드를 내고 종을 칠 수 있다
+    const again = at + 3 + ROUND_RESULT_MS + 10;
+    game.play(1, game.turnId, again);
+    game.play(2, game.turnId, again + 1);
+    expect(game.ring(2, game.turnSeq, again + 2)).toMatchObject({ success: true });
+  });
+
+  it('여러 장을 낸 라운드도 그 라운드의 첫 카드를 내기 전으로 돌아간다', () => {
+    const { game, at, before } = setup();
+    // setup에서 1번·2번이 한 장씩 냈다. 1번이 한 장 더 내서(테이블 딸기 2+3) 종을 친다
+    game.play(1, game.turnId, at + 3);
+    expect(game.checkpoint().players[0].table).toHaveLength(2);
+    expect(game.ring(2, game.turnSeq, at + 4)).toMatchObject({ success: true });
+    expect(game.useSkill(2, 0, undefined, at + 500)).toMatchObject({ skillId: SkillId.DORMAMMU });
+    const after = game.checkpoint();
+    expect(after.players).toEqual(before.players);
+    expect(after.pile).toEqual(before.pile);
+    expect(after.turnUserId).toBe(before.turnUserId);
   });
 
   it('세 번째 라운드의 오발을 되감으면 예약된 선택도 취소하고 다시 판정한다', () => {
@@ -1213,6 +1424,68 @@ describe('스킬 효과: 도르마무(FUNC-009-05)', () => {
 });
 
 describe('스킬 효과: 안해(FUNC-009-05)', () => {
+  /** 세 명이 카드를 한 장씩만 받아 시작하고, 1번이 빈 테이블에 종을 쳐 오발로 탈락한다 */
+  const eliminateFirst = () => {
+    const game = start(3, pickRandom(0.999, 0), alternating(3, 1));
+    const at = holdSkills(game);
+    expect(game.ring(1, game.turnSeq, at + 1)).toMatchObject({ kind: 'bell', success: false });
+    expect(game.eliminatedIds).toEqual([1]);
+    return { game, at: at + ROUND_RESULT_MS + 10 };
+  };
+
+  it('탈락해 관전하던 사람도 되살려 처음부터 다시 시작한다', () => {
+    const { game, at } = eliminateFirst();
+    expect(game.snapshot().players.map((player) => player.status)).toEqual([
+      'ELIMINATED',
+      'ACTIVE',
+      'ACTIVE',
+    ]);
+    expect(game.useSkill(2, 0, undefined, at)).toMatchObject({ skillId: SkillId.RESET });
+    expect(game.eliminatedIds).toEqual([]);
+    expect(game.snapshot().players.map((player) => player.status)).toEqual([
+      'ACTIVE',
+      'ACTIVE',
+      'ACTIVE',
+    ]);
+    // 표준 덱 56장을 세 명이 18장씩 받고 남은 2장이 종 밑에 간다
+    expect(game.snapshot().players.map((player) => player.handCount)).toEqual([18, 18, 18]);
+    expect(game.snapshot().pileCount).toBe(2);
+    expect(game.turnUserId).toBe(1);
+    // 처음 시작처럼 스킬 선택이 끝나야 카드를 낼 수 있고, 되살아난 사람도 낼 수 있다
+    expect(game.play(1, game.turnId, at + 1)).toBeNull();
+    game.openSkillPick([], at + 2);
+    for (const id of game.userIds) game.chooseSkill(id, { slot: 0 }, at + 3);
+    expect(game.play(1, game.turnId, at + 4)?.kind).toBe('card');
+  });
+
+  it('나간 사람은 되살리지 않고 제외한다', () => {
+    const game = start(3, pickRandom(0.999, 0));
+    const at = holdSkills(game);
+    game.depart(3, at + 1);
+    expect(game.eliminatedIds).toEqual([3]);
+    expect(game.useSkill(2, 0, undefined, at + 2)).toMatchObject({ skillId: SkillId.RESET });
+    expect(game.eliminatedIds).toEqual([3]);
+    expect(game.snapshot().players.map((player) => player.status)).toEqual([
+      'ACTIVE',
+      'ACTIVE',
+      'DEPARTED',
+    ]);
+    // 나간 사람을 뺀 두 명이 28장씩 받는다
+    expect(game.snapshot().players.map((player) => player.handCount)).toEqual([28, 28, 0]);
+  });
+
+  it('모두의 스킬이 사라지고 처음처럼 스킬 선택을 다시 열어 하나씩 지급한다', () => {
+    const { game, at } = eliminateFirst();
+    game.useSkill(2, 0, undefined, at);
+    for (const id of game.userIds) expect(game.skillState(id).slots).toEqual([]);
+    expect(game.skillPickOpensAt).not.toBeNull();
+    expect(game.openSkillPick([], at + 1)).toBe(true);
+    // 되살아난 1번도 플레이어로 선택에 참여한다
+    expect(game.skillState(1).pick?.role).toBe('PLAYER');
+    for (const id of game.userIds) game.chooseSkill(id, { slot: 0 }, at + 10);
+    for (const id of game.userIds) expect(game.skillState(id).slots).toHaveLength(1);
+  });
+
   it('플레이 중인 사람끼리 카드를 다시 섞어 분배하고 성공 횟수·보유 스킬·기록을 모두 처음으로 돌린다', () => {
     const game = start(2, pickRandom(0.999, 0));
     const at = holdSkills(game);
