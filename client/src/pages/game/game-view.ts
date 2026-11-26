@@ -134,8 +134,7 @@ export interface GameView {
   /** 러시안 룰렛: 종 위에 올려 둔 리볼버의 남은 탄 */
   glint?: number;
   knocked?: { key: number; target: string };
-  shot?: { key: number; fired: 'blank' | 'live'; target: string };
-  revolver?: { blanks: number; live: number };
+  shot?: { key: number; target: string };
   /** 방금 쓴 스킬 알림(화면 위쪽, 1.6초) */
   skillCasts?: SkillCastView[];
   /** 대상 지정 중: 누를 수 있는 좌석 */

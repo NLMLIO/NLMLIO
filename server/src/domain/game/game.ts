@@ -18,7 +18,6 @@ import type {
   SkillChoice,
   SkillStateEvent,
   RatResult,
-  RevolverPublic,
   TimeStopPublic,
 } from '@nlmlio/shared';
 import {
@@ -29,8 +28,7 @@ import {
   BELL_MOVE_POSITIONS,
   BELL_SHELL_KEYS,
   BELL_SHELL_MS,
-  ROULETTE_BLANKS,
-  ROULETTE_LIVE,
+  ROULETTE_CARD_LOSS,
   RAT_ESCAPE_MS,
   RoomRole,
   TIME_STOP_INTRO_MS,
@@ -151,8 +149,6 @@ export class Game {
    * 0이 되면 풀린다. 그동안 종을 칠 수 없다(카드는 낼 수 있다).
    */
   private readonly smashed = new Map<number, number>();
-  /** 러시안 룰렛: 종 위의 리볼버에 남은 공포탄 수(실탄은 `ROULETTE_LIVE`발). 없으면 null */
-  private revolver: { blanks: number } | null = null;
   /** 지뢰: 다음 종 판정까지, 5개를 맞춰 종을 쳐도 카드가 모두 종 밑으로 간다(성공도 오발도 아니다) */
   private mine = false;
   private bellGlintAt?: number;
@@ -318,25 +314,9 @@ export class Game {
     // 종 야바위 중에는 진짜가 아닌 종(번호를 보내지 않은 것 포함)을 누르면 5개여도 오발이다.
     const fake = this.shellAt(now) !== null && bell !== this.shell!.real;
     const success = !fake && Object.values(totals).some((count) => count === 5);
-    // 러시안 룰렛: 종 위 리볼버의 남은 칸에서 하나가 나온다. 공포탄이면 그 칸만 줄고(종 판정은 그대로 이어진다),
-    // 실탄이면 테이블 카드가 모두 종 밑으로 가고 리볼버가 사라진다.
-    let revolver: { fired: 'blank' | 'live'; blanks: number } | undefined;
-    if (this.revolver) {
-      const live = pickIndex(this.random, this.revolver.blanks + ROULETTE_LIVE) < ROULETTE_LIVE;
-      if (live) {
-        revolver = { fired: 'live', blanks: this.revolver.blanks };
-        this.revolver = null;
-      } else {
-        this.revolver.blanks--;
-        revolver = { fired: 'blank', blanks: this.revolver.blanks };
-      }
-    }
-    const shot = revolver?.fired === 'live';
     // 지뢰: 5개를 맞춰도 터져서 카드가 모두 종 밑으로 간다. 성공도 오발도 아니라 기록·성공 횟수에 넣지 않는다.
     const mined = success && this.mine;
-    // 지뢰가 터지거나 실탄이 나오면 판정은 성공도 오발도 아니다: 테이블 카드만 종 밑으로 간다.
-    const collected = mined || shot;
-    const won = success && !collected;
+    const won = success && !mined;
     // 도르마무는 종 직전이 아니라 이 라운드의 첫 카드를 내기 전으로 돌아간다(카드를 낸 적이 없으면 지금 상태).
     this.rewind = {
       ...(this.roundStart ?? this.captureRewind(false)),
@@ -345,10 +325,10 @@ export class Game {
     this.roundStart = null;
     if (won) this.skills.countSuccess();
     this.resolvedSequence = sequence;
-    if (!collected) player.bell(success, this.playedAt === null ? 0 : now - this.playedAt);
+    if (!mined) player.bell(success, this.playedAt === null ? 0 : now - this.playedAt);
     let movedCards: number;
     const penaltyRecipients: number[] = [];
-    if (collected) {
+    if (mined) {
       const cards = this.table.collect();
       this.pile.push(...cards);
       movedCards = cards.length;
@@ -400,11 +380,8 @@ export class Game {
       movedCards,
       totals,
       ...(mined ? { mined: true as const } : {}),
-      ...(revolver ? { revolver } : {}),
       ...(fake ? { fake: true as const } : {}),
-      ...(!success && !collected
-        ? { penaltyCards: penaltyRecipients.length, penaltyRecipients }
-        : {}),
+      ...(!success && !mined ? { penaltyCards: penaltyRecipients.length, penaltyRecipients } : {}),
     };
   }
 
@@ -515,7 +492,6 @@ export class Game {
     this.emptied = [];
     this.current = participants[0].userId;
     this.roundNumber = 1;
-    this.revolver = null;
     this.roundStart = null;
     this.bellHands = null;
     this.sparkle.clear();
@@ -878,7 +854,6 @@ export class Game {
           Math.max(1, Math.ceil(left / HAND_SMASH_CARDS_PER_STAGE)),
         ) as 1 | 2 | 3,
       })),
-      revolver: this.revolver ? this.revolverPublic(this.revolver) : null,
       burning: [...this.burning],
       skillPick: this.skills.selection
         ? {
@@ -918,9 +893,6 @@ export class Game {
     };
   }
 
-  private revolverPublic(revolver: { blanks: number }): RevolverPublic {
-    return { blanks: revolver.blanks, live: ROULETTE_LIVE };
-  }
   private activePlayerOrNull(userId: number): GamePlayer | null {
     const player = this.players.find((entry) => entry.userId === userId);
     return player?.active ? player : null;
@@ -931,7 +903,7 @@ export class Game {
     userId: number,
     now: number,
     targetUserId?: number,
-  ): { ratCrushed?: true; ratMined?: true } | void {
+  ): { ratCrushed?: true; ratMined?: true; lostCards?: number } | void {
     switch (skillId) {
       case SkillId.SPARKLE_CARD:
         this.sparkle.add(userId);
@@ -986,10 +958,19 @@ export class Game {
         this.rat = { userId, endsAt: now + RAT_ESCAPE_MS, cardCount: this.pile.length };
         this.ratResults.delete(userId);
         break;
-      case SkillId.RUSSIAN_ROULETTE:
-        // 종 위에 리볼버를 올려 둔다. 이미 있으면 공포탄 5발·실탄 1발로 다시 채운다.
-        this.revolver = { blanks: ROULETTE_BLANKS };
-        break;
+      case SkillId.RUSSIAN_ROULETTE: {
+        const target = this.activePlayer(targetUserId!);
+        const cards = target.penalty(ROULETTE_CARD_LOSS);
+        this.pile.push(...cards);
+        if (cards.length && !target.handCount) {
+          this.markEmptied(target.userId);
+          if (this.current === target.userId) {
+            this.current = this.nextAfter(target.userId);
+            this.newTurn(now);
+          }
+        }
+        return { lostCards: cards.length };
+      }
       case SkillId.MINE:
         this.bellGlintAt = now;
         // 쥐가 종 밑에 있는 동안 지뢰를 깔면 쥐가 지뢰에 죽고 지뢰도 사라진다.
@@ -1180,7 +1161,6 @@ export class Game {
     this.smashWindow = null;
     this.hacked.clear();
     this.mine = false;
-    this.revolver = null;
     this.shell = null;
     this.rewind = null;
     this.roundStart = null;

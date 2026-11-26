@@ -535,20 +535,20 @@ export const PREVIEW_SCENES = {
       },
     ],
   },
-  /** 러시안 룰렛: 관전자가 종 위에 올려 둔 리볼버(공포탄 5 · 실탄 1) */
+  /** 러시안 룰렛: 지정한 좌석으로 발사 */
   'skill-roulette': {
     ...MY_TURN,
     pileCount: 5,
     skills: { slots: [EMPTY_SLOT, EMPTY_SLOT, EMPTY_SLOT] },
-    revolver: { blanks: 5, live: 1 },
+    shot: { key: 14, target: MY_TURN.players[1].id },
     skillCasts: [
       {
         key: 14,
         caster: '관전자',
         casterId: '99',
         skillId: SkillId.RUSSIAN_ROULETTE,
-        target: null,
-        targetId: null,
+        target: MY_TURN.players[1].nickname,
+        targetId: MY_TURN.players[1].id,
       },
     ],
   },

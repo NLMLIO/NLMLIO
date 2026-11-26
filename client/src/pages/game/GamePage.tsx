@@ -275,6 +275,7 @@ export function GamePage({
     void sendGameIntent(GameClientEvent.SKILL_USE, {
       gameId: snapshot.gameId,
       slot,
+      expectedSkillId: skills?.slots[slot] ?? undefined,
       targetUserId,
     }).then((failure) => {
       if (failure) setError(failure);

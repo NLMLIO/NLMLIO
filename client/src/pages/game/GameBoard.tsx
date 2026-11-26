@@ -166,7 +166,6 @@ export function GameBoard({
           breakStrike={casts.find((cast) => cast.skillId === SkillId.BELL_BREAK)?.key}
           hackKey={view.hackKey}
           shell={view.shell}
-          revolver={view.shot ? undefined : view.revolver}
         />
         {view.glint !== undefined && (
           <i
@@ -184,9 +183,8 @@ export function GameBoard({
             className="roulette-shot"
             width="1100"
             height="900"
-            aria-label={view.shot.fired === 'live' ? '룰렛 실탄 발사' : '룰렛 공포탄 발사'}
+            aria-label="지정한 플레이어에게 룰렛 발사"
           >
-            {view.shot.fired === 'live' && (
               <line
                 className="shot-trail"
                 x1={bell.x}
@@ -195,7 +193,6 @@ export function GameBoard({
                 y2={hit.y}
                 pathLength="1"
               />
-            )}
             <g transform={`translate(${bell.x} ${bell.y}) rotate(${aim})`}>
               <image className="shot-gun" href={blaster} x="-32" y="-20" width="85" height="50" />
               <path className="shot-flash" d="m53 0 12 -9 -2 6 18 3 -20 4 3 7z" />

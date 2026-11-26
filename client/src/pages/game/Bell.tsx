@@ -1,8 +1,6 @@
-import type { RevolverPublic } from '@nlmlio/shared';
 import bellIcon from '../../assets/game/bell.svg';
 import bellMisfireIcon from '../../assets/game/bell-misfire.svg';
 import bellSuccessIcon from '../../assets/game/bell-success.svg';
-import arcadeBlaster from '../../assets/skills/arcade-blaster.svg';
 import type { CSSProperties } from 'react';
 import { BrokenBell } from './skill/SkillMotion';
 import { bellCenter, BELL_CENTER, type BellMoveView, type BellState } from './game-view';
@@ -22,7 +20,6 @@ interface BellProps {
   /** 종 야바위 중이면 종마다의 단축키(번호 순서)와 남은 시간 */
   shell?: { keys: string[]; seconds: number };
   /** 러시안 룰렛: 종 위에 올려 둔 리볼버의 남은 탄. 없으면 비워 둔다 */
-  revolver?: RevolverPublic;
 }
 
 /** 테이블 가운데 종과 종 아래 보관 스택 수. 판정 결과에 따라 라임(정답)·핑크(오발) 링이 켜진다 */
@@ -36,7 +33,6 @@ export function Bell({
   breakStrike,
   hackKey,
   shell: activeShell,
-  revolver,
 }: BellProps) {
   const shell = broken ? undefined : activeShell;
   const center = bellCenter(moved, !!shell);
@@ -46,7 +42,7 @@ export function Bell({
     glow === 'success' ? bellSuccessIcon : glow === 'misfire' ? bellMisfireIcon : bellIcon;
   return (
     <div
-      className={`bell${shell ? ' has-shell' : ''}${moved && !shell ? ' is-moved' : ''}${broken ? ' is-broken' : ''}${revolver && !broken ? ' has-revolver' : ''}`}
+      className={`bell${shell ? ' has-shell' : ''}${moved && !shell ? ' is-moved' : ''}${broken ? ' is-broken' : ''}`}
       style={
         moved
           ? ({
@@ -60,18 +56,6 @@ export function Bell({
         <span className="bell-key" role="status" aria-label={`${keyChip} 키로 치기`}>
           {keyChip}
         </span>
-      )}
-      {revolver && !broken && (
-        <div
-          className="bell-revolver"
-          role="status"
-          aria-label={`리볼버 · 공포탄 ${revolver.blanks}발, 실탄 ${revolver.live}발`}
-        >
-          <img key={revolver.blanks} src={arcadeBlaster} alt="" />
-          <span>
-            공포탄 <b>{revolver.blanks}</b> · 실탄 <b className="live">{revolver.live}</b>
-          </span>
-        </div>
       )}
       {pileCount > 0 && (
         <div className="bell-storage" aria-hidden="true">

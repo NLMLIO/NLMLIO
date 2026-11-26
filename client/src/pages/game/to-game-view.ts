@@ -116,14 +116,6 @@ function verdictOf(input: GameViewInput, bell: BellEvent): Verdict {
       formula: '테이블 카드를 종 아래에 보관해요',
       detail: `성공도 오발도 아니에요 · 카드 ${action.movedCards}장이 모두 종 아래로`,
     };
-  if (action.revolver?.fired === 'live')
-    return {
-      tone: 'misfire',
-      ringer: ringerView,
-      title: '탕! 실탄!',
-      formula: '리볼버에서 실탄이 나왔어요',
-      detail: `성공도 오발도 아니에요 · 카드 ${action.movedCards}장이 모두 종 아래로`,
-    };
   if (action.success) {
     const fruit = FRUIT_ORDER.find((name) => action.totals[name] === 5) ?? 'STRAWBERRY';
     const counts = tableBefore
@@ -179,9 +171,7 @@ function logOf(input: GameViewInput): LogEntry[] {
               nickname,
               text: action.mined
                 ? `지뢰 폭발 · 테이블 ${action.movedCards}장 보관`
-                : action.revolver?.fired === 'live'
-                  ? `실탄 발사 · 테이블 ${action.movedCards}장 보관`
-                  : `오발 · 상대에게 ${action.penaltyCards ?? 0}장 · 테이블 ${action.movedCards}장 보관`,
+                : `오발 · 상대에게 ${action.penaltyCards ?? 0}장 · 테이블 ${action.movedCards}장 보관`,
             };
       case 'departed':
         return { kind: 'event', id, tone: 'danger', nickname, text: '이탈 · 관전으로 전환' };
@@ -210,7 +200,7 @@ function logOf(input: GameViewInput): LogEntry[] {
           id,
           tone: 'success',
           nickname,
-          text: `${skillById(action.skillId).name} 사용${target ? ` → ${target}` : ''}${reflected ? ` · ${reflected}님의 무지개 반사!` : ''}`,
+          text: `${skillById(action.skillId).name} 사용${target ? ` → ${target}` : ''}${action.lostCards !== undefined ? ` · 덱 −${action.lostCards}장` : ''}${reflected ? ` · ${reflected}님의 무지개 반사!` : ''}`,
         };
       }
     }
@@ -466,6 +456,13 @@ function skillsOf(input: GameViewInput): SkillsView | undefined {
 
 export function toGameView(input: GameViewInput): GameView {
   const { snapshot, userId, bell } = input;
+  const cast = input.recentSkills.find(
+    ({ action, castAt }) => action.skillId === SkillId.RUSSIAN_ROULETTE && input.now - castAt < 850,
+  );
+  const shot =
+    cast && cast.action.targetUserId != null
+      ? { key: cast.id, target: String(cast.action.targetUserId) }
+      : undefined;
   const seat = snapshot.players.findIndex((player) => player.userId === userId);
   const seated = seat !== -1;
   const ordered = seated
@@ -593,14 +590,10 @@ export function toGameView(input: GameViewInput): GameView {
       snapshot.bellGlintAt !== undefined && input.serverNow - snapshot.bellGlintAt < 600
         ? snapshot.bellGlintAt
         : undefined,
-    shot: bell?.action.revolver
-      ? { key: bell.id, fired: bell.action.revolver.fired, target: String(bell.action.userId) }
-      : undefined,
+    shot,
     knocked:
-      bell && (bell.action.mined || bell.action.revolver?.fired === 'live')
-        ? { key: bell.id, target: String(bell.action.userId) }
-        : undefined,
-    revolver: snapshot.status === GameStatus.PLAYING ? (snapshot.revolver ?? undefined) : undefined,
+      shot ??
+      (bell?.action.mined ? { key: bell.id, target: String(bell.action.userId) } : undefined),
     bell: bell
       ? { kind: bell.action.success ? 'success' : 'misfire' }
       : playing && snapshot.turnUserId === null

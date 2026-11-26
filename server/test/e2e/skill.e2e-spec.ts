@@ -294,26 +294,22 @@ describe('스킬 선택 Socket.io 통합 (FUNC-009)', () => {
       await emit(b, GameClientEvent.SKILL_USE, { gameId, slot: 0, expectedSkillId: 'HAND_SMASH' }),
     ).toEqual({ ok: true });
     expect(snapshot().smashed).toContainEqual({ userId: users[0].user.id, stage: 3 });
+    const handBefore = snapshot().players[1].handCount;
     expect(
       await emit(spectator, GameClientEvent.SKILL_USE, {
         gameId,
         slot: 0,
+        targetUserId: users[1].user.id,
         expectedSkillId: 'RUSSIAN_ROULETTE',
       }),
     ).toEqual({ ok: true });
-    expect(snapshot().revolver).toEqual({ blanks: 5, live: 1 });
     await until(() => sockets.every((socket) => !!castOn(socket, 'RUSSIAN_ROULETTE')));
-    await sleep(Math.max(0, snapshot().roundResumeAt! - Date.now()) + 30);
-    const next = snapshot().turnUserId === users[0].user.id ? a : b;
-    expect(await emit(next, GameClientEvent.PLAY, { gameId, turnId: snapshot().turnId })).toEqual({
-      ok: true,
-    });
-    expect(await emit(b, GameClientEvent.BELL, { gameId, turnSeq: snapshot().turnSeq })).toEqual({
-      ok: true,
-    });
-    const shot = (socket: Socket) =>
-      actions.get(socket)?.find((action) => action.kind === 'bell' && action.revolver);
-    await until(() => sockets.every((socket) => !!shot(socket)));
-    for (const socket of sockets) expect(shot(socket)).toEqual(shot(b));
+    const lostCards = Math.min(5, handBefore);
+    expect(snapshot().players[1].handCount).toBe(handBefore - lostCards);
+    for (const socket of sockets)
+      expect(castOn(socket, 'RUSSIAN_ROULETTE')).toMatchObject({
+        targetUserId: users[1].user.id,
+        lostCards,
+      });
   }, 60000);
 });
