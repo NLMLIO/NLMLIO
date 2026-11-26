@@ -124,7 +124,12 @@ export function SkillRat({ rat, bell, seat }: { rat: RatView; bell: Point; seat:
       </div>
       {rat.phase === 'stolen' && <b className="rat-reward">덱 +{rat.cardCount}</b>}
       {rat.phase === 'crushed' && <b className="rat-squeak">찍!</b>}
-      {rat.phase === 'mined' && <b className="rat-squeak">펑!</b>}
+      {rat.phase === 'mined' && (
+        <>
+          <span aria-hidden="true" className="rat-blast" />
+          <b className="rat-squeak">펑!</b>
+        </>
+      )}
       {rat.phase === 'missed' && (
         <span className="rat-missed-message">보관 카드가 먼저 사라졌어요</span>
       )}

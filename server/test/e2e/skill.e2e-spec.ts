@@ -4,13 +4,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { io, type Socket } from 'socket.io-client';
-import {
-  Fruit,
-  GameClientEvent,
-  GameServerEvent,
-  RoomRole,
-  RoomClientEvent,
-} from '@nlmlio/shared';
+import { Fruit, GameClientEvent, GameServerEvent, RoomRole, RoomClientEvent } from '@nlmlio/shared';
 import type { AuthResponse, GameAck, GameActionEvent, SkillStateEvent } from '@nlmlio/shared';
 import { AppModule } from '../../src/app.module';
 import { configureApp } from '../../src/common/configure-app';
@@ -36,10 +30,11 @@ const alternating = () =>
     ),
   );
 
-/** 후보 3칸이 모두 반짝반짝한 카드(플레이어)·침 뱉기(관전자)가 되는 난수 */
-const sparkleRandom = () => {
+/** 처음 두 후보는 반짝반짝한 카드·침 뱉기, 세 번째는 손 내려치기·룰렛이 되게 한다. */
+const candidateRandom = () => {
   let index = 0;
-  return () => (index++ % 2 === 0 ? 0 : 0.5);
+  const rolls = [0, 0.5, 0, 0.5, 0.9, 0];
+  return () => rolls[index++ % rolls.length];
 };
 
 describe('스킬 선택 Socket.io 통합 (FUNC-009)', () => {
@@ -121,7 +116,7 @@ describe('스킬 선택 Socket.io 통합 (FUNC-009)', () => {
       .useValue({
         create(input: StartGameInput) {
           gameIds.push(input.gameId);
-          return Game.create(input, alternating(), sparkleRandom());
+          return Game.create(input, alternating(), candidateRandom());
         },
       })
       .compile();
@@ -133,7 +128,7 @@ describe('스킬 선택 Socket.io 통합 (FUNC-009)', () => {
     baseUrl = `http://127.0.0.1:${address.port}`;
     redis = app.get(REDIS);
     prisma = app.get(PrismaService);
-    users = await Promise.all(['sh', 'sg', 'ss'].map(register));
+    users = await Promise.all(['sh', 'sg', 'ss', 'sr'].map(register));
     code = (
       await request(app.getHttpServer())
         .post('/api/rooms')
@@ -166,10 +161,13 @@ describe('스킬 선택 Socket.io 통합 (FUNC-009)', () => {
     await join(users[2]);
     app.get(RoomService).move(users[0].user.id, users[2].user.id, RoomRole.SPECTATOR);
     const c = await connect(users[2]);
+    await join(users[3]);
+    app.get(RoomService).move(users[0].user.id, users[3].user.id, RoomRole.SPECTATOR);
+    const spectator = await connect(users[3]);
     expect(await emit(a, RoomClientEvent.START)).toEqual({ ok: true });
     const gameId = snapshot().gameId;
     expect(snapshot()).toMatchObject({
-      skillPick: { pickNo: 1, done: 0, total: 3 },
+      skillPick: { pickNo: 1, done: 0, total: 4 },
       turnDeadline: null,
     });
 
@@ -204,7 +202,7 @@ describe('스킬 선택 Socket.io 통합 (FUNC-009)', () => {
     });
     await until(() => skills.get(a)?.pick?.candidate === 1);
     expect(skills.get(a)!.slots).toHaveLength(1);
-    expect(snapshot().skillPick).toMatchObject({ done: 1, total: 3 });
+    expect(snapshot().skillPick).toMatchObject({ done: 1, total: 4 });
     expect(await emit(b, GameClientEvent.SKILL_PICK, { gameId, choice: { slot: 2 } })).toEqual({
       ok: true,
     });
@@ -212,6 +210,9 @@ describe('스킬 선택 Socket.io 통합 (FUNC-009)', () => {
       ok: true,
     });
 
+    expect(
+      await emit(spectator, GameClientEvent.SKILL_PICK, { gameId, choice: { slot: 2 } }),
+    ).toEqual({ ok: true });
     await until(() => snapshot().skillPick === null);
     await until(() => skills.get(a)?.pick === null && skills.get(c)?.pick === null);
     expect(skills.get(a)!.slots).toHaveLength(1);
@@ -244,7 +245,9 @@ describe('스킬 선택 Socket.io 통합 (FUNC-009)', () => {
       await emit(c, GameClientEvent.SKILL_USE, { gameId, slot: 0, targetUserId: users[1].user.id }),
     ).toEqual({ ok: true });
     const castOn = (socket: Socket, id: string) =>
-      (actions.get(socket) ?? []).find((action) => action.kind === 'skill' && action.skillId === id);
+      (actions.get(socket) ?? []).find(
+        (action) => action.kind === 'skill' && action.skillId === id,
+      );
     await until(() => !!castOn(b, 'SPIT') && !!castOn(c, 'SPIT'));
     expect(castOn(b, 'SPIT')).toMatchObject({
       userId: users[2].user.id,
@@ -254,7 +257,7 @@ describe('스킬 선택 Socket.io 통합 (FUNC-009)', () => {
 
     // 소켓별 sync ack는 해당 소켓에 그 전에 보낸 이벤트까지 전달됐다는 경계다.
     await emit(a, GameClientEvent.SYNC);
-    expect(castOn(a, 'SPIT')).toBeUndefined();
+    expect(castOn(a, 'SPIT')).toMatchObject({ targetUserId: users[1].user.id });
 
     // 자기 카드에 거는 스킬은 시전자에게만 보인다.
     expect(await emit(a, GameClientEvent.SKILL_USE, { gameId, slot: 0 })).toEqual({ ok: true });
@@ -287,5 +290,18 @@ describe('스킬 선택 Socket.io 통합 (FUNC-009)', () => {
       ok: true,
     });
     expect(snapshot().players[0].topCard).toBeNull();
+    expect(
+      await emit(b, GameClientEvent.SKILL_USE, { gameId, slot: 0, expectedSkillId: 'HAND_SMASH' }),
+    ).toEqual({ ok: true });
+    expect(snapshot().smashed).toContainEqual({ userId: users[0].user.id, stage: 3 });
+    expect(
+      await emit(spectator, GameClientEvent.SKILL_USE, {
+        gameId,
+        slot: 0,
+        expectedSkillId: 'RUSSIAN_ROULETTE',
+      }),
+    ).toEqual({ ok: true });
+    expect(snapshot().revolver).toEqual({ blanks: 5, live: 1 });
+    await until(() => sockets.every((socket) => !!castOn(socket, 'RUSSIAN_ROULETTE')));
   }, 60000);
 });

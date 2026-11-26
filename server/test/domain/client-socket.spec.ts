@@ -102,12 +102,12 @@ describe('클라이언트 소켓 인증 갱신과 의도 응답', () => {
     await jest.advanceTimersByTimeAsync(900_000);
     expect(refreshSession).toHaveBeenCalledTimes(1);
   });
-  it('무시된 카드 요청은 안내하고, 종 요청은 손도 올릴 수 없을 만큼 늦은 경우에만 안내한다', async () => {
+  it('무시된 카드 요청은 안내하고, 늦거나 무시된 종 요청은 조용히 처리한다', async () => {
     const { api, emitWithAck } = setup();
     // 일반적으로 무시된 종(스킬 상태 등)은 조용히 넘어간다.
     expect(await api.sendGameIntent(shared.GameClientEvent.BELL, {})).toBeNull();
     emitWithAck.mockImplementationOnce(async () => ({ ok: true, ignored: true, late: true }));
-    expect(await api.sendGameIntent(shared.GameClientEvent.BELL, {})).toContain('이미 판정된 종');
+    expect(await api.sendGameIntent(shared.GameClientEvent.BELL, {})).toBeNull();
     expect(await api.sendGameIntent(shared.GameClientEvent.PLAY, {})).toContain('차례나 판정 상태');
     api.disconnectSocket();
   });

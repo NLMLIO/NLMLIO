@@ -249,7 +249,7 @@ export interface SeatPlacement {
 /** 내 자리를 맨 아래(90°)로 두고 인원수만큼 시계 방향으로 같은 간격을 둔다 */
 export function seatPlacements(playerCount: number, spectating = false): SeatPlacement[] {
   return Array.from({ length: playerCount }, (_, index) => {
-    // 관전자에겐 아래쪽 내 자리가 없으므로 반 칸 돌리고 세로 반경을 줄여 상태 바를 비워 둔다.
+    // 관전자에겐 아래쪽 내 자리가 없으므로 반 칸 돌린다. 좌석과 카드 사이의 세로 간격은 플레이어 화면과 같게 유지한다.
     const degrees = 90 + (spectating ? 180 / playerCount : 0) + (index * 360) / playerCount;
     const radians = (degrees * Math.PI) / 180;
     const cos = Math.cos(radians);
@@ -259,7 +259,7 @@ export function seatPlacements(playerCount: number, spectating = false): SeatPla
     return {
       seat: {
         x: TABLE_CENTER.x + SEAT_RADIUS.x * cos,
-        y: TABLE_CENTER.y + (spectating ? 210 : SEAT_RADIUS.y) * sin,
+        y: TABLE_CENTER.y + SEAT_RADIUS.y * sin,
       },
       seatGrowsUp: sin < -0.7,
       card: { x: TABLE_CENTER.x + CARD_RADIUS.x * cos, y: TABLE_CENTER.y + CARD_RADIUS.y * sin },
