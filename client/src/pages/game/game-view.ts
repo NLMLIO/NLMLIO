@@ -6,6 +6,21 @@ import type { SkillsView } from './skill/skill-view';
  * 서버 스냅샷(shared GameSnapshot)은 `to-game-view.ts`가 이 모양으로 옮겨 담는다.
  */
 
+/** 내가 보낸 쥐가 죽은 이유: 종 부수기의 주먹, 상대의 지뢰, 내가 깐 지뢰 */
+export type RatDeathCause = 'crushed' | 'mined' | 'own-mine';
+export const RAT_DEATH_MESSAGES: Record<RatDeathCause, string> = {
+  crushed: '주먹에 깔려 쥐새끼가 죽었습니다',
+  mined: '상대가 설치한 지뢰에 쥐새끼가 터져 죽었습니다',
+  'own-mine': '내가 설치한 지뢰에 쥐새끼가 터져 죽었습니다',
+};
+
+/** 손 개 쌔게 내려치기를 맞은 본인 화면에 풀릴 때까지 계속 보이는 단계별 안내 */
+export const SMASHED_MESSAGES: Record<1 | 2 | 3, string> = {
+  3: '너무 두려워서 종을 칠 수가 없다',
+  2: '손이 너무 아파 종을 칠 수 없다',
+  1: '손이 아직 뜨겁다',
+};
+
 /** 아바타·채팅 닉네임 색. 과일 이름(디자인 토큰)이나 대기실과 같은 회원 색(#hex) */
 export type PlayerColor = 'strawberry' | 'banana' | 'lime' | 'plum' | 'white' | `#${string}`;
 
@@ -19,6 +34,8 @@ export interface CardFace {
   boosted?: boolean;
   /** 반짝반짝한 카드(꾸미기). 판정으로 옮겨지면 사라진다 */
   gilded?: boolean;
+  /** 겹쳐 쓴 반짝반짝한 카드: 2 무지개, 3 우주 */
+  sparkle?: 2 | 3;
 }
 
 /**
@@ -129,12 +146,17 @@ export interface GameView {
   /** 스킬 슬롯과 선택 창(FUNC-009). 스킬이 없는 화면은 비워 둔다 */
   skills?: SkillsView;
   rat?: RatView;
-  /** 내 손이 부서졌다: 단계(3→1)가 내려가 풀릴 때까지 종을 칠 수 없다 */
+  /** 내가 보낸 쥐가 방금 죽었다(보낸 본인에게만, 잠깐) */
+  ratDeath?: { key: number; cause: RatDeathCause };
+  /** 내 손이 부서졌다: 라운드가 끝나거나 단계(3→1)가 풀릴 때까지 종을 칠 수 없다 */
   smashed?: 1 | 2 | 3;
   /** 러시안 룰렛: 종 위에 올려 둔 리볼버의 남은 탄 */
   glint?: number;
   knocked?: { key: number; target: string };
-  shot?: { key: number; target: string };
+  shot?: { key: number; fired: 'blank' | 'live'; target: string };
+  /** 방금 지뢰가 터졌다: 종 위 폭발 연출 */
+  blast?: { key: number };
+  revolver?: { blanks: number; live: number };
   /** 방금 쓴 스킬 알림(화면 위쪽, 1.6초) */
   skillCasts?: SkillCastView[];
   /** 대상 지정 중: 누를 수 있는 좌석 */
@@ -152,7 +174,7 @@ export interface GameView {
   /** 내가 지금 카드·종을 못 한다(시간 정지 중 쓴 사람이 아님, 또는 아마테라스) */
   frozen?: 'time-stop' | 'amaterasu';
   /** 침 뱉기를 맞았다: 내 화면이 가려졌다가 흘러내린다 */
-  spit?: { key: number };
+  spits?: { key: number; layer: number }[];
 }
 
 export interface TimeStopView {

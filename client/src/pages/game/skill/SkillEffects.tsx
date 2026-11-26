@@ -1,7 +1,8 @@
 import type { CSSProperties } from 'react';
 import { SPIT_COVER_MS, SPIT_DRIP_MS, skillById, SkillId } from '@nlmlio/shared';
 import { GRADE_STYLE } from './skill-view';
-import type { TimeStopView } from '../game-view';
+import { RAT_DEATH_MESSAGES, SMASHED_MESSAGES } from '../game-view';
+import type { RatDeathCause, TimeStopView } from '../game-view';
 
 const hintStyle = (skillId: SkillId): CSSProperties =>
   ({ '--grade': GRADE_STYLE[skillById(skillId).grade].color }) as CSSProperties;
@@ -25,21 +26,22 @@ export function SkillTimeStop({ stop }: { stop: TimeStopView }) {
 
 /**
  * 침 뱉기를 맞은 사람의 화면(FUNC-009-05): 침이 3초 동안 화면을 가렸다가 3초 동안 흘러내린다.
- * 조작은 막지 않고(pointer-events 없음) 판정·카드에는 영향이 없다.
+ * 조작은 막지 않고(pointer-events 없음) 판정·카드에는 영향이 없다. 연속으로 맞으면 하나씩 겹쳐 그리고
+ * (`layer`마다 자리를 어긋나게) 각자 제 시간에 사라진다.
  */
-export function SkillSpit() {
+export function SkillSpit({ layer }: { layer: number }) {
   return (
-    <>
-      <div
-        className="spit"
-        aria-hidden="true"
-        style={
-          {
-            '--spit-cover': `${SPIT_COVER_MS}ms`,
-            '--spit-drip': `${SPIT_DRIP_MS}ms`,
-          } as CSSProperties
-        }
-      >
+    <div
+      className="spit"
+      aria-hidden="true"
+      style={
+        {
+          '--spit-cover': `${SPIT_COVER_MS}ms`,
+          '--spit-drip': `${SPIT_DRIP_MS}ms`,
+        } as CSSProperties
+      }
+    >
+      <div className="spit-layer" style={{ transform: SPIT_LAYERS[layer % SPIT_LAYERS.length] }}>
         {SPIT_BLOBS.map((blob, index) => (
           <span
             key={index}
@@ -57,11 +59,17 @@ export function SkillSpit() {
           />
         ))}
       </div>
-      <p className="skill-hint spit-hint" style={hintStyle(SkillId.SPIT)} role="status">
-        <b>으악!</b>
-        <span>3초 동안 가려지고, 3초 동안 흘러내려요</span>
-      </p>
-    </>
+    </div>
+  );
+}
+
+/** 침을 맞은 내 화면의 안내(겹쳐 맞아도 하나만 띄운다) */
+export function SkillSpitHint() {
+  return (
+    <p className="skill-hint spit-hint" style={hintStyle(SkillId.SPIT)} role="status">
+      <b>으악!</b>
+      <span>3초 동안 가려지고, 3초 동안 흘러내려요</span>
+    </p>
   );
 }
 
@@ -74,6 +82,24 @@ export function SkillBurnedHint() {
   );
 }
 
+/** 손 개 쌔게 내려치기를 맞은 내 화면: 풀릴 때까지 회복 단계에 맞는 안내를 계속 띄운다 */
+export function SkillSmashedHint({ stage }: { stage: 1 | 2 | 3 }) {
+  return (
+    <p className="skill-hint smashed-hint" style={hintStyle(SkillId.HAND_SMASH)} role="status">
+      <b>{SMASHED_MESSAGES[stage]}</b>
+    </p>
+  );
+}
+
+/** 내가 보낸 쥐가 죽은 이유. 쥐를 보낸 본인 화면에만 잠깐 뜬다 */
+export function SkillRatDeathHint({ cause }: { cause: RatDeathCause }) {
+  return (
+    <p className="skill-hint rat-death-hint" style={hintStyle(SkillId.RAT)} role="status">
+      <b>{RAT_DEATH_MESSAGES[cause]}</b>
+    </p>
+  );
+}
+
 /** 침 덩어리: 보드(1100×900) 안의 자리와 크기. 시안 24의 배치를 따른다 */
 const SPIT_BLOBS = [
   { x: 300, y: 225, w: 380, h: 300 },
@@ -82,6 +108,14 @@ const SPIT_BLOBS = [
   { x: 180, y: 417, w: 240, h: 190 },
   { x: 420, y: 505, w: 260, h: 190 },
   { x: 760, y: 457, w: 160, h: 130 },
+];
+/** 겹친 침마다 좌우를 뒤집고 옮겨 빈 곳까지 덮는다 */
+const SPIT_LAYERS = [
+  'none',
+  'translate(-40px, -130px) scaleX(-1)',
+  'translate(170px, 70px) scale(0.95)',
+  'translate(-210px, 20px) scale(1.05)',
+  'translate(60px, 150px) scaleX(-1)',
 ];
 const SPIT_DRIPS = [
   { x: 250, y: 575, h: 120, delay: '0ms' },

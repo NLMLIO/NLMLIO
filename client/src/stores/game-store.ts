@@ -13,6 +13,13 @@ type BellAction = Extract<GameAction, { kind: 'bell' }>;
 type SkillAction = Extract<GameAction, { kind: 'skill' }>;
 
 /** 서버가 알린 스킬 사용. 화면 위쪽 알림을 잠깐 띄우는 데 쓴다 */
+/** 침 한 번: 끝나는 시각(내 시계)과 겹친 순서 */
+export interface SpitHit {
+  key: number;
+  endsAt: number;
+  layer: number;
+}
+
 export interface SkillCastEvent {
   id: number;
   action: SkillAction;
@@ -39,7 +46,8 @@ interface GameState {
   snapshot: GameSnapshot | null;
   lastBell: BellEvent | null;
   recentSkills: SkillCastEvent[];
-  spitHits: Record<number, { key: number; endsAt: number }>;
+  /** 맞은 사람 → 아직 끝나지 않은 침(오래된 것부터). 연속으로 맞으면 겹친다. `layer`는 겹친 자리를 정한다 */
+  spitHits: Record<number, SpitHit[]>;
   /** 플레이어별 마지막 카드 공개. 그 플레이어가 새 카드를 낼 때만 바뀐다 */
   lastCards: Record<number, CardEvent>;
   /** 연결이 끊긴 플레이어별로 끊김 이벤트를 받은 이 브라우저 시각 */
@@ -162,14 +170,21 @@ export const gameActions = {
             ...state.recentSkills.filter((cast) => lastSkill.castAt - cast.castAt < SKILL_CAST_MS),
           ];
           if (event.skillId === SkillId.SPIT && event.targetUserId !== null) {
+            const active = (state.spitHits[event.targetUserId] ?? []).filter(
+              (hit) => hit.endsAt > lastSkill.castAt,
+            );
             return {
               recentSkills,
               spitHits: {
                 ...state.spitHits,
-                [event.targetUserId]: {
-                  key: lastSkill.id,
-                  endsAt: lastSkill.castAt + SPIT_COVER_MS + SPIT_DRIP_MS,
-                },
+                [event.targetUserId]: [
+                  ...active,
+                  {
+                    key: lastSkill.id,
+                    endsAt: lastSkill.castAt + SPIT_COVER_MS + SPIT_DRIP_MS,
+                    layer: active.length ? active[active.length - 1].layer + 1 : 0,
+                  },
+                ],
               },
             };
           }

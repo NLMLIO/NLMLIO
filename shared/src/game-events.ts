@@ -16,6 +16,8 @@ import type {
 export const TURN_TIME_MS = 10_000;
 /** 종 판정 결과를 함께 확인하는 동안 카드 내기를 멈춘다. */
 export const ROUND_RESULT_MS = 1800;
+/** 판정 표시가 거의 끝났거나 끝난 뒤에 늦게 올라온 손을 보여 주는 최소 시간 */
+export const BELL_LATE_HAND_MS = 800;
 /** 게임 중 연결이 끊긴 뒤 이탈 처리까지 기다리는 시간(FUNC-003-07) */
 export const GAME_RECONNECT_GRACE_MS = 5_000;
 
@@ -37,6 +39,8 @@ export interface GameCard {
   boosted?: true;
   /** 반짝반짝한 카드(꾸미기, 판정에 영향 없음). 판정으로 옮겨지면 사라진다 */
   gilded?: true;
+  /** 겹쳐 쓴 반짝반짝한 카드: 2 무지개, 3 우주. 한 번 쓴 금색에는 없다(`gilded`와 함께 온다) */
+  sparkle?: 2 | 3;
 }
 export const GameClientEvent = {
   SYNC: 'game:sync',
@@ -136,14 +140,21 @@ export interface GameSnapshot {
   rewindUntil: number | null;
   /** 방금 종 판정이 났다: 이 시각까지 다른 플레이어가 손 개 쌔게 내려치기로 종을 친 사람을 칠 수 있다 */
   smashWindow: { userId: number; endsAt: number } | null;
-  /** 손이 부서진 사람들. 단계(3→1)가 내려가 사라질 때까지 종을 칠 수 없다 */
+  /** 손이 부서진 사람들. 라운드가 끝나거나 단계(3→1)가 모두 내려가기 전까지 종을 칠 수 없다 */
   smashed: SmashedHand[];
+  /** 러시안 룰렛: 종 위에 올려 둔 리볼버. 없으면 null */
+  revolver: RevolverPublic | null;
 }
-/** 손 개 쌔게 내려치기를 맞은 손. 자기 카드를 3장 낼 때마다 단계가 하나 내려가고 0이 되면 풀린다 */
+/** 손 개 쌔게 내려치기를 맞은 손. 자기 카드를 3장 낼 때마다 단계가 하나 내려가고, 0이 되거나 라운드가 끝나면 풀린다 */
 export interface SmashedHand {
   userId: number;
   /** 3(방금 맞음) → 2 → 1(거의 회복). 1단계에서 3장을 더 내면 풀린다 */
   stage: 1 | 2 | 3;
+}
+/** 종 위 리볼버에 남은 탄 */
+export interface RevolverPublic {
+  blanks: number;
+  live: number;
 }
 /** `game:state` 페이로드. 보낼 때의 서버 시각을 붙여 클라이언트가 시계 차이를 잰다. */
 export type GameStateEvent = GameSnapshot & { serverTime: number };
@@ -162,6 +173,8 @@ export type GameAction =
       totals: Record<Fruit, number>;
       /** 지뢰가 터졌다: 5개를 맞췄지만 카드가 모두 종 밑으로 갔다. 성공도 오발도 아니다 */
       mined?: true;
+      /** 종 위 리볼버가 발사됐다. 실탄이면 테이블 카드가 모두 종 밑으로 가고 성공도 오발도 아니다 */
+      revolver?: { fired: 'blank' | 'live'; blanks: number };
       /** 종 야바위 중 가짜 종을 눌러 오발로 처리됐다 */
       fake?: true;
     }
@@ -179,7 +192,6 @@ export type GameAction =
       ratCrushed?: true;
       /** 쥐새끼가 깔려 있던 지뢰를 밟아 죽었다(지뢰도 사라진다). */
       ratMined?: true;
-      lostCards?: number;
     }
   | { kind: 'connection'; userId: number; connected: boolean };
 export type GameActionEvent = GameAction & { gameId: string; revision: number };

@@ -13,6 +13,9 @@ export const SKILL_PICK_TIME_MS = 10_000;
 export const SKILL_CAST_MS = 1_600;
 /** 손 개 쌔게 내려치기: 종 판정이 난 뒤 이 시간 안에만 쓸 수 있다 */
 export const HAND_SMASH_WINDOW_MS = 2_000;
+/** 반짝반짝한 카드를 한 카드에 겹칠 수 있는 최대 횟수: 1 금색, 2 무지개, 3 우주 */
+export const SPARKLE_MAX_STACK = 3;
+
 /** 맞은 손이 회복하는 단계 수와, 한 단계를 내려가는 데 필요한 자기 카드 수(3단계 × 3장 = 9장) */
 export const HAND_SMASH_STAGES = 3;
 export const HAND_SMASH_CARDS_PER_STAGE = 3;
@@ -38,7 +41,12 @@ export const SPIT_DRIP_MS = 3_000;
 /** 종 부수기(009-05): 종이 부서져 아무도 못 치는 시간(5~20초 중 서버가 정한다) */
 export const BELL_BREAK_MIN_MS = 5_000;
 export const BELL_BREAK_MAX_MS = 20_000;
-export const ROULETTE_CARD_LOSS = 5;
+/**
+ * 러시안 룰렛(009-05): 종 위에 올려 둔 리볼버의 공포탄·실탄 수. 종을 누를 때마다 남은 칸 중 하나가 나오고,
+ * 공포탄이면 그 칸만 줄고 실탄이면 테이블 카드가 종 아래로 가고 리볼버가 사라진다.
+ */
+export const ROULETTE_BLANKS = 5;
+export const ROULETTE_LIVE = 1;
 /** 쥐가 종 아래에 나타난 뒤 카드를 가져갈 때까지의 시간(이 안에 지뢰를 깔아도 쥐가 죽는다) */
 export const RAT_ESCAPE_MS = 2_000;
 /** 후보 칸 수와 보유 칸 수(009-02, 009-03) */
@@ -136,7 +144,8 @@ export const SKILLS: readonly SkillDefinition[] = [
     user: SkillUser.PLAYER,
     target: 'none',
     available: true,
-    description: '다음에 내는 카드가 금칠이 된다.',
+    description:
+      '다음에 내는 카드가 금색이 된다. 내기 전에 겹쳐 쓰면 2번은 무지개, 3번은 우주 빛이 된다.',
   },
   {
     id: SkillId.SIX_FRUIT_CARD,
@@ -215,7 +224,7 @@ export const SKILLS: readonly SkillDefinition[] = [
     target: 'none',
     available: true,
     description:
-      '이번 라운드에 지뢰를 깐다. 5개를 맞춰 종을 눌러도 카드가 종 밑에 쌓인다. 쥐새끼가 오면 쥐가 터져 죽고 지뢰는 사라진다. 폭발 전까지 설치 여부는 비밀이다.',
+      '이번 라운드에 지뢰를 몰래 깐다. 맞게 친 종도 카드가 종 밑에 쌓인다. 쥐새끼가 오면 쥐가 터지고 지뢰는 사라진다.',
   },
   {
     id: SkillId.HAND_SMASH,
@@ -227,7 +236,7 @@ export const SKILLS: readonly SkillDefinition[] = [
     target: 'none',
     available: true,
     description:
-      '슬롯을 눌러 준비한 뒤, 상대의 종 판정 후 2초 안에 현재 종 키로 내려친다. 맞은 손은 자기 카드를 3장 낼 때마다 한 단계씩 회복해, 9장을 내면 종을 다시 칠 수 있다.',
+      '준비해 두고 상대의 종 판정 후 2초 안에 종 키로 내려친다. 맞은 손은 다음 판정까지 못 치며, 카드 3장마다 회복한다.',
   },
   {
     id: SkillId.AMATERASU,
@@ -292,9 +301,10 @@ export const SKILLS: readonly SkillDefinition[] = [
     grade: 4,
     timing: SkillTiming.ANYTIME,
     user: SkillUser.SPECTATOR,
-    target: 'one',
+    target: 'none',
     available: true,
-    description: '선택한 플레이어에게 즉시 발사해 보유 카드 최대 5장을 종 아래로 옮긴다.',
+    description:
+      '종 위에 공포탄 5발·실탄 1발 리볼버를 올린다. 종을 누를 때 실탄이 나오면 테이블 카드가 종 아래로 간다.',
   },
   {
     id: SkillId.RESET,
@@ -345,6 +355,8 @@ export interface RatResult {
   at: number;
   outcome: 'stolen' | 'crushed' | 'missed' | 'mined';
   cardCount: number;
+  /** 지뢰에 죽었고 그 지뢰를 내가 깐 경우에만 있다. 쥐를 보낸 본인의 결과에만 싣는다 */
+  ownMine?: true;
 }
 
 /** 본인에게만 보내는 스킬 상태(`game:skills`) */
