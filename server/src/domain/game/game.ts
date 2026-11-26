@@ -155,6 +155,8 @@ export class Game {
   private revolver: { blanks: number } | null = null;
   /** 지뢰: 다음 종 판정까지, 5개를 맞춰 종을 쳐도 카드가 모두 종 밑으로 간다(성공도 오발도 아니다) */
   private mine = false;
+  private bellGlintAt?: number;
+  private ratImpact?: GameSnapshot['ratImpact'];
   /** 종 부수기: 종이 돌아올 때까지 아무도 종을 칠 수 없다 */
   private bellBreak: BellBreakPublic | null = null;
   private rat: { userId: number; endsAt: number; cardCount: number } | null = null;
@@ -527,6 +529,8 @@ export class Game {
     this.timeStop = null;
     this.bellBreak = null;
     this.rat = null;
+    this.ratImpact = undefined;
+    this.bellGlintAt = undefined;
     this.ratResults.clear();
     this.shell = null;
     this.rewind = null;
@@ -855,6 +859,12 @@ export class Game {
       bellMove: this.bellMove,
       timeStop: this.timeStop,
       bellBreak: this.bellBreak,
+      ...(this.bellGlintAt !== undefined && this.clock - this.bellGlintAt < 600
+        ? { bellGlintAt: this.bellGlintAt }
+        : {}),
+      ...(this.ratImpact && this.clock - this.ratImpact.at < 1600
+        ? { ratImpact: this.ratImpact }
+        : {}),
       rat: this.rat ? { endsAt: this.rat.endsAt, cardCount: this.rat.cardCount } : null,
       shell: this.shellAt(this.clock)
         ? { endsAt: this.shell!.endsAt, keys: this.shell!.keys }
@@ -965,10 +975,12 @@ export class Game {
         );
         break;
       case SkillId.RAT:
+        this.ratImpact = undefined;
         // 지뢰가 깔려 있으면 쥐가 밟아 죽고 지뢰도 사라진다.
         if (this.mine) {
           this.mine = false;
-          this.ratResults.set(userId, { at: now, outcome: 'mined', cardCount: this.pile.length });
+          this.ratImpact = { at: now, outcome: 'mined', cardCount: this.pile.length };
+          this.ratResults.set(userId, this.ratImpact);
           return { ratMined: true };
         }
         this.rat = { userId, endsAt: now + RAT_ESCAPE_MS, cardCount: this.pile.length };
@@ -979,6 +991,7 @@ export class Game {
         this.revolver = { blanks: ROULETTE_BLANKS };
         break;
       case SkillId.MINE:
+        this.bellGlintAt = now;
         // 쥐가 종 밑에 있는 동안 지뢰를 깔면 쥐가 지뢰에 죽고 지뢰도 사라진다.
         if (this.rat) {
           this.finishRat('mined', now);
@@ -1124,6 +1137,8 @@ export class Game {
         this.newTurn(now);
       }
     }
+    if (outcome === 'mined' || outcome === 'crushed')
+      this.ratImpact = { at: now, outcome, cardCount: rat.cardCount };
     this.ratResults.set(rat.userId, { at: now, outcome, cardCount: rat.cardCount });
   }
   /** 종이 부서져 있나 */

@@ -24,7 +24,7 @@ import type {
   SkillStateEvent,
   TimeStopPublic,
 } from '@nlmlio/shared';
-import type { BellEvent, CardEvent, RatCrushEvent, SkillCastEvent } from '../../stores/game-store';
+import type { BellEvent, CardEvent, SkillCastEvent } from '../../stores/game-store';
 import type { LogEntry as RoomLogEntry } from '../../stores/room-store';
 import { colorOf } from '../room/member-color';
 import { noticeText } from '../room/RoomChat';
@@ -64,7 +64,6 @@ export interface GameViewInput {
   /** 방금 서버가 알린 스킬 사용 */
   recentSkills: SkillCastEvent[];
   spitHit?: { key: number; endsAt: number };
-  ratCrush?: RatCrushEvent | null;
   /** 대상 지정 중인 슬롯. 아니면 null */
   targetingSlot: number | null;
   /** 서버 시각으로 맞춘 지금 */
@@ -238,8 +237,7 @@ function bannerOf(input: GameViewInput, seated: boolean): Banner | undefined {
       messages: ['이탈 처리됐어요 · 패배로 기록돼요', '끝날 때까지 관전할 수 있어요'],
     };
   if (snapshot.status === GameStatus.PLAYING && snapshot.turnUserId === null) {
-    if (bellBreakAt(snapshot, input.serverNow))
-      return { tone: 'accent', messages: ['종이 돌아오면 마지막 종 기회가 열려요'] };
+    if (bellBreakAt(snapshot, input.serverNow)) return undefined;
     const seconds =
       snapshot.turnDeadline === null
         ? undefined
@@ -310,22 +308,16 @@ function ratOf({
   snapshot,
   skills,
   userId,
-  ratCrush,
-  now,
+
   serverNow,
 }: GameViewInput): RatView | undefined {
   const pending = snapshot.rat;
-  if (pending && (!ratCrush || ratCrush.revision <= snapshot.revision))
-    return { key: pending.endsAt, phase: 'waiting', cardCount: pending.cardCount };
+  if (pending) return { key: pending.endsAt, phase: 'waiting', cardCount: pending.cardCount };
 
-  if (ratCrush && now - ratCrush.receivedAt < 1600)
-    return {
-      key: ratCrush.revision,
-      phase: ratCrush.mined ? 'mined' : 'crushed',
-      cardCount: ratCrush.cardCount,
-    };
+  const impact = snapshot.ratImpact;
+  if (impact && serverNow - impact.at < 1600)
+    return { key: impact.at, phase: impact.outcome, cardCount: impact.cardCount };
   const result = skills?.gameId === snapshot.gameId ? skills.ratResult : null;
-  // 쥐가 깔리거나 지뢰에 죽은 것은 모두에게 공개된 `ratCrush`로 이미 그렸다.
   if (
     result &&
     result.outcome !== 'crushed' &&
@@ -597,6 +589,17 @@ export function toGameView(input: GameViewInput): GameView {
     myTurnSeconds: myPhase === 'turn' ? turnSeconds : undefined,
     pileCount: snapshot.pileCount,
     smashed: smashStageOf(snapshot, userId),
+    glint:
+      snapshot.bellGlintAt !== undefined && input.serverNow - snapshot.bellGlintAt < 600
+        ? snapshot.bellGlintAt
+        : undefined,
+    shot: bell?.action.revolver
+      ? { key: bell.id, fired: bell.action.revolver.fired, target: String(bell.action.userId) }
+      : undefined,
+    knocked:
+      bell && (bell.action.mined || bell.action.revolver?.fired === 'live')
+        ? { key: bell.id, target: String(bell.action.userId) }
+        : undefined,
     revolver: snapshot.status === GameStatus.PLAYING ? (snapshot.revolver ?? undefined) : undefined,
     bell: bell
       ? { kind: bell.action.success ? 'success' : 'misfire' }

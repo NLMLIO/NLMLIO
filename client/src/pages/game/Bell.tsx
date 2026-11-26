@@ -61,11 +61,6 @@ export function Bell({
           {keyChip}
         </span>
       )}
-      {broken && (
-        <span className="bell-broken" role="status">
-          종이 부서졌어요
-        </span>
-      )}
       {revolver && !broken && (
         <div
           className="bell-revolver"

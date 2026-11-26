@@ -123,6 +123,9 @@ export interface GameSnapshot {
   timeStop: TimeStopPublic | null;
   /** 종 부수기: 종이 돌아올 때까지 아무도 종을 칠 수 없다 */
   bellBreak: BellBreakPublic | null;
+  /** 종 표면에서 한 번 재생하는 반짝임의 서버 시각 */
+  bellGlintAt?: number;
+  ratImpact?: { at: number; cardCount: number; outcome: 'mined' | 'crushed' };
   /** 종 아래의 쥐는 누구나 볼 수 있다. 소유자 정보는 숨긴다. */
   rat?: { endsAt: number; cardCount: number } | null;
   /** 아마테라스에 걸린 사람들. 다음 종 판정(또는 탈락)까지 카드 내기·종 치기가 불가다 */

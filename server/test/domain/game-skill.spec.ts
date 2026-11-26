@@ -1039,6 +1039,11 @@ describe('스킬 효과: 지뢰와 쥐새끼(FUNC-009-05)', () => {
     expect(game.snapshot().rat).not.toBeNull();
     const action = game.useSkill(2, 0, undefined, at + 3 + RAT_ESCAPE_MS - 1);
     expect(action).toMatchObject({ kind: 'skill', skillId: SkillId.MINE, ratMined: true });
+    expect(game.snapshot().ratImpact).toEqual({
+      at: at + 3 + RAT_ESCAPE_MS - 1,
+      outcome: 'mined',
+      cardCount: 1,
+    });
     expect(game.snapshot().rat).toBeNull();
     expect(game.skillState(1).ratResult).toMatchObject({ outcome: 'mined', cardCount: 1 });
     // 쥐는 카드를 가져가지 못한다
@@ -1053,6 +1058,8 @@ describe('스킬 효과: 지뢰와 쥐새끼(FUNC-009-05)', () => {
     const hand = game.checkpoint().players[0].hand.length;
     const action = game.useSkill(1, 0, undefined, at + 4);
     expect(action).toMatchObject({ kind: 'skill', skillId: SkillId.RAT, ratMined: true });
+    expect(game.snapshot().bellGlintAt).toEqual(at + 3);
+    expect(game.snapshot().ratImpact).toEqual({ at: at + 4, outcome: 'mined', cardCount: 1 });
     expect(game.snapshot().rat).toBeNull();
     expect(game.skillState(1).ratResult).toMatchObject({ outcome: 'mined' });
     expect(game.checkpoint().players[0].hand.length).toBe(hand);
