@@ -4,13 +4,22 @@ import type { SkillId } from '@nlmlio/shared';
 import { SkillGlyph } from './SkillGlyph';
 import { GRADE_STYLE, TIMING_LABEL, USER_LABEL, gradeStars } from './skill-view';
 
-/** 스킬 선택 창의 카드(Figma Skill Card). 선택되면 테두리 라임 + 체크 표시 */
-export function SkillCard({ skillId, selected = false }: { skillId: SkillId; selected?: boolean }) {
+/** 스킬 선택 창의 카드(Figma Skill Card). 선택되면 테두리 라임 + 체크 표시. `onPick`이 있으면 카드를 눌러 고른다 */
+export function SkillCard({
+  skillId,
+  selected = false,
+  onPick,
+}: {
+  skillId: SkillId;
+  selected?: boolean;
+  onPick?: () => void;
+}) {
   const skill = skillById(skillId);
   const grade = GRADE_STYLE[skill.grade];
   return (
     <article
-      className={`skill-card${selected ? ' is-selected' : ''}`}
+      className={`skill-card${selected ? ' is-selected' : ''}${onPick ? ' is-pickable' : ''}`}
+      onClick={onPick}
       style={{ '--grade': grade.color } as CSSProperties}
       aria-label={`${skill.name} ${grade.name}`}
     >

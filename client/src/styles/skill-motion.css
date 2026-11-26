@@ -478,7 +478,10 @@
   .seat-flame,
   .spit-blob,
   .spit-drip,
-  .fruit-card-shine {
+  .fruit-card-shine,
+  .fruit-card-aurora,
+  .fruit-card-stars,
+  .table-card .fruit-card.is-cosmic {
     animation: none;
   }
   .spit-drip {
@@ -488,28 +491,199 @@
     transition: none;
   }
 }
-.skill-projectile.reflected {
-  animation-name: skill-rebound;
-  animation-duration: 1.25s;
+/* 무지개 반사: 쓴 사람 → 원래 대상 → … → 실제로 맞는 사람까지 한 구간씩 차례로 날아간다 */
+.skill-projectile.hop {
+  animation-name: skill-hop;
+  animation-timing-function: ease-in-out;
 }
-@keyframes skill-rebound {
-  from {
+.skill-projectile.cue-hand_smash {
+  display: grid;
+  place-items: center;
+  font-size: 34px;
+}
+@keyframes skill-hop {
+  0% {
     opacity: 0;
-    transform: translate(var(--from-x), var(--from-y)) scale(0.4);
+    transform: translate(var(--from-x), var(--from-y)) scale(0.5);
   }
   12% {
     opacity: 1;
   }
-  48% {
-    transform: translate(0, 0) scale(1.2);
-  }
-  80% {
+  86% {
     opacity: 1;
-    transform: translate(var(--from-x), var(--from-y)) scale(0.85);
+    transform: translate(0, 0) scale(1.15);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(0, 0) scale(1.4);
+  }
+}
+
+/* 지뢰 폭발: 판정 화면(z 20)과 내려친 손보다 위에서 1.5초 동안 터지고 사라진다 */
+.bell-blast {
+  position: absolute;
+  z-index: 34;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.bell-blast > i {
+  position: absolute;
+  display: block;
+}
+.blast-flash {
+  top: -150px;
+  left: -150px;
+  width: 300px;
+  height: 300px;
+  background: radial-gradient(circle, #fff 0 38%, rgba(255, 244, 190, 0) 70%);
+  border-radius: 50%;
+  animation: blast-flash 0.38s ease-out both;
+}
+.blast-fire {
+  top: -160px;
+  left: -160px;
+  width: 320px;
+  height: 320px;
+  background: radial-gradient(
+    circle,
+    #fff7c2 0 12%,
+    #ffc233 28%,
+    #ff6a1c 46%,
+    rgba(200, 30, 0, 0.75) 58%,
+    rgba(90, 10, 0, 0) 71%
+  );
+  border-radius: 50%;
+  animation: blast-fire 1.1s cubic-bezier(0.1, 0.8, 0.3, 1) both;
+}
+.blast-ring {
+  top: -70px;
+  left: -70px;
+  width: 140px;
+  height: 140px;
+  box-sizing: border-box;
+  border: 7px solid #ffd77f;
+  border-radius: 50%;
+  animation: blast-ring 0.8s ease-out both;
+}
+.blast-ring.late {
+  border-color: #ff7a3d;
+  animation-delay: 0.17s;
+}
+.blast-smoke {
+  top: -65px;
+  left: -65px;
+  width: 130px;
+  height: 130px;
+  background: radial-gradient(circle, rgba(105, 96, 104, 0.9), rgba(60, 55, 62, 0) 70%);
+  border-radius: 50%;
+  animation: blast-smoke 1.25s 0.22s ease-out both;
+}
+.blast-piece {
+  top: -105px;
+  left: -105px;
+  width: 210px;
+  height: 210px;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  animation: blast-piece 1.45s cubic-bezier(0.1, 0.75, 0.3, 1) both;
+}
+.blast-spark {
+  top: -3px;
+  left: 0;
+  width: 46px;
+  height: 6px;
+  background: linear-gradient(90deg, transparent, #ffb02e 45%, #fff6bd);
+  border-radius: 3px;
+  transform-origin: 0 50%;
+  animation: blast-spark 0.85s cubic-bezier(0.1, 0.8, 0.35, 1) both;
+}
+.game-board:has(> .bell-blast) {
+  animation: blast-shake 0.45s linear;
+}
+@keyframes blast-flash {
+  from {
+    transform: scale(0.25);
   }
   to {
     opacity: 0;
-    transform: translate(var(--from-x), var(--from-y)) scale(1.6);
+    transform: scale(2);
+  }
+}
+@keyframes blast-fire {
+  0% {
+    transform: scale(0.15);
+  }
+  45% {
+    opacity: 1;
+    transform: scale(1.25);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+@keyframes blast-ring {
+  from {
+    opacity: 1;
+    transform: scale(0.3);
+  }
+  to {
+    opacity: 0;
+    transform: scale(4);
+  }
+}
+@keyframes blast-smoke {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  25% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--sx), var(--sy)) scale(1.7);
+  }
+}
+@keyframes blast-piece {
+  0% {
+    transform: none;
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx), var(--dy)) rotate(var(--spin)) scale(0.65);
+  }
+}
+@keyframes blast-spark {
+  from {
+    transform: rotate(var(--angle)) translateX(30px);
+  }
+  to {
+    opacity: 0;
+    transform: rotate(var(--angle)) translateX(300px) scaleX(0.4);
+  }
+}
+@keyframes blast-shake {
+  10%,
+  50%,
+  90% {
+    transform: translate(-9px, 4px);
+  }
+  30%,
+  70% {
+    transform: translate(9px, -5px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bell-blast {
+    display: none;
+  }
+  .game-board:has(> .bell-blast) {
+    animation: none;
   }
 }
 
@@ -533,33 +707,68 @@
     opacity: 0.84;
   }
 }
+/* 총이 0.7초 동안 룰렛처럼 돌다가 겨눈 뒤(0.72초) 발사한다. 전체는 판정 표시 시간(1.8초) 안에 끝난다 */
 .roulette-shot {
+  /* 종 위에서 도는 총이 종을 친 손(z 25~30)에 가려지지 않게 한다 */
+  z-index: 35;
   top: 0;
   left: 0;
   overflow: visible;
-  animation: shot-fade 0.85s both;
+  animation: shot-fade 1.65s both;
+}
+.shot-spin {
+  transform-origin: 0 0;
+  animation: shot-spin 0.7s cubic-bezier(0.16, 0.7, 0.24, 1) both;
+}
+@keyframes shot-spin {
+  from {
+    transform: rotate(-1440deg);
+  }
+  to {
+    transform: rotate(0deg);
+  }
 }
 .shot-gun {
-  animation: shot-recoil 0.28s ease-out;
+  animation: shot-recoil 0.28s ease-out 0.74s;
 }
 .shot-flash {
   fill: #fff2ae;
   stroke: #ffad3c;
   stroke-width: 2;
-  animation: shot-fade 0.18s both;
+  opacity: 0;
+  animation: shot-flash 0.22s 0.74s forwards;
+}
+.shot-click {
+  fill: #fff2cf;
+  font-size: 22px;
+  font-weight: 700;
+  opacity: 0;
+  animation: shot-flash 0.6s 0.74s forwards;
+}
+@keyframes shot-flash {
+  0%,
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
 }
 .shot-trail {
   stroke: #ffd35e;
   stroke-width: 5;
   stroke-linecap: round;
   stroke-dasharray: 0.16 1;
-  animation: shot-travel 0.32s linear both;
+  opacity: 0;
+  animation: shot-travel 0.32s linear 0.76s forwards;
 }
 @keyframes shot-travel {
   from {
+    opacity: 1;
     stroke-dashoffset: 0.16;
   }
   to {
+    opacity: 1;
     stroke-dashoffset: -1;
   }
 }
@@ -599,12 +808,14 @@
   stroke-width: 4;
 }
 @media (prefers-reduced-motion: reduce) {
+  .shot-spin,
   .shot-gun,
   .player-hand[data-knocked] > svg {
     animation: none;
   }
   .shot-trail {
     animation: none;
+    opacity: 1;
     stroke-dasharray: none;
   }
 }

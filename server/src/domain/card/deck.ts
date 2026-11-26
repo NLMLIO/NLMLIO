@@ -1,4 +1,4 @@
-import { Fruit } from '@nlmlio/shared';
+import { Fruit, SPARKLE_MAX_STACK } from '@nlmlio/shared';
 import type { GameCard } from '@nlmlio/shared';
 
 const INITIALS: Record<Fruit, string> = {
@@ -9,8 +9,8 @@ const INITIALS: Record<Fruit, string> = {
 };
 
 export class Card {
-  /** 반짝반짝한 카드: 꾸미기 표시일 뿐 판정에 영향이 없다. 테이블을 떠나면 사라진다 */
-  private gold = false;
+  /** 반짝반짝한 카드의 겹친 횟수(0이면 없음). 꾸미기 표시일 뿐 판정에 영향이 없고, 테이블을 떠나면 사라진다 */
+  private shine = 0;
   /** 숫자 바꾸기: 과일 개수가 1 늘어난 동안 true. 카드가 테이블을 떠나면 원래대로 돌아온다 */
   private plusOne = false;
   constructor(
@@ -45,14 +45,17 @@ export class Card {
   static six(fruit: Fruit): Card {
     return new Card(fruit, 6, true);
   }
-  get gilded(): boolean {
-    return this.gold;
+  /** 겹친 횟수: 0 없음, 1 금색, 2 무지개, 3 우주 */
+  get shineLevel(): number {
+    return this.shine;
   }
-  gild(): void {
-    this.gold = true;
+  gild(level = 1): void {
+    if (!Number.isInteger(level) || level < 1 || level > SPARKLE_MAX_STACK)
+      throw new Error('Invalid sparkle level');
+    this.shine = level;
   }
   ungild(): void {
-    this.gold = false;
+    this.shine = 0;
   }
   face(): GameCard {
     return {
@@ -60,7 +63,8 @@ export class Card {
       count: this.count,
       ...(this.special ? { special: true as const } : {}),
       ...(this.plusOne ? { boosted: true as const } : {}),
-      ...(this.gold ? { gilded: true as const } : {}),
+      ...(this.shine ? { gilded: true as const } : {}),
+      ...(this.shine > 1 ? { sparkle: this.shine as 2 | 3 } : {}),
     };
   }
   code(): string {

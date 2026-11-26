@@ -23,16 +23,26 @@ const PIP_CELLS: Record<CardFace['count'], number[]> = {
   6: [0, 2, 3, 5, 6, 8],
 };
 
+/** 반짝반짝한 카드의 단계별 모양: 1 금색, 2 무지개, 3 우주 */
+const SHINE = {
+  1: { className: 'is-gilded', label: '금칠' },
+  2: { className: 'is-rainbow', label: '무지개' },
+  3: { className: 'is-cosmic', label: '우주' },
+};
+
 /** Night Line 카드: 어두운 카드에 과일을 선으로만 그린다 */
 export function FruitCard({ card }: { card: CardFace }) {
   const cells = PIP_CELLS[card.count];
+  const shine = card.sparkle ? SHINE[card.sparkle] : card.gilded ? SHINE[1] : undefined;
   return (
     <div
-      className={`fruit-card${card.gilded ? ' is-gilded' : ''}${card.boosted ? ' is-boosted' : ''}`}
+      className={`fruit-card${shine ? ` ${shine.className}` : ''}${card.boosted ? ' is-boosted' : ''}`}
       role="img"
-      aria-label={`${FRUIT_NAMES[card.fruit]} ${card.count}${card.gilded ? ' 금칠' : ''}${card.boosted ? ' +1' : ''}`}
+      aria-label={`${FRUIT_NAMES[card.fruit]} ${card.count}${shine ? ` ${shine.label}` : ''}${card.boosted ? ' +1' : ''}`}
     >
-      {card.gilded && <span className="fruit-card-shine" aria-hidden="true" />}
+      {card.sparkle && <span className="fruit-card-aurora" aria-hidden="true" />}
+      {card.sparkle === 3 && <span className="fruit-card-stars" aria-hidden="true" />}
+      {shine && <span className="fruit-card-shine" aria-hidden="true" />}
       {card.boosted && (
         <span className="fruit-card-plus" aria-hidden="true">
           +1

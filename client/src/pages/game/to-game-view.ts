@@ -38,6 +38,7 @@ import {
   type PlayerView,
   type BellMoveView,
   type RankingEntry,
+  type SeatOutcome,
   type SkillCastView,
   type SkillTargeting,
   type Verdict,
@@ -63,7 +64,7 @@ export interface GameViewInput {
   skills: SkillStateEvent | null;
   /** 방금 서버가 알린 스킬 사용 */
   recentSkills: SkillCastEvent[];
-  spitHit?: { key: number; endsAt: number };
+  spitHits?: { key: number; endsAt: number; layer: number }[];
   /** 대상 지정 중인 슬롯. 아니면 null */
   targetingSlot: number | null;
   /** 서버 시각으로 맞춘 지금 */
@@ -94,6 +95,15 @@ export const smashStageOf = (snapshot: GameSnapshot, userId: number): 1 | 2 | 3 
 const secondsLeft = (until: number, now: number, max: number) =>
   Math.min(max, Math.max(0, Math.ceil((until - now) / 1000)));
 
+/**
+ * 종 판정의 특수한 결과. 실탄이 나왔는지, 그리고 성공도 오발도 아닌 판정(지뢰, 맞게 친 종의 실탄)인지.
+ * 틀리게 친 종은 실탄이 나와도 평소 오발이라 벌칙 카드 수가 함께 온다.
+ */
+function bellTraits(action: BellEvent['action']) {
+  const live = action.revolver?.fired === 'live';
+  return { live, neutral: !!action.mined || (live && action.penaltyCards === undefined) };
+}
+
 function verdictOf(input: GameViewInput, bell: BellEvent): Verdict {
   const { action, tableBefore } = bell;
   const ringer = input.snapshot.players.find((player) => player.userId === action.userId);
@@ -101,20 +111,30 @@ function verdictOf(input: GameViewInput, bell: BellEvent): Verdict {
     nickname: ringer?.nickname ?? '',
     color: playerColor(input.snapshot, input.room, action.userId),
   };
-  if (action.fake)
-    return {
-      tone: 'misfire',
-      ringer: ringerView,
-      formula: '가짜 종!',
-      detail: `상대에게 한 장씩 총 ${action.penaltyCards ?? 0}장 · 테이블 ${action.movedCards}장 보관`,
-    };
+  const { live, neutral } = bellTraits(action);
   if (action.mined)
     return {
       tone: 'misfire',
       ringer: ringerView,
-      title: '지뢰 폭발!',
-      formula: '테이블 카드를 종 아래에 보관해요',
+      title: live ? '지뢰 폭발! 탕! 실탄!' : '지뢰 폭발!',
+      formula: live ? '지뢰와 실탄이 함께 터졌어요' : '테이블 카드를 종 아래에 보관해요',
+      detail: `성공도 오발도 아니에요 · 카드 ${action.movedCards}장이 모두 종 아래로${live ? ' · 리볼버는 사라졌어요' : ''}`,
+    };
+  if (neutral)
+    return {
+      tone: 'misfire',
+      ringer: ringerView,
+      title: '탕! 실탄!',
+      formula: '리볼버에서 실탄이 나왔어요',
       detail: `성공도 오발도 아니에요 · 카드 ${action.movedCards}장이 모두 종 아래로`,
+    };
+  if (action.fake)
+    return {
+      tone: 'misfire',
+      ringer: ringerView,
+      ...(live ? { title: '오발! 탕! 실탄!' } : {}),
+      formula: live ? '가짜 종! 실탄도 발사됐어요' : '가짜 종!',
+      detail: `상대에게 한 장씩 총 ${action.penaltyCards ?? 0}장 · 테이블 ${action.movedCards}장 보관`,
     };
   if (action.success) {
     const fruit = FRUIT_ORDER.find((name) => action.totals[name] === 5) ?? 'STRAWBERRY';
@@ -132,11 +152,21 @@ function verdictOf(input: GameViewInput, bell: BellEvent): Verdict {
   return {
     tone: 'misfire',
     ringer: ringerView,
+    ...(live ? { title: '오발! 탕! 실탄!' } : {}),
     formula: visible.length
       ? visible.map((name) => `${FRUIT_NAMES[name]} ${action.totals[name]}`).join(' · ')
       : '테이블이 비어 있어요',
     detail: `상대에게 한 장씩 총 ${action.penaltyCards ?? 0}장 · 테이블 ${action.movedCards}장은 모두 종 아래로`,
   };
+}
+
+/** 성공이 아닌 종 판정의 로그 문구 */
+function bellText(action: BellEvent['action']): string {
+  const { live, neutral } = bellTraits(action);
+  const shot = live ? ' · 실탄 발사' : '';
+  if (action.mined) return `지뢰 폭발${shot} · 테이블 ${action.movedCards}장 보관`;
+  if (neutral) return `실탄 발사 · 테이블 ${action.movedCards}장 보관`;
+  return `오발${shot} · 상대에게 ${action.penaltyCards ?? 0}장 · 테이블 ${action.movedCards}장 보관`;
 }
 
 function logOf(input: GameViewInput): LogEntry[] {
@@ -169,9 +199,7 @@ function logOf(input: GameViewInput): LogEntry[] {
               id,
               tone: 'danger',
               nickname,
-              text: action.mined
-                ? `지뢰 폭발 · 테이블 ${action.movedCards}장 보관`
-                : `오발 · 상대에게 ${action.penaltyCards ?? 0}장 · 테이블 ${action.movedCards}장 보관`,
+              text: bellText(action),
             };
       case 'departed':
         return { kind: 'event', id, tone: 'danger', nickname, text: '이탈 · 관전으로 전환' };
@@ -200,7 +228,7 @@ function logOf(input: GameViewInput): LogEntry[] {
           id,
           tone: 'success',
           nickname,
-          text: `${skillById(action.skillId).name} 사용${target ? ` → ${target}` : ''}${action.lostCards !== undefined ? ` · 덱 −${action.lostCards}장` : ''}${reflected ? ` · ${reflected}님의 무지개 반사!` : ''}`,
+          text: `${skillById(action.skillId).name} 사용${target ? ` → ${target}` : ''}${reflected ? ` · ${reflected}님의 무지개 반사!` : ''}`,
         };
       }
     }
@@ -294,6 +322,18 @@ function skillCastOf(input: GameViewInput, cast: SkillCastEvent): SkillCastView 
 }
 
 /** 쥐의 자리와 압착은 공개, 보상·도착 좌석은 소유자 전용 서버 결과로만 그린다. */
+/** 쥐가 죽은 이유를 보낸 사람에게 보여 주는 시간 */
+const RAT_DEATH_NOTICE_MS = 3000;
+
+/** 내가 보낸 쥐가 죽었으면 잠깐 띄울 이유. 개인 `ratResult`는 쥐를 보낸 사람에게만 온다 */
+function ratDeathOf({ snapshot, skills, serverNow }: GameViewInput): GameView['ratDeath'] {
+  const result = skills?.gameId === snapshot.gameId ? skills.ratResult : null;
+  if (!result || serverNow - result.at >= RAT_DEATH_NOTICE_MS) return undefined;
+  if (result.outcome === 'crushed') return { key: result.at, cause: 'crushed' };
+  if (result.outcome !== 'mined') return undefined;
+  return { key: result.at, cause: result.ownMine ? 'own-mine' : 'mined' };
+}
+
 function ratOf({
   snapshot,
   skills,
@@ -454,15 +494,17 @@ function skillsOf(input: GameViewInput): SkillsView | undefined {
   };
 }
 
+/** 종을 누른 사람 자리에 붙는 결과 배지 */
+function seatOutcomeOf(action: BellEvent['action']): SeatOutcome {
+  const { live, neutral } = bellTraits(action);
+  if (action.mined) return { tone: 'misfire', label: live ? '지뢰·실탄!' : '지뢰!' };
+  if (neutral) return { tone: 'misfire', label: '실탄!' };
+  if (action.success) return { tone: 'win', label: `WIN +${action.movedCards}` };
+  return { tone: 'misfire', label: live ? '오발·실탄' : '오발' };
+}
+
 export function toGameView(input: GameViewInput): GameView {
   const { snapshot, userId, bell } = input;
-  const cast = input.recentSkills.find(
-    ({ action, castAt }) => action.skillId === SkillId.RUSSIAN_ROULETTE && input.now - castAt < 850,
-  );
-  const shot =
-    cast && cast.action.targetUserId != null
-      ? { key: cast.id, target: String(cast.action.targetUserId) }
-      : undefined;
   const seat = snapshot.players.findIndex((player) => player.userId === userId);
   const seated = seat !== -1;
   const ordered = seated
@@ -504,11 +546,7 @@ export function toGameView(input: GameViewInput): GameView {
       emoteKey: emoji?.id,
       outcome:
         bell && ringer
-          ? bell.action.mined
-            ? { tone: 'misfire', label: '지뢰!' }
-            : bell.action.success
-              ? { tone: 'win', label: `WIN +${bell.action.movedCards}` }
-              : { tone: 'misfire', label: '오발' }
+          ? seatOutcomeOf(bell.action)
           : bell?.action.penaltyRecipients?.includes(player.userId)
             ? { tone: 'receive', label: '덱 +1' }
             : undefined,
@@ -590,10 +628,15 @@ export function toGameView(input: GameViewInput): GameView {
       snapshot.bellGlintAt !== undefined && input.serverNow - snapshot.bellGlintAt < 600
         ? snapshot.bellGlintAt
         : undefined,
-    shot,
+    shot: bell?.action.revolver
+      ? { key: bell.id, fired: bell.action.revolver.fired, target: String(bell.action.userId) }
+      : undefined,
+    blast: bell?.action.mined ? { key: bell.id } : undefined,
     knocked:
-      shot ??
-      (bell?.action.mined ? { key: bell.id, target: String(bell.action.userId) } : undefined),
+      bell && (bell.action.mined || bell.action.revolver?.fired === 'live')
+        ? { key: bell.id, target: String(bell.action.userId) }
+        : undefined,
+    revolver: snapshot.status === GameStatus.PLAYING ? (snapshot.revolver ?? undefined) : undefined,
     bell: bell
       ? { kind: bell.action.success ? 'success' : 'misfire' }
       : playing && snapshot.turnUserId === null
@@ -607,6 +650,7 @@ export function toGameView(input: GameViewInput): GameView {
       .filter((cast) => input.now - cast.castAt < SKILL_CAST_MS)
       .map((cast) => skillCastOf(input, cast)),
     rat: ratOf(input),
+    ratDeath: ratDeathOf(input),
     targeting: targetingOf(input, skills),
     bellMove: bellMoveAt(snapshot, input.serverNow),
     bellBreak: bellBreakAt(snapshot, input.serverNow),
@@ -626,7 +670,7 @@ export function toGameView(input: GameViewInput): GameView {
           : secondsLeft(stop.endsAt, input.serverNow, 99),
     },
     frozen,
-    spit: input.spitHit && input.now < input.spitHit.endsAt ? input.spitHit : undefined,
+    spits: input.spitHits?.filter((hit) => input.now < hit.endsAt),
   };
 }
 

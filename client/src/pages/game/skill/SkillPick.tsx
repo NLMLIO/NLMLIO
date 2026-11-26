@@ -60,7 +60,8 @@ export function SkillPick({
         <b>{clock(pick.secondsLeft)}</b>
       </p>
       <p className="skill-pick-eyebrow">
-        {pick.pickNo === 1 ? '게임 시작' : `라운드 ${pick.round - 1} 종료`} · {spectator ? 'SPECTATOR ' : ''}SKILL PICK {pick.pickNo}
+        {pick.pickNo === 1 ? '게임 시작' : `라운드 ${pick.round - 1} 종료`} ·{' '}
+        {spectator ? 'SPECTATOR ' : ''}SKILL PICK {pick.pickNo}
       </p>
       <h2 id="skill-pick-title" className="skill-pick-title">
         스킬을 하나 고르세요
@@ -78,7 +79,12 @@ export function SkillPick({
           const button = buttonFor(index);
           return (
             <div key={index} className="skill-pick-column" data-selected={selected || undefined}>
-              <SkillCard skillId={skillId} selected={selected} />
+              {/* 카드 클릭은 아래 버튼과 같은 동작이다(키보드는 버튼을 쓴다) */}
+              <SkillCard
+                skillId={skillId}
+                selected={selected}
+                onPick={button.disabled ? undefined : () => choose(index)}
+              />
               <button
                 type="button"
                 className={`skill-pick-button ${button.className}`}

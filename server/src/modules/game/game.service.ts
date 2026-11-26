@@ -139,13 +139,13 @@ export class GameService implements OnModuleInit {
   }
 
   /** 무시된 종 요청이 이미 지난 테이블에 대한 늦은 요청인가(읽기 전용) */
-  isLateBell(userId: number, input: BellRingRequest, now = Date.now()): boolean {
+  isLateBell(userId: number, input: BellRingRequest): boolean {
     const room = this.rooms.memberRoom(userId);
     const session = room ? this.games.get(room.code) : undefined;
     return (
       session?.game.id === input.gameId &&
       session.game.status === GameStatus.PLAYING &&
-      session.game.isLateBell(input.turnSeq, now)
+      session.game.isLateBell(input.turnSeq)
     );
   }
 

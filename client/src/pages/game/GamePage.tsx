@@ -53,7 +53,7 @@ export function GamePage({
   const clockOffset = useGameStore((state) => state.clockOffset);
   const skills = useGameStore((state) => state.skills);
   const recentSkills = useGameStore((state) => state.recentSkills);
-  const spitHit = useGameStore((state) => state.spitHits[user.id]);
+  const spitHits = useGameStore((state) => state.spitHits[user.id]);
   const room = useRoomStore((state) => state.room);
   const roomSynced = useRoomStore((state) => state.synced);
   const log = useRoomStore((state) => state.log);
@@ -122,7 +122,7 @@ export function GamePage({
   const timeStop = snapshot ? timeStopAt(snapshot, now + clockOffset) : undefined;
   const stopByMe = timeStop?.userId === user.id;
   const burnedSelf = !!snapshot?.burning.includes(user.id);
-  // 손이 부서진 사람은 카드는 낼 수 있지만 단계(3→1)가 풀릴 때까지 종을 못 친다.
+  // 손이 부서진 사람은 카드는 낼 수 있지만 라운드가 끝나거나 단계(3→1)가 풀릴 때까지 종을 못 친다.
   const smashStage = snapshot ? smashStageOf(snapshot, user.id) : undefined;
   const frozen = canAct && (burnedSelf || (!!timeStop && !stopByMe));
   const canPlayNow = canAct && !burnedSelf && (timeStop ? stopByMe : myTurn);
@@ -164,7 +164,10 @@ export function GamePage({
       });
   }, [strike, armedSmash, armedSlot, snapshot, user.id, clockOffset, now]);
 
-  const joiningHandWindow = canJoinBellHandWindow(snapshot, user.id, now + clockOffset);
+  const joiningHandWindow = !!live && canJoinBellHandWindow(snapshot, user.id);
+  // 판정 표시 중이거나, 표시가 끝난 뒤 늦게 누른 손이 막 올라온 동안에는 서버가 보낸 손을 그린다.
+  const showingHands =
+    judging || (!!live && (snapshot?.bellHands?.displayUntil ?? 0) > now + clockOffset);
 
   function isPaused() {
     const current = useGameStore.getState();
@@ -202,14 +205,11 @@ export function GamePage({
       setStrike({ armed: armedSmash, until: Date.now() + 400 });
       return;
     }
-    const joining = canJoinBellHandWindow(
-      atPress.snapshot,
-      user.id,
-      Date.now() + atPress.clockOffset,
-    );
+    const joining = canJoinBellHandWindow(atPress.snapshot, user.id);
     if (!snapshot || ((!canAct || isPaused()) && !joining)) return;
     // 아마테라스·시간 정지는 종을 칠 수 없고 접수 순서에도 끼지 못한다.
     if (frozen) return;
+    // 부서진 손은 종을 못 친다. 안내는 풀릴 때까지 화면에 계속 떠 있다(SkillSmashedHint).
     if (smashStage !== undefined) return;
     // 종이 부서져 있는 동안은 아무도 종을 칠 수 없다(종 부수기).
     if (bellBreakAt(snapshot, Date.now() + atPress.clockOffset)) return;
@@ -220,7 +220,7 @@ export function GamePage({
     await inputs.current.beforeBell();
     const current = useGameStore.getState();
     const latest = current.snapshot;
-    const mayJoin = canJoinBellHandWindow(latest, user.id, Date.now() + current.clockOffset);
+    const mayJoin = canJoinBellHandWindow(latest, user.id);
     const mayRing =
       latest?.status === GameStatus.PLAYING &&
       latest.players.find((player) => player.userId === user.id)?.status ===
@@ -228,7 +228,7 @@ export function GamePage({
       !isPaused();
     if (!latest || latest.gameId !== snapshot.gameId || (!mayRing && !mayJoin)) return;
     // 같은 종 요청이 응답을 기다리는 동안만 중복 전송을 막는다. 판정은 서버가 한 번만 하고,
-    // 늦게 눌러도 판정 결과를 보여 주는 동안은 서버가 손을 올려 준다.
+    // 늦게 눌러도 새 카드가 공개되기 전까지는 서버가 손을 올려 준다.
     if (bellPending.current) return;
     bellPending.current = true;
     void sendGameIntent(GameClientEvent.BELL, {
@@ -275,7 +275,6 @@ export function GamePage({
     void sendGameIntent(GameClientEvent.SKILL_USE, {
       gameId: snapshot.gameId,
       slot,
-      expectedSkillId: skills?.slots[slot] ?? undefined,
       targetUserId,
     }).then((failure) => {
       if (failure) setError(failure);
@@ -399,7 +398,7 @@ export function GamePage({
     emojis,
     skills,
     recentSkills,
-    spitHit,
+    spitHits,
     targetingSlot,
     bell: judging ? lastBell : null,
     lastCards,
@@ -415,7 +414,7 @@ export function GamePage({
         actions={actions}
         leaving={leaving}
         playing={playing}
-        hands={judging ? (snapshot.bellHands ?? undefined) : undefined}
+        hands={showingHands ? (snapshot.bellHands ?? undefined) : undefined}
         canJoinHandWindow={joiningHandWindow}
         armedSmashSlot={armedSlot}
       >

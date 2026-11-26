@@ -26,7 +26,7 @@ const { GameInputSequence } = load('pages/game/game-input-sequence.ts') as {
 
 describe('서버가 허용한 손 접수 구간', () => {
   const { canJoinBellHandWindow } = load('pages/game/game-input-sequence.ts') as {
-    canJoinBellHandWindow: (snapshot: object | null, userId: number, now: number) => boolean;
+    canJoinBellHandWindow: (snapshot: object | null, userId: number) => boolean;
   };
   const snapshot = {
     bellHands: {
@@ -36,14 +36,13 @@ describe('서버가 허용한 손 접수 구간', () => {
       eligibleUserIds: [1, 2],
     },
   };
-  it('서버 참가자·순서·마감으로만 판단하고 자기 손을 미리 추가하지 않는다', () => {
-    expect(canJoinBellHandWindow(null, 1, 1000)).toBe(false);
-    expect(canJoinBellHandWindow(snapshot, 1, 1200)).toBe(true);
-    // 판정 결과를 보여 주는 동안은 늦게 눌러도 손이 올라간다.
-    expect(canJoinBellHandWindow(snapshot, 1, 2799)).toBe(true);
-    expect(canJoinBellHandWindow(snapshot, 1, 2800)).toBe(false);
-    expect(canJoinBellHandWindow(snapshot, 2, 1100)).toBe(false);
-    expect(canJoinBellHandWindow(snapshot, 99, 1100)).toBe(false);
+  it('서버가 보낸 참가자·순서로만 판단하고 자기 손을 미리 추가하지 않는다', () => {
+    expect(canJoinBellHandWindow(null, 1)).toBe(false);
+    expect(canJoinBellHandWindow({ bellHands: null }, 1)).toBe(false);
+    // 표시 마감과 상관없이 서버에 손 목록이 남아 있는 동안은 늦게 눌러도 보낸다.
+    expect(canJoinBellHandWindow(snapshot, 1)).toBe(true);
+    expect(canJoinBellHandWindow(snapshot, 2)).toBe(false);
+    expect(canJoinBellHandWindow(snapshot, 99)).toBe(false);
     expect(snapshot.bellHands.userIds).toEqual([2]);
   });
 });

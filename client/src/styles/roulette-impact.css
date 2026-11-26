@@ -1,0 +1,274 @@
+/* 러시안 룰렛 실탄이 맞은 연출. 총은 0.74초에 쏘고 총알이 닿는 0.98초에 시작해 판정 표시(1.8초) 안에 끝난다 */
+.shot-screen,
+.shot-hurt {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.shot-screen {
+  z-index: 31;
+  background: #fff4d6;
+  opacity: 0;
+  animation: shot-screen 0.45s ease-out 0.98s;
+}
+.shot-hurt {
+  z-index: 32;
+  background: radial-gradient(
+    ellipse at 50% 50%,
+    rgba(255, 0, 30, 0) 34%,
+    rgba(225, 0, 28, 0.55) 68%,
+    rgba(120, 0, 12, 0.92) 100%
+  );
+  opacity: 0;
+  animation: shot-hurt 0.82s ease-out 0.98s forwards;
+}
+.shot-impact {
+  position: absolute;
+  z-index: 33;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.shot-impact > i,
+.shot-impact > svg {
+  position: absolute;
+  display: block;
+  opacity: 0;
+}
+.shot-burst {
+  top: -110px;
+  left: -110px;
+  width: 220px;
+  height: 220px;
+  background: radial-gradient(
+    circle,
+    #fff 0 14%,
+    #ffe27a 28%,
+    #ff7a1c 46%,
+    rgba(210, 20, 20, 0.7) 58%,
+    rgba(120, 0, 0, 0) 71%
+  );
+  border-radius: 50%;
+  animation: shot-burst 0.55s cubic-bezier(0.1, 0.8, 0.3, 1) 0.98s forwards;
+}
+.shot-ring {
+  top: -50px;
+  left: -50px;
+  width: 100px;
+  height: 100px;
+  box-sizing: border-box;
+  border: 6px solid #ffe9a8;
+  border-radius: 50%;
+  animation: shot-ring 0.55s ease-out 0.98s forwards;
+}
+.shot-ring.late {
+  border-color: #ff3b3b;
+  animation-delay: 1.12s;
+}
+.shot-smoke {
+  top: -45px;
+  left: -45px;
+  width: 90px;
+  height: 90px;
+  background: radial-gradient(circle, rgba(150, 140, 145, 0.9), rgba(60, 55, 62, 0) 70%);
+  border-radius: 50%;
+  animation: shot-smoke 0.72s ease-out 1.06s forwards;
+}
+.shot-hole {
+  top: -100px;
+  left: -100px;
+  width: 200px;
+  height: 200px;
+  animation: shot-hole 0.8s ease-out 0.98s forwards;
+}
+.shot-hole path {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 3.5;
+  stroke-linejoin: bevel;
+  filter: drop-shadow(0 0 3px #ff4d4d);
+}
+.shot-hole-rim {
+  fill: #6b0f14;
+  stroke: #ffd9a0;
+  stroke-width: 4;
+}
+.shot-hole-core {
+  fill: #08080b;
+}
+.shot-spark {
+  top: -3px;
+  left: 0;
+  width: 34px;
+  height: 5px;
+  background: linear-gradient(90deg, transparent, #ff6a1c 45%, #fff2b0);
+  border-radius: 3px;
+  transform-origin: 0 50%;
+  animation: shot-spark 0.6s cubic-bezier(0.1, 0.8, 0.35, 1) 0.98s forwards;
+}
+/* 총구: 큰 섬광, 연기, 튀어나오는 탄피 */
+.muzzle-glow {
+  fill: #ffd35e;
+  opacity: 0;
+  filter: blur(7px);
+  animation: shot-flash 0.3s 0.74s forwards;
+}
+.muzzle-smoke {
+  fill: rgba(190, 182, 188, 0.75);
+  opacity: 0;
+  filter: blur(4px);
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: muzzle-smoke 0.7s ease-out 0.8s forwards;
+}
+.shot-shell {
+  fill: #e2b04a;
+  stroke: #7a5314;
+  stroke-width: 1;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: shot-shell 0.75s cubic-bezier(0.3, 0.6, 0.6, 1) 0.76s forwards;
+}
+.game-board:has(> .shot-impact) {
+  animation: shot-shake 0.5s linear 0.98s;
+}
+@keyframes shot-screen {
+  0% {
+    opacity: 0.85;
+  }
+  35% {
+    background: #ff2438;
+    opacity: 0.45;
+  }
+  100% {
+    background: #ff2438;
+    opacity: 0;
+  }
+}
+@keyframes shot-hurt {
+  0% {
+    opacity: 1;
+  }
+  25% {
+    opacity: 0.65;
+  }
+  45% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0.35;
+  }
+}
+@keyframes shot-burst {
+  0% {
+    opacity: 1;
+    transform: scale(0.2);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+}
+@keyframes shot-ring {
+  from {
+    opacity: 1;
+    transform: scale(0.3);
+  }
+  to {
+    opacity: 0;
+    transform: scale(3.4);
+  }
+}
+@keyframes shot-smoke {
+  0% {
+    opacity: 0.85;
+    transform: scale(0.4);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--sx), var(--sy)) scale(1.5);
+  }
+}
+@keyframes shot-hole {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  18% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+  30%,
+  80% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+}
+@keyframes shot-spark {
+  from {
+    opacity: 1;
+    transform: rotate(var(--angle)) translateX(18px);
+  }
+  to {
+    opacity: 0;
+    transform: rotate(var(--angle)) translateX(170px) scaleX(0.4);
+  }
+}
+@keyframes muzzle-smoke {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.4);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(16px, -26px) scale(2.2);
+  }
+}
+@keyframes shot-shell {
+  0% {
+    opacity: 1;
+    transform: none;
+  }
+  45% {
+    opacity: 1;
+    transform: translate(-34px, -62px) rotate(300deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-66px, 18px) rotate(760deg);
+  }
+}
+@keyframes shot-shake {
+  10%,
+  50% {
+    transform: translate(-12px, 6px);
+  }
+  30%,
+  70% {
+    transform: translate(12px, -7px);
+  }
+  90% {
+    transform: translate(-5px, 2px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shot-screen,
+  .shot-impact,
+  .muzzle-smoke,
+  .shot-shell {
+    display: none;
+  }
+  .shot-hurt,
+  .game-board:has(> .shot-impact) {
+    animation: none;
+  }
+}

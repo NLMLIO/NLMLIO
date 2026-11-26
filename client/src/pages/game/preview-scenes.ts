@@ -305,12 +305,20 @@ export const PREVIEW_SCENES = {
       targetIds: ['p1', 'p2', 'p3'],
     },
   },
-  /** M10 · 반짝반짝한 카드: 금칠이 된 카드가 테이블에 놓인 모습 */
+  /** M10 · 반짝반짝한 카드: 1번 금색(p1) · 2번 무지개(p2) · 3번 우주(나) 카드가 테이블에 놓인 모습 */
   'skill-gilded': {
     ...MY_TURN,
     players: MY_TURN.players.map((entry) =>
-      entry.id === 'me' && entry.topCard
-        ? { ...entry, topCard: { ...entry.topCard, gilded: true } }
+      entry.topCard && ['me', 'p1', 'p2'].includes(entry.id)
+        ? {
+            ...entry,
+            topCard: {
+              ...entry.topCard,
+              gilded: true,
+              ...(entry.id === 'me' ? { sparkle: 3 as const } : {}),
+              ...(entry.id === 'p2' ? { sparkle: 2 as const } : {}),
+            },
+          }
         : entry,
     ),
     skills: {
@@ -411,7 +419,16 @@ export const PREVIEW_SCENES = {
         targetId: 'me',
       },
     ],
-    spit: { key: 7 },
+    spits: [{ key: 7, layer: 0 }],
+  },
+  /** 침 뱉기를 연속으로 세 번 맞아 겹친 화면 */
+  'skill-spit-stacked': {
+    ...MY_TURN,
+    spits: [
+      { key: 21, layer: 0 },
+      { key: 22, layer: 1 },
+      { key: 23, layer: 2 },
+    ],
   },
   /** M05 · 아마테라스: 대상 좌석이 검은 불꽃에 휩싸인 모두의 화면 */
   'skill-amaterasu': {
@@ -523,6 +540,7 @@ export const PREVIEW_SCENES = {
     ...MY_TURN,
     pileCount: 5,
     rat: { key: 3, phase: 'crushed', cardCount: 5 },
+    ratDeath: { key: 3, cause: 'crushed' },
     bellBreak: true,
     skillCasts: [
       {
@@ -535,20 +553,49 @@ export const PREVIEW_SCENES = {
       },
     ],
   },
-  /** 러시안 룰렛: 지정한 좌석으로 발사 */
+  /** 지뢰 폭발: 맞게 친 종에서 지뢰가 터지는 연출과 판정 화면 */
+  'skill-mine-blast': {
+    ...MY_TURN,
+    myPhase: 'judging',
+    pileCount: 6,
+    blast: { key: 1 },
+    verdict: {
+      tone: 'misfire',
+      ringer: { nickname: '딸기러버', color: 'strawberry' },
+      title: '지뢰 폭발!',
+      formula: '테이블 카드를 종 아래에 보관해요',
+      detail: '성공도 오발도 아니에요 · 카드 6장이 모두 종 아래로',
+    },
+  },
+  /** 러시안 룰렛 실탄: 내가 맞은 순간의 연출과 판정 화면 */
+  'skill-roulette-hit': {
+    ...MY_TURN,
+    myPhase: 'judging',
+    pileCount: 7,
+    // 판정 장면의 미리보기는 좌석 id를 1부터 다시 매긴다(1이 나)
+    shot: { key: 1, fired: 'live', target: '1' },
+    verdict: {
+      tone: 'misfire',
+      ringer: { nickname: '과일왕', color: 'lime' },
+      title: '탕! 실탄!',
+      formula: '리볼버에서 실탄이 나왔어요',
+      detail: '성공도 오발도 아니에요 · 카드 7장이 모두 종 아래로',
+    },
+  },
+  /** 러시안 룰렛: 관전자가 종 위에 올려 둔 리볼버(공포탄 5 · 실탄 1) */
   'skill-roulette': {
     ...MY_TURN,
     pileCount: 5,
     skills: { slots: [EMPTY_SLOT, EMPTY_SLOT, EMPTY_SLOT] },
-    shot: { key: 14, target: MY_TURN.players[1].id },
+    revolver: { blanks: 5, live: 1 },
     skillCasts: [
       {
         key: 14,
         caster: '관전자',
         casterId: '99',
         skillId: SkillId.RUSSIAN_ROULETTE,
-        target: MY_TURN.players[1].nickname,
-        targetId: MY_TURN.players[1].id,
+        target: null,
+        targetId: null,
       },
     ],
   },

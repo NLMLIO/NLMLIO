@@ -11,10 +11,18 @@ import { GameChat } from './GameChat';
 import { bellCenter, seatPlacements, type GameView } from './game-view';
 import { PlayerSeat, playerColorStyle } from './PlayerSeat';
 import { SkillPick } from './skill/SkillPick';
-import { FistImpact, SkillMotion } from './skill/SkillMotion';
+import { BellBlast, FistImpact, SkillMotion } from './skill/SkillMotion';
+import { RouletteImpact } from './skill/RouletteImpact';
 import { SkillRat } from './skill/SkillRat';
 import { SkillCast, SkillTargetHint } from './skill/SkillCast';
-import { SkillBurnedHint, SkillSpit, SkillTimeStop } from './skill/SkillEffects';
+import {
+  SkillBurnedHint,
+  SkillSpit,
+  SkillSpitHint,
+  SkillTimeStop,
+  SkillSmashedHint,
+  SkillRatDeathHint,
+} from './skill/SkillEffects';
 import { SkillId } from '@nlmlio/shared';
 import { SkillDock } from './skill/SkillSlot';
 import type { SkillPickHandler } from './skill/skill-view';
@@ -61,13 +69,14 @@ export function GameBoard({
   const placements = seatPlacements(seatedPlayers.length, view.selfSeated === false);
   const [me, ...others] = view.players;
   const spectating = view.myPhase === 'spectating';
-  const rouletteSlot =
-    view.skills?.slots.findIndex(
-      (slot) => slot.skillId === SkillId.RUSSIAN_ROULETTE && slot.usable,
-    ) ?? -1;
   const muted = useMuted();
   const casts = view.skillCasts ?? [];
   const bell = bellCenter(view.bellMove, !!view.shell && !view.bellBreak);
+  /**
+   * 종 위에 그리는 종 옮기기의 새 키. 야바위·부서진 종에는 그리지 않는다. 해킹당했으면 아무 키도 그리지 않는다
+   * (해킹 키는 상태 바에만 보이고, 이때 종 옮기기의 키는 통하지 않는다).
+   */
+  const keyChip = view.shell || view.bellBreak || view.hackKey ? undefined : view.bellMove?.key;
   /** 좌석 id로 그 자리의 중심(보드 좌표). 앉은 자리가 없으면 null */
   const seatPoint = (id: string) => {
     const index = seatedPlayers.findIndex((player) => player.id === id);
@@ -166,6 +175,7 @@ export function GameBoard({
           breakStrike={casts.find((cast) => cast.skillId === SkillId.BELL_BREAK)?.key}
           hackKey={view.hackKey}
           shell={view.shell}
+          revolver={view.shot ? undefined : view.revolver}
         />
         {view.glint !== undefined && (
           <i
@@ -177,14 +187,16 @@ export function GameBoard({
             ✦
           </i>
         )}
+        {view.blast && <BellBlast key={view.blast.key} at={bell} />}
         {view.shot && hit && (
           <svg
             key={view.shot.key}
             className="roulette-shot"
             width="1100"
             height="900"
-            aria-label="지정한 플레이어에게 룰렛 발사"
+            aria-label={view.shot.fired === 'live' ? '룰렛 실탄 발사' : '룰렛 공포탄 발사'}
           >
+            {view.shot.fired === 'live' && (
               <line
                 className="shot-trail"
                 x1={bell.x}
@@ -193,11 +205,33 @@ export function GameBoard({
                 y2={hit.y}
                 pathLength="1"
               />
+            )}
+            {/* 총이 룰렛처럼 몇 바퀴 돌다가 종을 누른 사람을 겨누고, 그다음 발사(실탄)하거나 헛방(공포탄)이다 */}
             <g transform={`translate(${bell.x} ${bell.y}) rotate(${aim})`}>
-              <image className="shot-gun" href={blaster} x="-32" y="-20" width="85" height="50" />
-              <path className="shot-flash" d="m53 0 12 -9 -2 6 18 3 -20 4 3 7z" />
+              <g className="shot-spin">
+                <image className="shot-gun" href={blaster} x="-32" y="-20" width="85" height="50" />
+              </g>
+              {view.shot.fired === 'live' ? (
+                <>
+                  <circle className="muzzle-glow" cx="66" cy="0" r="30" />
+                  <path className="shot-flash" d="m53 0 12 -9 -2 6 18 3 -20 4 3 7z" />
+                  <circle className="muzzle-smoke" cx="60" cy="-4" r="13" />
+                  <rect className="shot-shell" x="2" y="-18" width="17" height="8" rx="2" />
+                </>
+              ) : (
+                <text className="shot-click" x="60" y="5">
+                  틱!
+                </text>
+              )}
             </g>
           </svg>
+        )}
+        {view.shot?.fired === 'live' && hit && (
+          <RouletteImpact
+            key={view.shot.key}
+            at={hit}
+            self={!spectating && view.shot.target === me.id}
+          />
         )}
         {view.bellMove && !view.shell && <span className="bell-ghost" aria-hidden="true" />}
         {armedSmashSlot !== null && (
@@ -280,6 +314,18 @@ export function GameBoard({
             </div>
           );
         })}
+        {/* 종 안에 그리면 손(대기·치는 손)에 가려지므로 보드 위 종 한가운데에 손보다 위로 그린다 */}
+        {keyChip && (
+          <span
+            key={keyChip}
+            className={`bell-key${view.revolver && !view.shot ? ' has-revolver' : ''}`}
+            style={{ left: bell.x, top: bell.y }}
+            role="status"
+            aria-label={`${keyChip} 키로 치기`}
+          >
+            {keyChip}
+          </span>
+        )}
         {!!hands?.userIds.length && (
           <ul className="bell-hand-order" aria-label="서버 종 접수 순서">
             {hands.userIds.map((id) => (
@@ -315,11 +361,6 @@ export function GameBoard({
           deckCount={me.deckCount}
           smashReady={armedSmashSlot !== null}
           receivedPenalty={me.outcome?.tone === 'receive'}
-          onRoulette={
-            spectating && rouletteSlot >= 0 && actions.onUseSkill
-              ? () => actions.onUseSkill?.(rouletteSlot)
-              : undefined
-          }
           phase={view.myPhase}
           turnNickname={view.turnNickname}
           turnSeconds={view.myTurnSeconds}
@@ -359,8 +400,13 @@ export function GameBoard({
             seat={view.rat.recipientId ? seatPoint(view.rat.recipientId) : null}
           />
         )}
-        {view.spit && <SkillSpit key={view.spit.key} />}
+        {view.spits?.map((spit) => (
+          <SkillSpit key={spit.key} layer={spit.layer} />
+        ))}
+        {!!view.spits?.length && <SkillSpitHint />}
         {view.frozen === 'amaterasu' && <SkillBurnedHint />}
+        {view.smashed && <SkillSmashedHint stage={view.smashed} />}
+        {view.ratDeath && <SkillRatDeathHint key={view.ratDeath.key} cause={view.ratDeath.cause} />}
         {view.targeting && <SkillTargetHint targeting={view.targeting} />}
         {view.verdict && <VerdictOverlay verdict={view.verdict} />}
         {children}
