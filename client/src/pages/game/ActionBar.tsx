@@ -38,6 +38,7 @@ interface ActionBarProps {
   leaving: boolean;
   /** 종 옮기기 중이면 Space 대신 쓰는 새 키 */
   bellKey?: string;
+  onRoulette?: () => void;
   smashReady?: boolean;
   receivedPenalty?: boolean;
   onPlayCard: () => void;
@@ -56,6 +57,7 @@ export function ActionBar({
   playing = false,
   leaving,
   bellKey,
+  onRoulette,
   smashReady,
   receivedPenalty,
   onPlayCard,
@@ -90,7 +92,6 @@ export function ActionBar({
           <button
             type="button"
             className="action-button leave"
-            aria-keyshortcuts="J"
             disabled={leaving}
             onClick={onLeave}
           >
@@ -107,20 +108,28 @@ export function ActionBar({
             카드 내기
           </button>
         )}
-        <Key label="J" />
+        {!spectating && <Key label="J" />}
       </div>
       <span className="action-bar-divider" aria-hidden="true" />
-      <p className="action-bar-control bell-hint">
-        {smashReady ? '내려치기' : '종'}{' '}
-        {bellKey ? (
-          <>
-            <kbd className="key struck">SPACE</kbd>
-            <kbd className="key moved">{bellKey}</kbd>
-          </>
-        ) : (
-          <Key label="SPACE" />
-        )}
-      </p>
+      {spectating ? (
+        onRoulette && (
+          <button type="button" className="action-button roulette-use" onClick={onRoulette}>
+            룰렛 설치
+          </button>
+        )
+      ) : (
+        <p className="action-bar-control bell-hint">
+          {smashReady ? '내려치기' : '종'}{' '}
+          {bellKey ? (
+            <>
+              <kbd className="key struck">SPACE</kbd>
+              <kbd className="key moved">{bellKey}</kbd>
+            </>
+          ) : (
+            <Key label="SPACE" />
+          )}
+        </p>
+      )}
     </section>
   );
 }

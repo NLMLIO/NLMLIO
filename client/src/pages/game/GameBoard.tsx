@@ -67,6 +67,10 @@ export function GameBoard({
   const placements = seatPlacements(seatedPlayers.length, view.selfSeated === false);
   const [me, ...others] = view.players;
   const spectating = view.myPhase === 'spectating';
+  const rouletteSlot =
+    view.skills?.slots.findIndex(
+      (slot) => slot.skillId === SkillId.RUSSIAN_ROULETTE && slot.usable,
+    ) ?? -1;
   const muted = useMuted();
   const casts = view.skillCasts ?? [];
   const bell = bellCenter(view.bellMove, !!view.shell && !view.bellBreak);
@@ -279,6 +283,11 @@ export function GameBoard({
           deckCount={me.deckCount}
           smashReady={armedSmashSlot !== null}
           receivedPenalty={me.outcome?.tone === 'receive'}
+          onRoulette={
+            spectating && rouletteSlot >= 0 && actions.onUseSkill
+              ? () => actions.onUseSkill?.(rouletteSlot)
+              : undefined
+          }
           phase={view.myPhase}
           turnNickname={view.turnNickname}
           turnSeconds={view.myTurnSeconds}

@@ -66,8 +66,7 @@
   font-size: 21px;
   animation: rat-score 1.8s both;
 }
-.rat-crushed .rat-actor,
-.rat-mined .rat-actor {
+.rat-crushed .rat-actor {
   animation: rat-flatten 1.15s both;
 }
 .rat-crushed .rat-cargo,
@@ -246,5 +245,85 @@
   }
   .rat-missed .rat-actor {
     display: none;
+  }
+}
+
+.rat-mined .rat-actor {
+  animation: rat-knockback 1.45s both;
+}
+.rat-blast {
+  position: absolute;
+  width: 112px;
+  height: 112px;
+  left: -56px;
+  bottom: 0;
+  pointer-events: none;
+  background: radial-gradient(circle, #fffbc9 8%, #ffd346 29%, #ff722c 56%, transparent 70%);
+  clip-path: polygon(
+    50% 0,
+    59% 27%,
+    83% 8%,
+    74% 36%,
+    100% 32%,
+    82% 53%,
+    99% 72%,
+    70% 68%,
+    75% 98%,
+    52% 79%,
+    33% 100%,
+    32% 73%,
+    3% 84%,
+    19% 57%,
+    0 42%,
+    29% 36%,
+    20% 11%,
+    44% 29%
+  );
+  animation: rat-mine-flash 0.62s both;
+}
+@keyframes rat-mine-flash {
+  0%,
+  19% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  36% {
+    opacity: 1;
+    transform: scale(1.45);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+}
+@keyframes rat-knockback {
+  0%,
+  12% {
+    transform: none;
+  }
+  25% {
+    transform: translate(12px, -30px) rotate(24deg);
+  }
+  54% {
+    transform: translate(36px, 8px) rotate(90deg);
+  }
+  62%,
+  89% {
+    opacity: 1;
+    transform: translate(37px, 13px) rotate(92deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(37px, 13px) rotate(92deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rat-mined .rat-actor {
+    animation: none;
+    transform: rotate(90deg);
+  }
+  .rat-blast {
+    animation: none;
+    opacity: 0.4;
   }
 }

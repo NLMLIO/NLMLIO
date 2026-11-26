@@ -168,7 +168,6 @@ export function GamePage({
     if (armedSlot !== null) {
       if (smashPending.current) return;
       const latest = atPress.snapshot;
-      const window = latest?.smashWindow;
       if (
         !latest ||
         latest.gameId !== armedSmash?.gameId ||
@@ -176,17 +175,7 @@ export function GamePage({
         atPress.skills?.slots[armedSlot] !== SkillId.HAND_SMASH
       )
         return;
-      if (
-        !window ||
-        window.userId === user.id ||
-        Date.now() + atPress.clockOffset > window.endsAt ||
-        !latest.players.some(
-          (player) => player.userId === window.userId && player.status === GamePlayerStatus.ACTIVE,
-        )
-      ) {
-        setError('다른 플레이어가 종을 친 직후에 내려칠 수 있어요.');
-        return;
-      }
+      // 상대의 종 판정이 아직 이 화면에 도착하지 않았어도 서버 큐 순서대로 판정한다.
       smashPending.current = true;
       try {
         const failure = await sendGameIntent(GameClientEvent.SKILL_USE, {
@@ -254,7 +243,7 @@ export function GamePage({
    */
   function useSkillSlot(slot: number) {
     const id = skills?.slots[slot];
-    if (!snapshot || !id || !skillUsable(snapshot, user.id, id)) return;
+    if (!snapshot || !id || !skillUsable(snapshot, user.id, id, Date.now() + clockOffset)) return;
     if (id === SkillId.HAND_SMASH) {
       setTargetingSlot(null);
       setArmedSmash(armedSlot === slot ? null : { gameId: snapshot.gameId, slot });
@@ -266,11 +255,13 @@ export function GamePage({
       return;
     }
     setTargetingSlot(null);
-    void sendGameIntent(GameClientEvent.SKILL_USE, { gameId: snapshot.gameId, slot }).then(
-      (failure) => {
-        if (failure) setError(failure);
-      },
-    );
+    void sendGameIntent(GameClientEvent.SKILL_USE, {
+      gameId: snapshot.gameId,
+      slot,
+      expectedSkillId: id,
+    }).then((failure) => {
+      if (failure) setError(failure);
+    });
   }
 
   function pickTarget(targetUserId: number) {
@@ -359,13 +350,9 @@ export function GamePage({
   useGameShortcuts({
     skill: confirmLeave || ended ? undefined : useSkillSlot,
     j:
-      confirmLeave || ended || judging || picking
-        ? undefined
-        : canPlayNow
-          ? actions.onPlayCard
-          : !canAct && !leaving
-            ? actions.onLeave
-            : undefined,
+      canPlayNow && !confirmLeave && !ended && !judging && !picking
+        ? actions.onPlayCard
+        : undefined,
     // 종 옮기기·해킹 중에는 Space 대신 새 키로만 종을 친다.
     space: bellInput && !shell && !ringKey ? () => ringBell() : undefined,
     bell: bellInput && ringKey ? { code: `Key${ringKey}`, run: () => ringBell() } : undefined,

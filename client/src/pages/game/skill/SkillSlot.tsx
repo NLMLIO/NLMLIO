@@ -38,8 +38,10 @@ export function SkillSlot({
         onClick={onClick}
       >
         {slot.skillId ? <SkillGlyph skillId={slot.skillId} /> : <span className="plus">+</span>}
+        <kbd aria-hidden="true" className="skill-slot-key">
+          {SLOT_KEYS[index]}
+        </kbd>
       </button>
-      <kbd className="skill-slot-key">{SLOT_KEYS[index]}</kbd>
     </div>
   );
 }

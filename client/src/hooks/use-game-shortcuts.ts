@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 interface GameShortcuts {
-  /** J: 내 차례면 카드 내기, 관전 중이면 로비로 나가기 */
+  /** J: 내 차례에 카드 내기 */
   j?: () => void;
   /** Space: 종 누르기 */
   space?: () => void;
