@@ -70,7 +70,6 @@ export function SkillBurnedHint() {
   return (
     <p className="skill-hint burned-hint" style={hintStyle(SkillId.AMATERASU)} role="status">
       <b>아마테라스</b>
-      <span>다음 판정까지 카드도 종도 못 쳐요</span>
     </p>
   );
 }

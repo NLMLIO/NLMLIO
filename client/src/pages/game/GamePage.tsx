@@ -15,7 +15,7 @@ import { useGameShortcuts } from '../../hooks/use-game-shortcuts';
 import { sendChat, sendGameIntent } from '../../socket/socket';
 import { useGameStore } from '../../stores/game-store';
 import { useRoomStore } from '../../stores/room-store';
-import { GameBoard, SMASHED_MESSAGES, type GameActions } from './GameBoard';
+import { GameBoard, type GameActions } from './GameBoard';
 import { GameFrame } from './GameFrame';
 import { GameResult } from './GameResult';
 import { GameInputSequence, canJoinBellHandWindow } from './game-input-sequence';
@@ -53,7 +53,6 @@ export function GamePage({
   const clockOffset = useGameStore((state) => state.clockOffset);
   const skills = useGameStore((state) => state.skills);
   const recentSkills = useGameStore((state) => state.recentSkills);
-  const ratCrush = useGameStore((state) => state.ratCrush);
   const spitHit = useGameStore((state) => state.spitHits[user.id]);
   const room = useRoomStore((state) => state.room);
   const roomSynced = useRoomStore((state) => state.synced);
@@ -66,6 +65,7 @@ export function GamePage({
   const [targetingSlot, setTargetingSlot] = useState<number | null>(null);
   const [armedSmash, setArmedSmash] = useState<{ gameId: string; slot: number } | null>(null);
   const smashPending = useRef(false);
+  const [strike, setStrike] = useState<{ armed: typeof armedSmash; until: number } | null>(null);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -122,7 +122,7 @@ export function GamePage({
   const timeStop = snapshot ? timeStopAt(snapshot, now + clockOffset) : undefined;
   const stopByMe = timeStop?.userId === user.id;
   const burnedSelf = !!snapshot?.burning.includes(user.id);
-  // 손이 부서진 사람은 카드는 낼 수 있지만 단계(3→1)가 풀릴 때까지 종을 못 친다. 종을 누르면 안내만 뜬다.
+  // 손이 부서진 사람은 카드는 낼 수 있지만 단계(3→1)가 풀릴 때까지 종을 못 친다.
   const smashStage = snapshot ? smashStageOf(snapshot, user.id) : undefined;
   const frozen = canAct && (burnedSelf || (!!timeStop && !stopByMe));
   const canPlayNow = canAct && !burnedSelf && (timeStop ? stopByMe : myTurn);
@@ -139,6 +139,30 @@ export function GamePage({
   useEffect(() => {
     if (armedSlot === null) setArmedSmash(null);
   }, [armedSlot, armedSmash]);
+
+  useEffect(() => {
+    if (!strike || strike.armed !== armedSmash || armedSlot === null || !snapshot) return;
+    if (Date.now() > strike.until) {
+      setStrike(null);
+      return;
+    }
+    const target = snapshot.smashWindow;
+    if (!target || target.userId === user.id || target.endsAt < Date.now() + clockOffset) return;
+    if (smashPending.current) return;
+    smashPending.current = true;
+    setStrike(null);
+    void sendGameIntent(GameClientEvent.SKILL_USE, {
+      gameId: snapshot.gameId,
+      slot: armedSlot,
+      expectedSkillId: SkillId.HAND_SMASH,
+    })
+      .then((failure) => {
+        if (!failure) setArmedSmash((current) => (current === strike.armed ? null : current));
+      })
+      .finally(() => {
+        smashPending.current = false;
+      });
+  }, [strike, armedSmash, armedSlot, snapshot, user.id, clockOffset, now]);
 
   const joiningHandWindow = canJoinBellHandWindow(snapshot, user.id, now + clockOffset);
 
@@ -175,19 +199,7 @@ export function GamePage({
         atPress.skills?.slots[armedSlot] !== SkillId.HAND_SMASH
       )
         return;
-      // 상대의 종 판정이 아직 이 화면에 도착하지 않았어도 서버 큐 순서대로 판정한다.
-      smashPending.current = true;
-      try {
-        const failure = await sendGameIntent(GameClientEvent.SKILL_USE, {
-          gameId: latest.gameId,
-          slot: armedSlot,
-          expectedSkillId: SkillId.HAND_SMASH,
-        });
-        if (failure) setError(failure);
-        else setArmedSmash(null);
-      } finally {
-        smashPending.current = false;
-      }
+      setStrike({ armed: armedSmash, until: Date.now() + 400 });
       return;
     }
     const joining = canJoinBellHandWindow(
@@ -198,11 +210,7 @@ export function GamePage({
     if (!snapshot || ((!canAct || isPaused()) && !joining)) return;
     // 아마테라스·시간 정지는 종을 칠 수 없고 접수 순서에도 끼지 못한다.
     if (frozen) return;
-    // 부서진 손은 종을 못 친다. 눌러 보면 단계에 맞는 안내만 띄운다.
-    if (smashStage !== undefined) {
-      setError(SMASHED_MESSAGES[smashStage]);
-      return;
-    }
+    if (smashStage !== undefined) return;
     // 종이 부서져 있는 동안은 아무도 종을 칠 수 없다(종 부수기).
     if (bellBreakAt(snapshot, Date.now() + atPress.clockOffset)) return;
     // 종이 옮겨지는 중(처음 300ms)에는 종 입력을 무시한다(종 옮기기).
@@ -227,13 +235,9 @@ export function GamePage({
       gameId: latest.gameId,
       turnSeq: latest.turnSeq,
       ...(bell !== undefined ? { bell } : {}),
-    })
-      .then((failure) => {
-        if (failure) setError(failure);
-      })
-      .finally(() => {
-        bellPending.current = false;
-      });
+    }).finally(() => {
+      bellPending.current = false;
+    });
   }
 
   /** 후보 칸 선택(FUNC-009-03): 결과는 서버가 보내는 상태로만 화면에 반영한다 */
@@ -271,6 +275,7 @@ export function GamePage({
     void sendGameIntent(GameClientEvent.SKILL_USE, {
       gameId: snapshot.gameId,
       slot,
+      expectedSkillId: skills?.slots[slot] ?? undefined,
       targetUserId,
     }).then((failure) => {
       if (failure) setError(failure);
@@ -395,7 +400,6 @@ export function GamePage({
     skills,
     recentSkills,
     spitHit,
-    ratCrush,
     targetingSlot,
     bell: judging ? lastBell : null,
     lastCards,

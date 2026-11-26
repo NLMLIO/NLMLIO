@@ -123,6 +123,9 @@ export interface GameSnapshot {
   timeStop: TimeStopPublic | null;
   /** 종 부수기: 종이 돌아올 때까지 아무도 종을 칠 수 없다 */
   bellBreak: BellBreakPublic | null;
+  /** 종 표면에서 한 번 재생하는 반짝임의 서버 시각 */
+  bellGlintAt?: number;
+  ratImpact?: { at: number; cardCount: number; outcome: 'mined' | 'crushed' };
   /** 종 아래의 쥐는 누구나 볼 수 있다. 소유자 정보는 숨긴다. */
   rat?: { endsAt: number; cardCount: number } | null;
   /** 아마테라스에 걸린 사람들. 다음 종 판정(또는 탈락)까지 카드 내기·종 치기가 불가다 */
@@ -135,19 +138,12 @@ export interface GameSnapshot {
   smashWindow: { userId: number; endsAt: number } | null;
   /** 손이 부서진 사람들. 단계(3→1)가 내려가 사라질 때까지 종을 칠 수 없다 */
   smashed: SmashedHand[];
-  /** 러시안 룰렛: 종 위에 올려 둔 리볼버. 없으면 null */
-  revolver: RevolverPublic | null;
 }
 /** 손 개 쌔게 내려치기를 맞은 손. 자기 카드를 3장 낼 때마다 단계가 하나 내려가고 0이 되면 풀린다 */
 export interface SmashedHand {
   userId: number;
   /** 3(방금 맞음) → 2 → 1(거의 회복). 1단계에서 3장을 더 내면 풀린다 */
   stage: 1 | 2 | 3;
-}
-/** 종 위 리볼버에 남은 탄 */
-export interface RevolverPublic {
-  blanks: number;
-  live: number;
 }
 /** `game:state` 페이로드. 보낼 때의 서버 시각을 붙여 클라이언트가 시계 차이를 잰다. */
 export type GameStateEvent = GameSnapshot & { serverTime: number };
@@ -166,8 +162,6 @@ export type GameAction =
       totals: Record<Fruit, number>;
       /** 지뢰가 터졌다: 5개를 맞췄지만 카드가 모두 종 밑으로 갔다. 성공도 오발도 아니다 */
       mined?: true;
-      /** 종 위 리볼버가 발사됐다. 실탄이면 테이블 카드가 모두 종 밑으로 가고 성공도 오발도 아니다 */
-      revolver?: { fired: 'blank' | 'live'; blanks: number };
       /** 종 야바위 중 가짜 종을 눌러 오발로 처리됐다 */
       fake?: true;
     }
@@ -185,6 +179,7 @@ export type GameAction =
       ratCrushed?: true;
       /** 쥐새끼가 깔려 있던 지뢰를 밟아 죽었다(지뢰도 사라진다). */
       ratMined?: true;
+      lostCards?: number;
     }
   | { kind: 'connection'; userId: number; connected: boolean };
 export type GameActionEvent = GameAction & { gameId: string; revision: number };

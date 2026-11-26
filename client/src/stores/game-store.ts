@@ -35,19 +35,10 @@ export interface CardEvent {
   automatic: boolean;
 }
 
-export interface RatCrushEvent {
-  revision: number;
-  receivedAt: number;
-  cardCount: number;
-  /** 종 부수기가 아니라 깔려 있던 지뢰를 밟아 죽었다 */
-  mined?: boolean;
-}
-
 interface GameState {
   snapshot: GameSnapshot | null;
   lastBell: BellEvent | null;
   recentSkills: SkillCastEvent[];
-  ratCrush: RatCrushEvent | null;
   spitHits: Record<number, { key: number; endsAt: number }>;
   /** 플레이어별 마지막 카드 공개. 그 플레이어가 새 카드를 낼 때만 바뀐다 */
   lastCards: Record<number, CardEvent>;
@@ -71,7 +62,6 @@ export const useGameStore = create<GameState>(() => ({
   snapshot: null,
   lastBell: null,
   recentSkills: [],
-  ratCrush: null,
   spitHits: {},
   lastCards: {},
   offlineSince: {},
@@ -90,7 +80,6 @@ export const gameActions = {
           snapshot: null,
           lastBell: null,
           recentSkills: [],
-          ratCrush: null,
           spitHits: {},
           lastCards: {},
           offlineSince: {},
@@ -119,7 +108,6 @@ export const gameActions = {
           : {
               lastBell: null,
               recentSkills: [],
-              ratCrush: null,
               spitHits: {},
               lastCards: {},
               skills: null,
@@ -173,16 +161,6 @@ export const gameActions = {
             lastSkill,
             ...state.recentSkills.filter((cast) => lastSkill.castAt - cast.castAt < SKILL_CAST_MS),
           ];
-          if (event.ratCrushed || event.ratMined)
-            return {
-              recentSkills,
-              ratCrush: {
-                revision: event.revision,
-                receivedAt: lastSkill.castAt,
-                cardCount: snapshot.rat?.cardCount ?? snapshot.pileCount,
-                ...(event.ratMined ? { mined: true } : {}),
-              },
-            };
           if (event.skillId === SkillId.SPIT && event.targetUserId !== null) {
             return {
               recentSkills,
@@ -199,7 +177,6 @@ export const gameActions = {
             return {
               recentSkills: [lastSkill],
               lastBell: null,
-              ratCrush: null,
               lastCards: {},
               spitHits: {},
             };

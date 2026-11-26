@@ -24,7 +24,7 @@ import type {
   SkillStateEvent,
   TimeStopPublic,
 } from '@nlmlio/shared';
-import type { BellEvent, CardEvent, RatCrushEvent, SkillCastEvent } from '../../stores/game-store';
+import type { BellEvent, CardEvent, SkillCastEvent } from '../../stores/game-store';
 import type { LogEntry as RoomLogEntry } from '../../stores/room-store';
 import { colorOf } from '../room/member-color';
 import { noticeText } from '../room/RoomChat';
@@ -64,7 +64,6 @@ export interface GameViewInput {
   /** 방금 서버가 알린 스킬 사용 */
   recentSkills: SkillCastEvent[];
   spitHit?: { key: number; endsAt: number };
-  ratCrush?: RatCrushEvent | null;
   /** 대상 지정 중인 슬롯. 아니면 null */
   targetingSlot: number | null;
   /** 서버 시각으로 맞춘 지금 */
@@ -115,14 +114,6 @@ function verdictOf(input: GameViewInput, bell: BellEvent): Verdict {
       ringer: ringerView,
       title: '지뢰 폭발!',
       formula: '테이블 카드를 종 아래에 보관해요',
-      detail: `성공도 오발도 아니에요 · 카드 ${action.movedCards}장이 모두 종 아래로`,
-    };
-  if (action.revolver?.fired === 'live')
-    return {
-      tone: 'misfire',
-      ringer: ringerView,
-      title: '탕! 실탄!',
-      formula: '리볼버에서 실탄이 나왔어요',
       detail: `성공도 오발도 아니에요 · 카드 ${action.movedCards}장이 모두 종 아래로`,
     };
   if (action.success) {
@@ -180,9 +171,7 @@ function logOf(input: GameViewInput): LogEntry[] {
               nickname,
               text: action.mined
                 ? `지뢰 폭발 · 테이블 ${action.movedCards}장 보관`
-                : action.revolver?.fired === 'live'
-                  ? `실탄 발사 · 테이블 ${action.movedCards}장 보관`
-                  : `오발 · 상대에게 ${action.penaltyCards ?? 0}장 · 테이블 ${action.movedCards}장 보관`,
+                : `오발 · 상대에게 ${action.penaltyCards ?? 0}장 · 테이블 ${action.movedCards}장 보관`,
             };
       case 'departed':
         return { kind: 'event', id, tone: 'danger', nickname, text: '이탈 · 관전으로 전환' };
@@ -211,7 +200,7 @@ function logOf(input: GameViewInput): LogEntry[] {
           id,
           tone: 'success',
           nickname,
-          text: `${skillById(action.skillId).name} 사용${target ? ` → ${target}` : ''}${reflected ? ` · ${reflected}님의 무지개 반사!` : ''}`,
+          text: `${skillById(action.skillId).name} 사용${target ? ` → ${target}` : ''}${action.lostCards !== undefined ? ` · 덱 −${action.lostCards}장` : ''}${reflected ? ` · ${reflected}님의 무지개 반사!` : ''}`,
         };
       }
     }
@@ -238,8 +227,7 @@ function bannerOf(input: GameViewInput, seated: boolean): Banner | undefined {
       messages: ['이탈 처리됐어요 · 패배로 기록돼요', '끝날 때까지 관전할 수 있어요'],
     };
   if (snapshot.status === GameStatus.PLAYING && snapshot.turnUserId === null) {
-    if (bellBreakAt(snapshot, input.serverNow))
-      return { tone: 'accent', messages: ['종이 돌아오면 마지막 종 기회가 열려요'] };
+    if (bellBreakAt(snapshot, input.serverNow)) return undefined;
     const seconds =
       snapshot.turnDeadline === null
         ? undefined
@@ -310,22 +298,16 @@ function ratOf({
   snapshot,
   skills,
   userId,
-  ratCrush,
-  now,
+
   serverNow,
 }: GameViewInput): RatView | undefined {
   const pending = snapshot.rat;
-  if (pending && (!ratCrush || ratCrush.revision <= snapshot.revision))
-    return { key: pending.endsAt, phase: 'waiting', cardCount: pending.cardCount };
+  if (pending) return { key: pending.endsAt, phase: 'waiting', cardCount: pending.cardCount };
 
-  if (ratCrush && now - ratCrush.receivedAt < 1600)
-    return {
-      key: ratCrush.revision,
-      phase: ratCrush.mined ? 'mined' : 'crushed',
-      cardCount: ratCrush.cardCount,
-    };
+  const impact = snapshot.ratImpact;
+  if (impact && serverNow - impact.at < 1600)
+    return { key: impact.at, phase: impact.outcome, cardCount: impact.cardCount };
   const result = skills?.gameId === snapshot.gameId ? skills.ratResult : null;
-  // 쥐가 깔리거나 지뢰에 죽은 것은 모두에게 공개된 `ratCrush`로 이미 그렸다.
   if (
     result &&
     result.outcome !== 'crushed' &&
@@ -474,6 +456,13 @@ function skillsOf(input: GameViewInput): SkillsView | undefined {
 
 export function toGameView(input: GameViewInput): GameView {
   const { snapshot, userId, bell } = input;
+  const cast = input.recentSkills.find(
+    ({ action, castAt }) => action.skillId === SkillId.RUSSIAN_ROULETTE && input.now - castAt < 850,
+  );
+  const shot =
+    cast && cast.action.targetUserId != null
+      ? { key: cast.id, target: String(cast.action.targetUserId) }
+      : undefined;
   const seat = snapshot.players.findIndex((player) => player.userId === userId);
   const seated = seat !== -1;
   const ordered = seated
@@ -597,7 +586,14 @@ export function toGameView(input: GameViewInput): GameView {
     myTurnSeconds: myPhase === 'turn' ? turnSeconds : undefined,
     pileCount: snapshot.pileCount,
     smashed: smashStageOf(snapshot, userId),
-    revolver: snapshot.status === GameStatus.PLAYING ? (snapshot.revolver ?? undefined) : undefined,
+    glint:
+      snapshot.bellGlintAt !== undefined && input.serverNow - snapshot.bellGlintAt < 600
+        ? snapshot.bellGlintAt
+        : undefined,
+    shot,
+    knocked:
+      shot ??
+      (bell?.action.mined ? { key: bell.id, target: String(bell.action.userId) } : undefined),
     bell: bell
       ? { kind: bell.action.success ? 'success' : 'misfire' }
       : playing && snapshot.turnUserId === null

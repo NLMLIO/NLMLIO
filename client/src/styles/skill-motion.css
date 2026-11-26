@@ -512,3 +512,99 @@
     transform: translate(var(--from-x), var(--from-y)) scale(1.6);
   }
 }
+
+.mine-glint,
+.roulette-shot {
+  position: absolute;
+  pointer-events: none;
+  z-index: 25;
+}
+.mine-glint {
+  color: #fff6bf;
+  font-size: 15px;
+  animation: mine-glint 0.55s both;
+}
+@keyframes mine-glint {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  40% {
+    opacity: 0.84;
+  }
+}
+.roulette-shot {
+  top: 0;
+  left: 0;
+  overflow: visible;
+  animation: shot-fade 0.85s both;
+}
+.shot-gun {
+  animation: shot-recoil 0.28s ease-out;
+}
+.shot-flash {
+  fill: #fff2ae;
+  stroke: #ffad3c;
+  stroke-width: 2;
+  animation: shot-fade 0.18s both;
+}
+.shot-trail {
+  stroke: #ffd35e;
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-dasharray: 0.16 1;
+  animation: shot-travel 0.32s linear both;
+}
+@keyframes shot-travel {
+  from {
+    stroke-dashoffset: 0.16;
+  }
+  to {
+    stroke-dashoffset: -1;
+  }
+}
+@keyframes shot-recoil {
+  30% {
+    transform: translateX(-14px) rotate(-8deg);
+  }
+}
+@keyframes shot-fade {
+  0%,
+  68% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.player-hand[data-knocked] > svg {
+  animation: knocked-hand 0.85s ease-out both;
+}
+@keyframes knocked-hand {
+  24% {
+    transform: translateY(65px) rotate(70deg);
+  }
+  65% {
+    transform: translateY(46px) rotate(82deg);
+  }
+}
+.player-hand .hand-splint path {
+  fill: #faf0d8;
+  stroke: #775854;
+  stroke-width: 2;
+}
+.player-hand .hand-splint .fracture {
+  stroke: #7b172d;
+  fill: none;
+  stroke-width: 4;
+}
+@media (prefers-reduced-motion: reduce) {
+  .shot-gun,
+  .player-hand[data-knocked] > svg {
+    animation: none;
+  }
+  .shot-trail {
+    animation: none;
+    stroke-dasharray: none;
+  }
+}

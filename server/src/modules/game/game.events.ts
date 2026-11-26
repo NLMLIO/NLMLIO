@@ -31,13 +31,7 @@ export class GameEvents {
     this.server?.to(userChannel(userId)).emit(GameServerEvent.SKILLS, state);
   }
   action(code: string, action: GameActionEvent): void {
-    // 지뢰가 쥐를 터뜨리면 숨겨 둔 지뢰도 쥐의 죽음도 모두에게 드러난다.
-    const audience =
-      action.kind === 'skill'
-        ? action.ratMined
-          ? 'field'
-          : skillById(action.skillId).announcement
-        : 'field';
+    const audience = action.kind === 'skill' ? skillById(action.skillId).announcement : 'field';
     if (audience === 'hidden') return;
     if (action.kind === 'skill' && audience === 'personal') {
       const recipients = new Set([action.userId]);

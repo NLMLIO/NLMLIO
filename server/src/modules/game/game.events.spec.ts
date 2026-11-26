@@ -17,6 +17,7 @@ describe('스킬 사용 알림의 수신 범위 (FUNC-009-04)', () => {
     const events = new GameEvents();
     events.attach({ to } as unknown as Server);
     events.action('123456', { ...action, skillId: SkillId.MINE });
+    events.action('123456', { ...action, skillId: SkillId.MINE, ratMined: true });
     expect(to).not.toHaveBeenCalled();
   });
 
@@ -37,11 +38,6 @@ describe('스킬 사용 알림의 수신 범위 (FUNC-009-04)', () => {
     [
       '손 내려치기도 모두에게',
       { ...action, skillId: SkillId.HAND_SMASH, targetUserId: 2 },
-      'room:123456',
-    ],
-    [
-      '쥐새끼가 지뢰에 죽으면 숨겨 둔 지뢰도 모두에게 드러난다',
-      { ...action, skillId: SkillId.MINE, ratMined: true },
       'room:123456',
     ],
   ])('%s', (_name, payload, rooms) => {

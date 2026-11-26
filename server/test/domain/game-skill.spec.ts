@@ -839,106 +839,26 @@ describe('스킬 효과: 쥐새끼(FUNC-009-05)', () => {
 });
 
 describe('스킬 효과: 러시안 룰렛(FUNC-009-05)', () => {
-  /** 관전자(9·10번)가 러시안 룰렛을 들고, 두 플레이어는 카드를 내지 않은 상태. 리볼버 난수는 `roll`로 고정한다 */
-  const setup = () => {
-    const roll: { value: number | null } = { value: null };
-    const base = rouletteRandom();
-    const game = start(2, () => roll.value ?? base());
-    const opensAt = 0;
-    game.openSkillPick([9, 10], opensAt);
-    for (const id of [1, 2, 9, 10]) game.chooseSkill(id, { slot: 0 }, opensAt + 10);
-    expect(game.skillState(9).slots).toEqual([SkillId.RUSSIAN_ROULETTE]);
-    expect(game.skillState(10).slots).toEqual([SkillId.RUSSIAN_ROULETTE]);
-    return { game, at: opensAt + 20, roll };
+  const setup = (cards = 8) => {
+    const game = start(2, rouletteRandom(), alternating(2, cards));
+    game.openSkillPick([9], 0);
+    for (const id of [1, 2, 9]) game.chooseSkill(id, { slot: 0 }, 10);
+    return { game, at: 20 };
   };
-  /** 1번 딸기 2 + 2번 딸기 3으로 정확히 5개를 만든 뒤 종을 친다. 다음 판 시작 시각을 돌려준다 */
-  const ringAfterTwoCards = (game: Game, from: number) => {
-    game.play(1, game.turnId, from);
-    game.play(2, game.turnId, from + 1);
-    return game.ring(1, game.turnSeq, from + 2);
-  };
-
-  it('쓰면 대상 없이 종 위에 공포탄 5발·실탄 1발 리볼버가 올라간다', () => {
-    const { game, at } = setup();
-    expect(game.snapshot().revolver).toBeNull();
-    const action = game.useSkill(9, 0, undefined, at + 1);
-    expect(action).toEqual({
-      kind: 'skill',
-      userId: 9,
-      skillId: SkillId.RUSSIAN_ROULETTE,
-      targetUserId: null,
-    });
-    expect(game.snapshot().revolver).toEqual({ blanks: 5, live: 1 });
-    expect(game.skillState(9).slots).toEqual([]);
+  it.each([8, 3])('보유 카드 %i장에서 지정 즉시 최대 5장을 회수한다', (count) => {
+    const { game, at } = setup(count);
+    const lostCards = Math.min(count, 5);
+    expect(game.useSkill(9, 0, 1, at)).toMatchObject({ kind: 'skill', targetUserId: 1, lostCards });
+    const state = game.snapshot();
+    expect(state.players.map((p) => p.handCount)).toEqual([count - lostCards, count]);
+    expect(state.pileCount).toBe(lostCards);
+    expect(state.turnUserId).toBe(count <= 5 ? 2 : 1);
+    expectRule(() => game.useSkill(9, 0, 1, at + 1), ErrorCode.SKILL_UNAVAILABLE);
   });
-
-  it('대상을 지정할 수 없다', () => {
+  it.each([undefined, 9, 99])('유효하지 않은 대상 %s은 스킬을 소모하지 않는다', (target) => {
     const { game, at } = setup();
-    expectRule(() => game.useSkill(9, 0, 2, at + 1), ErrorCode.VALIDATION_FAILED);
+    expectRule(() => game.useSkill(9, 0, target, at), ErrorCode.VALIDATION_FAILED);
     expect(game.skillState(9).slots).toEqual([SkillId.RUSSIAN_ROULETTE]);
-  });
-
-  it('종을 눌렀을 때 공포탄이면 공포탄만 하나 줄고 종 판정은 평소대로 이어진다', () => {
-    const { game, at, roll } = setup();
-    game.useSkill(9, 0, undefined, at + 1);
-    roll.value = 0.99;
-    const action = ringAfterTwoCards(game, at + 2);
-    expect(action).toMatchObject({
-      kind: 'bell',
-      success: true,
-      revolver: { fired: 'blank', blanks: 4 },
-    });
-    // 평소 성공처럼 카드를 가져간다
-    expect(action).toMatchObject({ movedCards: 2 });
-    expect(game.snapshot().revolver).toEqual({ blanks: 4, live: 1 });
-    expect(game.snapshot().skillSuccesses).toBe(1);
-  });
-
-  it('공포탄이 계속 나오면 그때마다 하나씩 줄어든다', () => {
-    const { game, at, roll } = setup();
-    game.useSkill(9, 0, undefined, at + 1);
-    roll.value = 0.99;
-    ringAfterTwoCards(game, at + 2);
-    const next = at + 2 + ROUND_RESULT_MS + 10;
-    expect(ringAfterTwoCards(game, next)).toMatchObject({
-      revolver: { fired: 'blank', blanks: 3 },
-    });
-    expect(game.snapshot().revolver).toEqual({ blanks: 3, live: 1 });
-  });
-
-  it('실탄이 나오면 필드의 카드가 종 밑으로 가고 리볼버가 사라진다(성공도 오발도 아니다)', () => {
-    const { game, at, roll } = setup();
-    game.useSkill(9, 0, undefined, at + 1);
-    const before = game.checkpoint();
-    const successes = game.snapshot().skillSuccesses;
-    roll.value = 0;
-    const action = ringAfterTwoCards(game, at + 2);
-    expect(action).toMatchObject({
-      kind: 'bell',
-      success: false,
-      movedCards: 2,
-      revolver: { fired: 'live', blanks: 5 },
-    });
-    expect(action).not.toHaveProperty('penaltyCards');
-    const after = game.checkpoint();
-    expect(after.pile).toHaveLength(before.pile.length + 2);
-    expect(game.snapshot().players.map((player) => player.tableCount)).toEqual([0, 0]);
-    expect(game.snapshot().revolver).toBeNull();
-    // 성공도 오발도 아니라 기록과 성공 횟수에 넣지 않는다
-    expect(after.players[0]).toMatchObject({ bellSuccess: 0, bellFail: 0 });
-    expect(game.snapshot().skillSuccesses).toBe(successes);
-  });
-
-  it('리볼버가 있는 상태에서 또 쓰면 공포탄 5발·실탄 1발로 초기화된다', () => {
-    const { game, at, roll } = setup();
-    game.useSkill(9, 0, undefined, at + 1);
-    roll.value = 0.99;
-    const next = at + 2 + ROUND_RESULT_MS + 10;
-    ringAfterTwoCards(game, at + 2);
-    expect(game.snapshot().revolver).toEqual({ blanks: 4, live: 1 });
-    roll.value = null;
-    game.useSkill(10, 0, undefined, next);
-    expect(game.snapshot().revolver).toEqual({ blanks: 5, live: 1 });
   });
 
   it('관전자 전용이라 플레이어는 쓸 수 없다', () => {
@@ -1039,6 +959,11 @@ describe('스킬 효과: 지뢰와 쥐새끼(FUNC-009-05)', () => {
     expect(game.snapshot().rat).not.toBeNull();
     const action = game.useSkill(2, 0, undefined, at + 3 + RAT_ESCAPE_MS - 1);
     expect(action).toMatchObject({ kind: 'skill', skillId: SkillId.MINE, ratMined: true });
+    expect(game.snapshot().ratImpact).toEqual({
+      at: at + 3 + RAT_ESCAPE_MS - 1,
+      outcome: 'mined',
+      cardCount: 1,
+    });
     expect(game.snapshot().rat).toBeNull();
     expect(game.skillState(1).ratResult).toMatchObject({ outcome: 'mined', cardCount: 1 });
     // 쥐는 카드를 가져가지 못한다
@@ -1053,6 +978,8 @@ describe('스킬 효과: 지뢰와 쥐새끼(FUNC-009-05)', () => {
     const hand = game.checkpoint().players[0].hand.length;
     const action = game.useSkill(1, 0, undefined, at + 4);
     expect(action).toMatchObject({ kind: 'skill', skillId: SkillId.RAT, ratMined: true });
+    expect(game.snapshot().bellGlintAt).toEqual(at + 3);
+    expect(game.snapshot().ratImpact).toEqual({ at: at + 4, outcome: 'mined', cardCount: 1 });
     expect(game.snapshot().rat).toBeNull();
     expect(game.skillState(1).ratResult).toMatchObject({ outcome: 'mined' });
     expect(game.checkpoint().players[0].hand.length).toBe(hand);

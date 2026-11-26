@@ -114,7 +114,7 @@ export function ActionBar({
       {spectating ? (
         onRoulette && (
           <button type="button" className="action-button roulette-use" onClick={onRoulette}>
-            룰렛 설치
+            룰렛 대상 선택
           </button>
         )
       ) : (

@@ -38,12 +38,7 @@ export const SPIT_DRIP_MS = 3_000;
 /** 종 부수기(009-05): 종이 부서져 아무도 못 치는 시간(5~20초 중 서버가 정한다) */
 export const BELL_BREAK_MIN_MS = 5_000;
 export const BELL_BREAK_MAX_MS = 20_000;
-/**
- * 러시안 룰렛(009-05): 종 위에 올려 둔 리볼버의 공포탄·실탄 수. 종을 누를 때마다 남은 칸 중 하나가 나오고,
- * 공포탄이면 그 칸만 줄고 실탄이면 테이블 카드가 종 아래로 가고 리볼버가 사라진다.
- */
-export const ROULETTE_BLANKS = 5;
-export const ROULETTE_LIVE = 1;
+export const ROULETTE_CARD_LOSS = 5;
 /** 쥐가 종 아래에 나타난 뒤 카드를 가져갈 때까지의 시간(이 안에 지뢰를 깔아도 쥐가 죽는다) */
 export const RAT_ESCAPE_MS = 2_000;
 /** 후보 칸 수와 보유 칸 수(009-02, 009-03) */
@@ -297,10 +292,9 @@ export const SKILLS: readonly SkillDefinition[] = [
     grade: 4,
     timing: SkillTiming.ANYTIME,
     user: SkillUser.SPECTATOR,
-    target: 'none',
+    target: 'one',
     available: true,
-    description:
-      '종 위에 공포탄 5발·실탄 1발 리볼버를 올린다. 종을 누를 때 실탄이 나오면 테이블 카드가 종 아래로 간다.',
+    description: '선택한 플레이어에게 즉시 발사해 보유 카드 최대 5장을 종 아래로 옮긴다.',
   },
   {
     id: SkillId.RESET,

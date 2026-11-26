@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import type { BellHandsView, ChatEmojiCode } from '@nlmlio/shared';
 import { setMuted, useMuted } from '../../audio/sounds';
+import blaster from '../../assets/skills/arcade-blaster.svg';
 import tableImage from '../../assets/game/table.png';
 import { SpectatorFullscreen } from './SpectatorFullscreen';
 import { ActionBar } from './ActionBar';
@@ -32,13 +33,6 @@ export interface GameActions {
   /** 대상 지정 중 좌석을 눌러 대상으로 고른다 */
   onPickTarget?: (userId: number) => void;
 }
-
-/** 손 개 쌔게 내려치기를 맞았을 때 종을 눌러 보면 나오는 단계별 안내 */
-export const SMASHED_MESSAGES: Record<1 | 2 | 3, string> = {
-  3: '너무 두려워서 종을 칠 수가 없어요',
-  2: '손이 너무 아파 종을 칠 수 없어요',
-  1: '손이 아직 뜨거워요',
-};
 
 /** 게임 화면(06·15·18·19·05B·07A·07B·16·21·22): 테이블·자리·종·내 상태 바와 채팅 패널 */
 export function GameBoard({
@@ -81,6 +75,8 @@ export function GameBoard({
     const { seat } = placements[index];
     return { x: seat.x, y: seat.y - 40 };
   };
+  const hit = view.shot && seatPoint(view.shot.target);
+  const aim = hit ? (Math.atan2(hit.y - bell.y, hit.x - bell.x) * 180) / Math.PI : 0;
   return (
     <div className="game-screen">
       <main className="game-board">
@@ -170,8 +166,39 @@ export function GameBoard({
           breakStrike={casts.find((cast) => cast.skillId === SkillId.BELL_BREAK)?.key}
           hackKey={view.hackKey}
           shell={view.shell}
-          revolver={view.revolver}
         />
+        {view.glint !== undefined && (
+          <i
+            key={view.glint}
+            className="mine-glint"
+            style={{ left: bell.x + 18, top: bell.y - 16 }}
+            aria-hidden="true"
+          >
+            ✦
+          </i>
+        )}
+        {view.shot && hit && (
+          <svg
+            key={view.shot.key}
+            className="roulette-shot"
+            width="1100"
+            height="900"
+            aria-label="지정한 플레이어에게 룰렛 발사"
+          >
+              <line
+                className="shot-trail"
+                x1={bell.x}
+                y1={bell.y}
+                x2={hit.x}
+                y2={hit.y}
+                pathLength="1"
+              />
+            <g transform={`translate(${bell.x} ${bell.y}) rotate(${aim})`}>
+              <image className="shot-gun" href={blaster} x="-32" y="-20" width="85" height="50" />
+              <path className="shot-flash" d="m53 0 12 -9 -2 6 18 3 -20 4 3 7z" />
+            </g>
+          </svg>
+        )}
         {view.bellMove && !view.shell && <span className="bell-ghost" aria-hidden="true" />}
         {armedSmashSlot !== null && (
           <p className="smash-ready-hint" role="status">
@@ -179,17 +206,11 @@ export function GameBoard({
             <kbd>{view.shell?.keys.join('·') ?? view.hackKey ?? view.bellMove?.key ?? 'SPACE'}</kbd>
           </p>
         )}
-        {view.smashed && (
-          <p className="skill-hint smashed-hint" role="status">
-            <b>{SMASHED_MESSAGES[view.smashed]}</b>
-            <span>내 카드를 낼수록 손이 회복돼요</span>
-          </p>
-        )}
         {seatedPlayers.map((player, index) => {
           const handIndex = hands?.userIds.indexOf(Number(player.id)) ?? -1;
           return (
             <div
-              key={`${player.id}:${handIndex >= 0 ? hands?.turnSeq : 'rest'}`}
+              key={`${player.id}:${view.knocked?.target === player.id ? view.knocked.key : ''}:${handIndex >= 0 ? hands?.turnSeq : 'rest'}`}
               className={`player-hand-track${handIndex >= 0 ? ' is-striking' : ''}`}
               style={
                 {
@@ -202,7 +223,11 @@ export function GameBoard({
               }
               aria-hidden="true"
             >
-              <div className="player-hand" data-injured={player.smashed}>
+              <div
+                className="player-hand"
+                data-injured={player.smashed}
+                data-knocked={view.knocked?.target === player.id || undefined}
+              >
                 {casts
                   .filter(
                     (cast) => cast.skillId === SkillId.HAND_SMASH && cast.targetId === player.id,
@@ -242,6 +267,13 @@ export function GameBoard({
                     />
                     <path className="hand-cuff" d="m30 118 54 2-1 20-54-3z" />
                     <path className="hand-seam" d="m35 124 42 2" />
+                    {player.smashed && (
+                      <g className="hand-splint">
+                        <path d="m29 78 59 15 -4 16 -48 -12z" />
+                        <path d="m42 112 -7 -12 45 -26 8 11z" />
+                        <path className="fracture" d="m49 26 7 11 -9 3 10 12" />
+                      </g>
+                    )}
                   </svg>
                 )}
               </div>

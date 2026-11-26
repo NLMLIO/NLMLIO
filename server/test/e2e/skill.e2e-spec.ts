@@ -294,14 +294,22 @@ describe('스킬 선택 Socket.io 통합 (FUNC-009)', () => {
       await emit(b, GameClientEvent.SKILL_USE, { gameId, slot: 0, expectedSkillId: 'HAND_SMASH' }),
     ).toEqual({ ok: true });
     expect(snapshot().smashed).toContainEqual({ userId: users[0].user.id, stage: 3 });
+    const handBefore = snapshot().players[1].handCount;
     expect(
       await emit(spectator, GameClientEvent.SKILL_USE, {
         gameId,
         slot: 0,
+        targetUserId: users[1].user.id,
         expectedSkillId: 'RUSSIAN_ROULETTE',
       }),
     ).toEqual({ ok: true });
-    expect(snapshot().revolver).toEqual({ blanks: 5, live: 1 });
     await until(() => sockets.every((socket) => !!castOn(socket, 'RUSSIAN_ROULETTE')));
+    const lostCards = Math.min(5, handBefore);
+    expect(snapshot().players[1].handCount).toBe(handBefore - lostCards);
+    for (const socket of sockets)
+      expect(castOn(socket, 'RUSSIAN_ROULETTE')).toMatchObject({
+        targetUserId: users[1].user.id,
+        lostCards,
+      });
   }, 60000);
 });
